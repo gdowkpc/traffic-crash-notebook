@@ -37,7 +37,13 @@ class ExchangeReportPdfTest(unittest.TestCase):
             self.assertNotIn("PERSON NAME", text)
             self.assertIn("Officer Empty", text)
             self.assertIn("1 / 1", text)
-            self.assertTrue(reader.pages[-1].images)
+            information_text = reader.pages[-1].extract_text() or ""
+            self.assertIn("INFORMATION / YOUR RESPONSIBILITIES", information_text)
+            self.assertIn("PORTLAND POLICE BUREAU POLICY STATEMENT", information_text)
+            self.assertIn("TRAFFIC CRASH REPORTING REQUIREMENTS", information_text)
+            self.assertIn("Damage to your vehicle is over $2500", information_text)
+            self.assertIn("770 (12/17)", information_text)
+            self.assertFalse(list(reader.pages[-1].images))
 
     def test_unlimited_records_create_numbered_continuation_pages(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -124,6 +130,18 @@ class ExchangeReportPdfTest(unittest.TestCase):
                 cell_phone="971-555-5000",
                 roles=["Pedestrian"],
             ))
+            repository.save_person(Person(
+                id="",
+                case_id=case.id,
+                first_name="Blair",
+                last_name="Bicyclist",
+                address="311 Riding Road",
+                city="Portland",
+                state="OR",
+                zip_code="97211",
+                cell_phone="971-555-5001",
+                roles=["Bicyclist"],
+            ))
 
             path = export_exchange_report_pdf(
                 repository,
@@ -147,11 +165,97 @@ class ExchangeReportPdfTest(unittest.TestCase):
             self.assertIn("Exchange9, Person9", text)
             self.assertIn("Pedestrian, Pat", text)
             self.assertIn("PEDESTRIAN", text)
-            self.assertEqual(text.count("PERSON NAME (LAST, FIRST, MI)"), 10)
+            self.assertIn("Bicyclist, Blair", text)
+            self.assertIn("BICYCLIST", text)
+            self.assertEqual(text.count("PERSON NAME (LAST, FIRST, MI)"), 11)
             self.assertIn("1 / 3", page_texts[0])
             self.assertIn("2 / 3", page_texts[1])
             self.assertIn("3 / 3", page_texts[2])
-            self.assertTrue(reader.pages[-1].images)
+            self.assertIn(
+                "IT IS NOT AN OFFICIAL OREGON POLICE TRAFFIC CRASH REPORT",
+                page_texts[-1],
+            )
+            self.assertFalse(list(reader.pages[-1].images))
+
+    def test_unlinked_driver_and_vehicle_owner_vru_are_both_printed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = CaseRepository(root / "legacy-links.sqlite3")
+            case = repository.create_case("26-LEGACY-LINKS", "Officer Link")
+            case.assigned_officer_dpsst = "24680"
+            case.assignment = "Traffic Investigations"
+            repository.save_case(case)
+
+            driver = repository.save_person(Person(
+                id="",
+                case_id=case.id,
+                first_name="Dana",
+                last_name="Driver",
+                address="100 Driver Drive",
+                city="Portland",
+                state="OR",
+                zip_code="97201",
+                cell_phone="503-555-1000",
+                roles=["Driver"],
+            ))
+            pedestrian_owner = repository.save_person(Person(
+                id="",
+                case_id=case.id,
+                first_name="Parker",
+                last_name="Pedestrian",
+                address="200 Walking Way",
+                city="Portland",
+                state="OR",
+                zip_code="97202",
+                cell_phone="503-555-2000",
+                roles=["Pedestrian", "Vehicle Owner"],
+            ))
+            bicyclist = repository.save_person(Person(
+                id="",
+                case_id=case.id,
+                first_name="Bailey",
+                last_name="Bicyclist",
+                address="300 Bicycle Boulevard",
+                city="Portland",
+                state="OR",
+                zip_code="97203",
+                cell_phone="503-555-3000",
+                roles=["Bicyclist"],
+            ))
+            repository.save_driver_profile(DriverProfile(
+                person_id=driver.id,
+                license_number="DL-LEGACY",
+                license_state="OR",
+            ))
+            repository.save_vehicle(Vehicle(
+                id="",
+                case_id=case.id,
+                vehicle_number="V-1",
+                year="2024",
+                make="Example",
+                model="Vehicle",
+                plate="LEGACY1",
+                plate_state="OR",
+                owner_person_id=pedestrian_owner.id,
+            ))
+
+            path = export_exchange_report_pdf(
+                repository,
+                case.id,
+                root / "legacy-links-exchange.pdf",
+            )
+            reader = PdfReader(path)
+            front_text = "\n".join(
+                page.extract_text() or "" for page in reader.pages[:-1]
+            )
+            self.assertIn("Driver, Dana", front_text)
+            self.assertIn("DL-LEGACY", front_text)
+            self.assertIn("Pedestrian, Parker", front_text)
+            self.assertIn("PEDESTRIAN", front_text)
+            self.assertIn("Bicyclist, Bailey", front_text)
+            self.assertIn("BICYCLIST", front_text)
+            self.assertIn("24680", front_text)
+            self.assertIn("Traffic Investigations", front_text)
 
 
 if __name__ == "__main__":

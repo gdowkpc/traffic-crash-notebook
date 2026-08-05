@@ -1,3 +1,15 @@
+## Traffic Crash Notebook 0.5.1
+
+This maintenance release corrects Traffic Crash Exchange Report output.
+
+- Replaces the photographed information/responsibilities page with a clean, searchable, selectable-text transcription of PPB form 770 (12/17).
+- Always preserves drivers in the exchange report: explicit vehicle-driver links are used first, participant-to-vehicle links are honored, and an unambiguous legacy driver/vehicle pair is recovered automatically.
+- Never substitutes a non-driver vehicle owner into the operator field.
+- Prints unresolved drivers as separate involved-person records rather than omitting them.
+- Adds explicit Driver, Pedestrian, and Bicyclist role checkboxes to involved-person blocks.
+- Confirms that Overview DPSST and Assignment values are saved when the Exchange Report tab opens and map to the footer's DPSST and Precinct fields.
+- Prevents the case number from overlapping the PAGE / OF field.
+
 ## Traffic Crash Notebook 0.5.0
 
 This release establishes the public GitHub distribution and verified portable-update channel.

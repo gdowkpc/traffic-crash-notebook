@@ -15,10 +15,6 @@ def tiu_logo_path() -> Path:
     return resource_path("assets/tiu_logo.jpg")
 
 
-def exchange_report_back_path() -> Path:
-    return resource_path("assets/exchange_report_back.jpg")
-
-
 DIAGRAM_TEMPLATES = {
     "body": "Body - four views",
     "car": "Passenger car - three views",

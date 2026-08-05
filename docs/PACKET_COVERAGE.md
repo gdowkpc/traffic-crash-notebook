@@ -30,7 +30,7 @@ presentation controls.
 
 ## Page-by-page coverage
 
-| Page(s) | Packet section | Required semantic data | v0.5.0 implementation |
+| Page(s) | Packet section | Required semantic data | v0.5.1 implementation |
 |---|---|---|---|
 | 1 | Cover | Location, crash date/time, case number, prepared by, unit identity | Complete in the full packet PDF |
 | 2 | Investigative checklist | Evidence collection, vehicle work, crash-diagram completion, Axon sharing, dated peer review, sergeant review, and DA submission milestones, assigned DDA, DA case number, unlimited charge/disposition rows | Complete |

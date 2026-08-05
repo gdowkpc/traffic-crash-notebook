@@ -291,8 +291,8 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.window.assignment.setText("Traffic Division")
         self.window.crash_date.setText("08/05/2026")
         self.window.crash_time.setText("02:35 PM")
-        self.window.save_overview()
-        self.window.refresh_case_tables()
+        self.window.tabs.setCurrentIndex(tab_labels.index("Exchange Report"))
+        self.app.processEvents()
 
         loaded_case = self.repository.get_case(self.case.id)
         self.assertEqual(loaded_case.investigator, "Officer Assigned")
@@ -311,9 +311,6 @@ class AddRecordWorkflowTest(unittest.TestCase):
             button_labels,
             {"Refresh Preview", "Export Preview to PDF"},
         )
-        self.window.tabs.setCurrentIndex(exchange_tab_index)
-        self.app.processEvents()
-
         self.assertTrue(self.window.exchange_preview_path.is_file())
         self.assertEqual(self.window.exchange_pdf_document.pageCount(), 2)
         self.assertIn("1 vehicle(s)", self.window.exchange_readiness_label.text())

@@ -29,7 +29,7 @@ from .models import (
     WitnessDetails,
 )
 from .pdf_export import export_case_compact_pdf, export_case_pdf, export_case_summary_pdf
-from .exchange_report import export_exchange_report_pdf
+from .exchange_report import export_exchange_report_pdf, person_name_last_first
 from .paths import (
     DATABASE_FILENAME,
     load_storage_config,
@@ -38,7 +38,6 @@ from .paths import (
     validate_storage_directory,
 )
 from .repository import SCHEMA_VERSION, CaseRepository, new_id
-from .resources import exchange_report_back_path
 from .spellcheck import SpellCheckService
 from .updates import is_update_available, parse_update_manifest
 
@@ -249,6 +248,16 @@ def run_self_test(output_directory: str | Path) -> Path:
         person_id=person.id, testing_methods="SFST", license_restricted="No",
         license_number="SELFTEST-DL", license_state="OR",
     ))
+    pedestrian = repository.save_person(Person(
+        id=new_id(), case_id=case.id, first_name="Portable", last_name="Pedestrian",
+        address="200 Verification Walk", city="Portland", state="OR",
+        zip_code="97202", cell_phone="503-555-0200", roles=["Pedestrian"],
+    ))
+    bicyclist = repository.save_person(Person(
+        id=new_id(), case_id=case.id, first_name="Portable", last_name="Bicyclist",
+        address="300 Verification Ride", city="Portland", state="OR",
+        zip_code="97203", cell_phone="503-555-0300", roles=["Bicyclist"],
+    ))
     repository.save_vehicle_inspection(VehicleInspection(
         vehicle_id=vehicle.id, headlights_equipped="Yes", headlights_operable="Yes",
         tire_contribution="No",
@@ -351,8 +360,6 @@ def run_self_test(output_directory: str | Path) -> Path:
     export_case_compact_pdf(repository, case.id, compact_pdf)
     export_case_summary_pdf(repository, case.id, summary_pdf)
     export_exchange_report_pdf(repository, case.id, exchange_pdf)
-    if not exchange_report_back_path().is_file():
-        raise RuntimeError("The exchange-report information page is missing.")
 
     if not database.is_file() or database.stat().st_size < 4096:
         raise RuntimeError("The self-test database was not created correctly.")
@@ -367,6 +374,39 @@ def run_self_test(output_directory: str | Path) -> Path:
     exchange_pdf_bytes = exchange_pdf.read_bytes()
     if not exchange_pdf_bytes.startswith(b"%PDF-") or not exchange_pdf_bytes.rstrip().endswith(b"%%EOF"):
         raise RuntimeError("The self-test exchange-report output is not a complete PDF file.")
+    exchange_document = QPdfDocument()
+    exchange_load_error = exchange_document.load(str(exchange_pdf))
+    if exchange_load_error != QPdfDocument.Error.None_:
+        raise RuntimeError(
+            f"The self-test exchange report could not be loaded ({exchange_load_error.name})."
+        )
+    exchange_page_text = [
+        exchange_document.getAllText(page_index).text()
+        for page_index in range(exchange_document.pageCount())
+    ]
+    exchange_front_text = "\n".join(exchange_page_text[:-1])
+    exchange_information_text = exchange_page_text[-1]
+    for required_text in (
+        person_name_last_first(person),
+        person_name_last_first(pedestrian),
+        person_name_last_first(bicyclist),
+        "12345",
+        "Verification Precinct",
+    ):
+        if required_text not in exchange_front_text:
+            raise RuntimeError(
+                f"The exchange report omitted required participant/officer data: {required_text}"
+            )
+    for required_text in (
+        "INFORMATION / YOUR RESPONSIBILITIES",
+        "PORTLAND POLICE BUREAU POLICY STATEMENT",
+        "TRAFFIC CRASH REPORTING REQUIREMENTS",
+        "770 (12/17)",
+    ):
+        if required_text not in exchange_information_text:
+            raise RuntimeError(
+                f"The searchable exchange information page omitted: {required_text}"
+            )
     with closing(sqlite3.connect(database)) as connection:
         schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
     if schema_version != SCHEMA_VERSION:
@@ -392,7 +432,8 @@ def run_self_test(output_directory: str | Path) -> Path:
             "Hit-and-run overview, evidence, lead, and confirmed-record links: PASS",
             "Assigned-officer DPSST and assignment persistence: PASS",
             "Data-folder user defaults and new-case prefill: PASS",
-            "Dynamic exchange-report data, time formatting, and information page: PASS",
+            "Driver, pedestrian, and bicyclist exchange-report inclusion: PASS",
+            "Dynamic exchange-report data, time formatting, and searchable information page: PASS",
             "Embedded PDF preview components: PASS",
             "Guided data-storage configuration and migration: PASS",
             "Verified release-manifest update checker: PASS",

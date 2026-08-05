@@ -13,7 +13,7 @@ grant permission to reuse the source or bundled assets. Agency names, forms, mar
 and other third-party material remain the property of their respective owners; no
 agency endorsement is implied.
 
-## Included in version 0.5.0
+## Included in version 0.5.1
 
 - Create and reopen unlimited cases.
 - Read the selected case clearly with high-contrast text whether the case selector has keyboard focus or not.
@@ -23,7 +23,7 @@ agency endorsement is implied.
 - Record the case overview, assigned officer, numeric DPSST, assignment, crash summary, unresolved questions, and general notes; display crash times with AM/PM.
 - Enter a person once and assign multiple roles such as driver, passenger, pedestrian, witness, or victim.
 - Create unlimited vehicles and link existing people as drivers or owners.
-- Preview and export a Traffic Crash Exchange Report from existing case records without duplicate data entry. It prints only existing vehicle/person blocks, includes pedestrians, creates continuation pages as needed, and appends the information/responsibilities page last.
+- Preview and export a Traffic Crash Exchange Report from existing case records without duplicate data entry. It preserves linked and unambiguous legacy drivers, includes pedestrian and bicyclist participants, maps DPSST and Assignment into the footer, creates continuation pages as needed, and appends a searchable text information/responsibilities page last.
 - Maintain an automatically sorted investigative chronology.
 - Track open, waiting, completed, and unnecessary tasks or evidence requests.
 - Automatically save overview changes.
@@ -69,7 +69,7 @@ builds the executable, runs the finished executable's portable self-test, and
 creates:
 
 ```text
-release\TrafficCrashNotebook-0.5.0-Windows-Portable.zip
+release\TrafficCrashNotebook-0.5.1-Windows-Portable.zip
 ```
 
 The included GitHub Actions workflow performs the same build on a hosted Windows
@@ -157,7 +157,7 @@ entered text to a network service.
 - **Export Full Working Packet** preserves the complete section order and adds ruled areas for handwritten updates after printing. It is the intended attorney-folder copy. Print one-sided when practical so every ruled area remains easy to use.
 - **Export Compact Packet** includes the complete entered record but omits unused sections and dedicated handwriting areas.
 - **Export Quick Review** creates a concise briefing copy rather than the complete packet.
-- **Exchange Report preview / export** creates a searchable, template-style information-exchange form from existing case data. It dynamically packs only existing vehicles and involved people (including pedestrians), adds numbered continuation pages as needed, and always appends the supplied information/responsibilities page last.
+- **Exchange Report preview / export** creates a searchable, template-style information-exchange form from existing case data. It preserves drivers, dynamically packs existing vehicles plus pedestrian and bicyclist participants, adds numbered continuation pages as needed, and appends a selectable-text information/responsibilities page last.
 
 All four PDFs use US Letter pages. The packet PDFs keep primary content below
 the top-hole area, and every export carries case identity and page numbering.

@@ -70,7 +70,7 @@ from ..exchange_report import (
     export_exchange_report_pdf,
     person_exchange_address,
     person_exchange_phone,
-    vehicle_exchange_party,
+    resolve_exchange_vehicle_drivers,
 )
 from ..models import (
     CARDINAL_DIRECTIONS,
@@ -1852,12 +1852,24 @@ class MainWindow(QMainWindow):
             return
         case_id = self.current_case.id
         people_list = self.repository.list_people(case_id)
-        people_by_id = {person.id: person for person in people_list}
         vehicles = self.repository.list_vehicles(case_id)
-        exchange_people = exchange_report_people(people_list, vehicles)
+        participants = {
+            person.id: self.repository.get_participant_details(person.id)
+            for person in people_list
+        }
+        vehicle_drivers = resolve_exchange_vehicle_drivers(
+            vehicles,
+            people_list,
+            participants,
+        )
+        exchange_people = exchange_report_people(
+            people_list,
+            vehicles,
+            participants,
+        )
         complete_vehicles = 0
         for vehicle in vehicles:
-            party = vehicle_exchange_party(vehicle, people_by_id)
+            party = vehicle_drivers.get(vehicle.id)
             profile = self.repository.get_driver_profile(party.id) if party else None
             required_values = (
                 party,
@@ -1881,7 +1893,7 @@ class MainWindow(QMainWindow):
 
         complete_people = 0
         for person in exchange_people:
-            participant = self.repository.get_participant_details(person.id)
+            participant = participants[person.id]
             has_required_data = bool(
                 person_exchange_address(person) and person_exchange_phone(person)
             )

@@ -3,17 +3,18 @@ from __future__ import annotations
 from pathlib import Path
 
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfgen import canvas
+from reportlab.platypus import Paragraph
 
 from . import __version__
 from .date_format import format_date_for_display, format_time_for_display
-from .models import Person, Vehicle, format_crash_location
+from .models import ParticipantDetails, Person, Vehicle, format_crash_location
 from .repository import CaseRepository
-from .resources import exchange_report_back_path
 
 
 VEHICLE_BLOCK_HEIGHT = 1.58 * inch
@@ -32,6 +33,47 @@ EXCHANGE_PERSON_ROLES = {
 LINE_COLOR = colors.HexColor("#27323A")
 LABEL_COLOR = colors.HexColor("#3F4B53")
 LIGHT_FILL = colors.HexColor("#F1F3F4")
+
+INFORMATION_PAGE_POLICY = (
+    "This crash <b>WILL NOT</b> be investigated. Police are not required to "
+    "investigate traffic crashes, but do investigate certain crashes as a matter "
+    "of policy. The Portland Police Bureau's policy is as follows: A traffic crash "
+    "will be investigated when a person is injured and the injury is substantial "
+    "enough to require the person to be transported via ambulance, <b>AND</b> the "
+    "person is entered into the regional trauma system. The decision to enter an "
+    "injured party into the trauma system is made by the on-scene emergency medical "
+    "personnel, not the police or the parties involved in the traffic crash."
+)
+INFORMATION_PAGE_REPORTING_INTRO = (
+    "<b>EVERY</b> driver involved in a traffic crash resulting in any of the "
+    "following <b>MUST</b> file an Oregon Traffic Accident and Insurance Report "
+    "under any of the following circumstances."
+)
+INFORMATION_PAGE_REPORTING_ITEMS = (
+    "Damage to your vehicle is over $2500",
+    "Damage to any one person's property other than a vehicle is over $2500",
+    "Damage to any vehicle is over $2500, <b>AND</b> any vehicle was towed from "
+    "the scene as a result of damages from this accident",
+    "Injury to any person",
+    "Death to any person",
+)
+INFORMATION_PAGE_FILING = (
+    "Oregon Law requires these reports be filed within 72 hours of the crash "
+    "(excluding weekends and holidays). If your crash was investigated and an "
+    "Oregon Police Crash Report was filed, you are still required to file your own "
+    "Oregon Traffic Accident and Insurance Report with the DMV. If you are an "
+    "out-of-state resident, you are still required to file your own Oregon Traffic "
+    "Accident and Insurance Report with the Oregon DMV. You must report a traffic "
+    "crash, even if it happened on private property that is premises open to the "
+    "public. (Example: A store parking lot or an apartment complex parking lot)."
+)
+INFORMATION_PAGE_LOCATIONS = (
+    "Oregon Traffic Accident and Insurance Report Forms may be obtained statewide "
+    "from any police or sheriff's agency or DMV office. Listed below are Portland "
+    "Police Bureau locations in which you may pick up the Oregon Traffic Accident "
+    "and Insurance Report Form. Please call for current hours, as they may vary "
+    "from each location:"
+)
 
 
 def person_name_last_first(person: Person | None) -> str:
@@ -66,29 +108,96 @@ def person_exchange_phone(person: Person | None) -> str:
     )
 
 
+def person_has_role(person: Person, role: str) -> bool:
+    expected = role.strip().casefold()
+    return any(value.strip().casefold() == expected for value in person.roles)
+
+
 def vehicle_exchange_party(
     vehicle: Vehicle,
     people: dict[str, Person],
 ) -> Person | None:
-    return people.get(vehicle.driver_person_id) or people.get(vehicle.owner_person_id)
+    explicit_driver = people.get(vehicle.driver_person_id)
+    if explicit_driver is not None:
+        return explicit_driver
+    owner = people.get(vehicle.owner_person_id)
+    if owner is not None and person_has_role(owner, "Driver"):
+        return owner
+    return None
+
+
+def resolve_exchange_vehicle_drivers(
+    vehicles: list[Vehicle],
+    people: list[Person],
+    participants: dict[str, ParticipantDetails] | None = None,
+) -> dict[str, Person]:
+    """Resolve each vehicle's driver without silently substituting its owner.
+
+    Older case data may contain a Driver person without a vehicle.driver_person_id.
+    The participant-to-vehicle link is authoritative when present. A final
+    one-driver/one-vehicle inference keeps an unambiguous legacy case usable; when
+    multiple matches are possible, the people remain separate driver records on
+    the exchange report instead of being guessed into the wrong vehicle block.
+    """
+    people_by_id = {person.id: person for person in people}
+    details = participants or {}
+    resolved: dict[str, Person] = {}
+    used_person_ids: set[str] = set()
+
+    for vehicle in vehicles:
+        driver = vehicle_exchange_party(vehicle, people_by_id)
+        if driver is not None and driver.id not in used_person_ids:
+            resolved[vehicle.id] = driver
+            used_person_ids.add(driver.id)
+
+    for vehicle in vehicles:
+        if vehicle.id in resolved:
+            continue
+        associated = [
+            person
+            for person in people
+            if person.id not in used_person_ids
+            and person_has_role(person, "Driver")
+            and details.get(person.id) is not None
+            and details[person.id].vehicle_id == vehicle.id
+        ]
+        if len(associated) == 1:
+            resolved[vehicle.id] = associated[0]
+            used_person_ids.add(associated[0].id)
+
+    unresolved_vehicles = [
+        vehicle for vehicle in vehicles if vehicle.id not in resolved
+    ]
+    unassigned_drivers = [
+        person
+        for person in people
+        if person.id not in used_person_ids and person_has_role(person, "Driver")
+    ]
+    if len(unresolved_vehicles) == 1 and len(unassigned_drivers) == 1:
+        resolved[unresolved_vehicles[0].id] = unassigned_drivers[0]
+
+    return resolved
 
 
 def exchange_report_people(
     people: list[Person],
     vehicles: list[Vehicle],
+    participants: dict[str, ParticipantDetails] | None = None,
 ) -> list[Person]:
     """Return involved people not already printed in a vehicle/driver block."""
-    people_by_id = {person.id: person for person in people}
     represented_person_ids = {
-        party.id
-        for vehicle in vehicles
-        if (party := vehicle_exchange_party(vehicle, people_by_id)) is not None
+        driver.id
+        for driver in resolve_exchange_vehicle_drivers(
+            vehicles,
+            people,
+            participants,
+        ).values()
     }
     return [
         person
         for person in people
         if person.id not in represented_person_ids
-        and EXCHANGE_PERSON_ROLES.intersection(person.roles)
+        and any(person_has_role(person, role) for role in EXCHANGE_PERSON_ROLES)
     ]
 
 
@@ -136,10 +245,13 @@ def _fit_text(
     font_name: str = "Helvetica",
     font_size: float = 8.2,
     minimum_size: float = 5.2,
+    bold: bool = False,
 ) -> None:
     text = " ".join(str(value or "").split())
     if not text:
         return
+    if bold and font_name == "Helvetica":
+        font_name = "Helvetica-Bold"
     available = max(1.0, width)
     size = font_size
     while size > minimum_size and stringWidth(text, font_name, size) > available:
@@ -319,7 +431,7 @@ def _draw_header(
         pdf.setFillColor(LABEL_COLOR)
         pdf.setFont("Helvetica", 5.5)
         pdf.drawRightString(
-            left + width - 3,
+            left + width - page_width - 4,
             top - title_height + 3,
             f"CASE {case_number}",
         )
@@ -330,14 +442,14 @@ def _draw_vehicle_block(
     pdf: canvas.Canvas,
     *,
     vehicle: Vehicle | None,
-    people: dict[str, Person],
+    driver: Person | None,
     profiles: dict[str, object],
     left: float,
     top: float,
     width: float,
     height: float,
 ) -> float:
-    party = vehicle_exchange_party(vehicle, people) if vehicle else None
+    party = driver
     profile = profiles.get(party.id) if party else None
     row_height = height / 6.0
     y = top - row_height
@@ -524,17 +636,24 @@ def _draw_person_block(
     pdf.setFont("Helvetica-Bold", 5.6)
     role_x = left + 4
     listed_roles = (
+        ("Driver", "DRIVER"),
         ("Passenger", "PASSENGER"),
         ("Witness", "WITNESS"),
         ("Pedestrian", "PEDESTRIAN"),
         ("Bicyclist", "BICYCLIST"),
     )
     for role, label in listed_roles:
-        _draw_checkbox(pdf, role_x, role_line_y - 1, role in person.roles)
+        _draw_checkbox(
+            pdf,
+            role_x,
+            role_line_y - 1,
+            person_has_role(person, role),
+        )
         pdf.drawString(role_x + 11, role_line_y, label)
         role_x += 17 + stringWidth(label, "Helvetica-Bold", 5.6)
+    listed_role_names = {item[0].casefold() for item in listed_roles}
     other_roles = [
-        role for role in person.roles if role not in {item[0] for item in listed_roles}
+        role for role in person.roles if role.strip().casefold() not in listed_role_names
     ]
     if other_roles:
         _fit_text(
@@ -640,50 +759,266 @@ def _draw_footer(
     )
 
 
-def _draw_back_page(pdf: canvas.Canvas, image_path: Path) -> None:
-    if not image_path.is_file():
-        raise FileNotFoundError(
-            f"The exchange-report back-page image is missing: {image_path}"
-        )
+def _draw_information_paragraph(
+    pdf: canvas.Canvas,
+    text: str,
+    *,
+    x: float,
+    top: float,
+    width: float,
+    style: ParagraphStyle,
+    space_after: float = 0,
+    bullet_text: str | None = None,
+) -> float:
+    paragraph = Paragraph(text, style, bulletText=bullet_text)
+    _, height = paragraph.wrap(width, letter[1])
+    paragraph.drawOn(pdf, x, top - height)
+    return top - height - space_after
 
+
+def _draw_information_heading(
+    pdf: canvas.Canvas,
+    text: str,
+    *,
+    left: float,
+    top: float,
+    width: float,
+) -> float:
+    height = 18.0
+    pdf.setFillColor(LIGHT_FILL)
+    pdf.setStrokeColor(LINE_COLOR)
+    pdf.setLineWidth(0.75)
+    pdf.rect(left, top - height, width, height, stroke=1, fill=1)
+    pdf.setFillColor(colors.black)
+    pdf.setFont("Helvetica-Bold", 10.8)
+    pdf.drawCentredString(left + width / 2, top - height + 5.2, text)
+    return top - height
+
+
+def _draw_back_page(pdf: canvas.Canvas) -> None:
+    """Draw a clean, searchable transcription of PPB form 770 (12/17)."""
     page_width, page_height = letter
-    image = ImageReader(str(image_path))
-    image_width, image_height = image.getSize()
+    left = 0.40 * inch
+    bottom = 0.36 * inch
+    width = page_width - 2 * left
+    top = page_height - 0.36 * inch
+    body_left = left + 8
+    body_width = width - 16
 
-    # Frame the photographed sheet while clipping away the surrounding desk.
-    crop_left = image_width * 0.022
-    crop_top = image_height * 0.014
-    crop_right = image_width * 0.977
-    crop_bottom = image_height * 0.941
-    crop_width = crop_right - crop_left
-    crop_height = crop_bottom - crop_top
-    margin = 6.0
-    available_width = page_width - 2 * margin
-    available_height = page_height - 2 * margin
-    scale = min(available_width / crop_width, available_height / crop_height)
-    framed_width = crop_width * scale
-    framed_height = crop_height * scale
-    frame_x = margin + (available_width - framed_width) / 2
-    frame_y = margin + (available_height - framed_height) / 2
-    image_x = frame_x - crop_left * scale
-    image_y = frame_y - (image_height - crop_bottom) * scale
+    body_style = ParagraphStyle(
+        "ExchangeInformationBody",
+        fontName="Helvetica",
+        fontSize=8.05,
+        leading=9.55,
+        textColor=colors.black,
+        alignment=TA_LEFT,
+    )
+    centered_style = ParagraphStyle(
+        "ExchangeInformationCentered",
+        parent=body_style,
+        alignment=TA_CENTER,
+        fontSize=8.7,
+        leading=10.2,
+    )
+    disclaimer_style = ParagraphStyle(
+        "ExchangeInformationDisclaimer",
+        parent=centered_style,
+        fontName="Helvetica-Bold",
+        fontSize=11.4,
+        leading=13.0,
+    )
+    bullet_style = ParagraphStyle(
+        "ExchangeInformationBullet",
+        parent=body_style,
+        leftIndent=20,
+        firstLineIndent=0,
+        bulletIndent=7,
+        fontSize=8.0,
+        leading=9.35,
+    )
+    warning_style = ParagraphStyle(
+        "ExchangeInformationWarning",
+        parent=centered_style,
+        fontName="Helvetica-BoldOblique",
+        fontSize=8.7,
+        leading=10.3,
+    )
 
     pdf.setFillColor(colors.white)
     pdf.rect(0, 0, page_width, page_height, stroke=0, fill=1)
-    pdf.saveState()
-    clip = pdf.beginPath()
-    clip.rect(margin, margin, available_width, available_height)
-    pdf.clipPath(clip, stroke=0, fill=0)
-    pdf.drawImage(
-        image,
-        image_x,
-        image_y,
-        width=image_width * scale,
-        height=image_height * scale,
-        preserveAspectRatio=True,
-        mask="auto",
+    pdf.setStrokeColor(LINE_COLOR)
+    pdf.setLineWidth(1.1)
+    pdf.rect(left, bottom, width, top - bottom, stroke=1, fill=0)
+
+    title_height = 24.0
+    pdf.setFillColor(colors.black)
+    pdf.rect(left, top - title_height, width, title_height, stroke=0, fill=1)
+    pdf.setFillColor(colors.white)
+    pdf.setFont("Helvetica-Bold", 13.0)
+    pdf.drawCentredString(
+        left + width / 2,
+        top - title_height + 6.4,
+        "INFORMATION / YOUR RESPONSIBILITIES",
     )
-    pdf.restoreState()
+    y = top - title_height - 4
+    y = _draw_information_paragraph(
+        pdf,
+        "THIS FORM WILL ASSIST YOU IN FILING OUT YOUR TRAFFIC ACCIDENT AND "
+        "INSURANCE REPORT FORMS",
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=centered_style,
+        space_after=2,
+    )
+    y = _draw_information_paragraph(
+        pdf,
+        "IT IS NOT AN OFFICIAL OREGON POLICE TRAFFIC CRASH REPORT",
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=disclaimer_style,
+        space_after=2,
+    )
+    y = _draw_information_paragraph(
+        pdf,
+        "Please retain for your records and insurance purposes. The Portland "
+        "Police Bureau will not retain a copy of this form.",
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=centered_style,
+        space_after=4,
+    )
+
+    y = _draw_information_heading(
+        pdf,
+        "PORTLAND POLICE BUREAU POLICY STATEMENT",
+        left=left,
+        top=y,
+        width=width,
+    ) - 6
+    y = _draw_information_paragraph(
+        pdf,
+        INFORMATION_PAGE_POLICY,
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=body_style,
+        space_after=6,
+    )
+    y = _draw_information_paragraph(
+        pdf,
+        "State Law requires involved parties to report certain traffic crashes as "
+        "outlined below.",
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=body_style,
+        space_after=5,
+    )
+
+    y = _draw_information_heading(
+        pdf,
+        "TRAFFIC CRASH REPORTING REQUIREMENTS",
+        left=left,
+        top=y,
+        width=width,
+    ) - 6
+    y = _draw_information_paragraph(
+        pdf,
+        INFORMATION_PAGE_REPORTING_INTRO,
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=body_style,
+        space_after=3,
+    )
+    for item in INFORMATION_PAGE_REPORTING_ITEMS:
+        y = _draw_information_paragraph(
+            pdf,
+            item,
+            x=body_left,
+            top=y,
+            width=body_width,
+            style=bullet_style,
+            space_after=1,
+            bullet_text="-",
+        )
+    y -= 3
+    y = _draw_information_paragraph(
+        pdf,
+        INFORMATION_PAGE_FILING,
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=body_style,
+        space_after=6,
+    )
+    y = _draw_information_paragraph(
+        pdf,
+        "If you fail to report the traffic crash to the Oregon DMV, it may result "
+        "in suspension of your driving privileges.",
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=warning_style,
+        space_after=7,
+    )
+    y = _draw_information_paragraph(
+        pdf,
+        INFORMATION_PAGE_LOCATIONS,
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=body_style,
+        space_after=5,
+    )
+
+    location_rows = (
+        ("Central Precinct", "1111 SW 2nd Avenue", "(503) 823-0097"),
+        ("East Precinct", "737 SE 106th Avenue", "(503) 823-4800"),
+        ("North Precinct", "449 NE Emerson Street", "(503) 823-5700"),
+    )
+    pdf.setFillColor(colors.black)
+    pdf.setFont("Helvetica", 8.4)
+    for precinct, address, phone in location_rows:
+        y -= 12.0
+        pdf.drawString(body_left + 92, y, precinct)
+        pdf.drawString(body_left + 244, y, address)
+        pdf.drawString(body_left + 414, y, phone)
+    y -= 8
+
+    if y < bottom + 105:
+        raise RuntimeError("The exchange-report information page exceeded its layout.")
+    notes_heading_height = 17.0
+    pdf.setFillColor(LIGHT_FILL)
+    pdf.setStrokeColor(LINE_COLOR)
+    pdf.rect(
+        left,
+        y - notes_heading_height,
+        width,
+        notes_heading_height,
+        stroke=1,
+        fill=1,
+    )
+    pdf.setFillColor(colors.black)
+    pdf.setFont("Helvetica", 8.2)
+    pdf.drawCentredString(
+        left + width / 2,
+        y - notes_heading_height + 5.0,
+        "SPACE BELOW PROVIDED FOR PERSONAL NOTE TAKING",
+    )
+    line_y = y - notes_heading_height - 16
+    pdf.setStrokeColor(LINE_COLOR)
+    pdf.setLineWidth(0.45)
+    while line_y > bottom + 14:
+        pdf.line(left, line_y, left + width, line_y)
+        line_y -= 18
+
+    pdf.setFillColor(LABEL_COLOR)
+    pdf.setFont("Helvetica", 6.2)
+    pdf.drawRightString(left + width - 3, bottom + 3, "770 (12/17)")
     pdf.showPage()
 
 
@@ -709,7 +1044,16 @@ def export_exchange_report_pdf(
         person.id: repository.get_participant_details(person.id)
         for person in people_list
     }
-    exchange_people = exchange_report_people(people_list, vehicles)
+    vehicle_drivers = resolve_exchange_vehicle_drivers(
+        vehicles,
+        people_list,
+        participants,
+    )
+    exchange_people = exchange_report_people(
+        people_list,
+        vehicles,
+        participants,
+    )
     vehicle_labels = {
         vehicle.id: vehicle.vehicle_number or vehicle.description
         for vehicle in vehicles
@@ -757,7 +1101,7 @@ def export_exchange_report_pdf(
             current_top = _draw_vehicle_block(
                 pdf,
                 vehicle=vehicle,
-                people=people,
+                driver=vehicle_drivers.get(vehicle.id),
                 profiles=profiles,
                 left=left,
                 top=current_top,
@@ -793,6 +1137,6 @@ def export_exchange_report_pdf(
         )
         pdf.showPage()
 
-    _draw_back_page(pdf, exchange_report_back_path())
+    _draw_back_page(pdf)
     pdf.save()
     return destination_path

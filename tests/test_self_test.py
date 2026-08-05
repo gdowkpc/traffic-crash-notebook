@@ -4,6 +4,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from pypdf import PdfReader
+
 from traffic_crash_notebook.self_test import run_self_test
 
 
@@ -25,6 +27,10 @@ class PortableSelfTestTest(unittest.TestCase):
             exchange_pdf_bytes = exchange_pdf.read_bytes()
             self.assertTrue(exchange_pdf_bytes.startswith(b"%PDF-"))
             self.assertTrue(exchange_pdf_bytes.rstrip().endswith(b"%%EOF"))
+            exchange_reader = PdfReader(exchange_pdf)
+            self.assertFalse(list(exchange_reader.pages[-1].images))
+            information_text = exchange_reader.pages[-1].extract_text() or ""
+            self.assertIn("INFORMATION / YOUR RESPONSIBILITIES", information_text)
             log_text = log.read_text(encoding="utf-8")
             self.assertIn("Database schema: 16", log_text)
             self.assertIn(
@@ -48,7 +54,11 @@ class PortableSelfTestTest(unittest.TestCase):
             self.assertIn("Compact-packet PDF bytes:", log_text)
             self.assertIn("Exchange-report PDF bytes:", log_text)
             self.assertIn(
-                "Dynamic exchange-report data, time formatting, and information page: PASS",
+                "Driver, pedestrian, and bicyclist exchange-report inclusion: PASS",
+                log_text,
+            )
+            self.assertIn(
+                "Dynamic exchange-report data, time formatting, and searchable information page: PASS",
                 log_text,
             )
             self.assertIn("Embedded PDF preview components: PASS", log_text)
