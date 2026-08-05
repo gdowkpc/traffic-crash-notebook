@@ -1,0 +1,41 @@
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Generated application and release output
+build/
+portable-dist/
+release/
+output/
+tmp/
+*.spec
+*.zip
+*.sha256.txt
+portable_self_test*
+
+# Case, report, and local working data must never enter source control
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.pdf
+*.docx
+*.xlsx
+
+# Local-only verification launcher with machine-specific paths
+tools/run_packaged_verifier_noninteractive.cmd
+
+# Editor and operating-system noise
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.log

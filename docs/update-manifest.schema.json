@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gdowkpc/traffic-crash-notebook/blob/main/docs/update-manifest.schema.json",
+  "title": "Traffic Crash Notebook stable update manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "application_id",
+    "application_name",
+    "channel",
+    "version",
+    "release_tag",
+    "published_at",
+    "release_page_url",
+    "release_notes",
+    "minimum_supported_version",
+    "database_schema",
+    "windows_portable",
+    "package_manifest",
+    "source"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "application_id": { "const": "traffic-crash-notebook" },
+    "application_name": { "const": "Traffic Crash Notebook" },
+    "channel": { "const": "stable" },
+    "version": { "$ref": "#/$defs/version" },
+    "release_tag": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "published_at": { "type": "string", "format": "date-time" },
+    "release_page_url": { "type": "string", "format": "uri", "pattern": "^https://github\\.com/gdowkpc/traffic-crash-notebook/releases/tag/v" },
+    "release_notes": { "type": "string", "maxLength": 8000 },
+    "minimum_supported_version": { "$ref": "#/$defs/version" },
+    "database_schema": { "type": "integer", "minimum": 1 },
+    "windows_portable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "filename",
+        "download_url",
+        "sha256",
+        "size_bytes",
+        "build_id",
+        "built_at",
+        "architecture",
+        "packaging",
+        "requires_admin",
+        "self_test"
+      ],
+      "properties": {
+        "filename": { "type": "string", "pattern": "^TrafficCrashNotebook-[0-9]+\\.[0-9]+\\.[0-9]+-Windows-Portable\\.zip$" },
+        "download_url": { "type": "string", "format": "uri", "pattern": "^https://github\\.com/gdowkpc/traffic-crash-notebook/releases/download/v" },
+        "sha256": { "$ref": "#/$defs/sha256" },
+        "size_bytes": { "type": "integer", "minimum": 1 },
+        "build_id": { "type": "string", "minLength": 1 },
+        "built_at": { "type": "string" },
+        "architecture": { "const": "x86_64" },
+        "packaging": { "const": "portable-zip" },
+        "requires_admin": { "const": false },
+        "self_test": { "const": "PASS" }
+      }
+    },
+    "package_manifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["filename", "download_url", "sha256"],
+      "properties": {
+        "filename": { "type": "string", "pattern": "\\.files\\.json$" },
+        "download_url": { "type": "string", "format": "uri", "pattern": "^https://github\\.com/gdowkpc/traffic-crash-notebook/releases/download/v" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "repository_url", "commit"],
+      "properties": {
+        "repository": { "const": "gdowkpc/traffic-crash-notebook" },
+        "repository_url": { "const": "https://github.com/gdowkpc/traffic-crash-notebook" },
+        "commit": { "type": "string", "pattern": "^$|^[0-9a-f]{40}$" }
+      }
+    }
+  },
+  "$defs": {
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

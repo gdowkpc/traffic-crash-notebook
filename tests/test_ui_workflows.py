@@ -1,0 +1,1378 @@
+from __future__ import annotations
+
+import os
+import tempfile
+import unittest
+import sqlite3
+from pathlib import Path
+from unittest.mock import patch
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+os.environ.setdefault("TCN_DISABLE_UPDATE_CHECK", "1")
+
+from pypdf import PdfReader
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QPalette
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import (
+    QApplication,
+    QDialog,
+    QDialogButtonBox,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QScrollArea,
+    QTabWidget,
+    QToolBar,
+)
+
+from traffic_crash_notebook import __version__
+from traffic_crash_notebook.models import (
+    CaseTask,
+    ChronologyEntry,
+    ContactRelationship,
+    DriverProfile,
+    HitRunPersonLead,
+    HitRunVehicleLead,
+    MotorcycleInspection,
+    ParticipantDetails,
+    Person,
+    Vehicle,
+    WitnessDetails,
+)
+from traffic_crash_notebook.repository import CaseRepository, new_id
+from traffic_crash_notebook.updates import PortableRelease, UpdateManifest
+from traffic_crash_notebook.ui.dialogs import (
+    ChargeDispositionDialog,
+    ChronologyDialog,
+    ContactRelationshipDialog,
+    DriverProfileDialog,
+    HitRunEvidenceDialog,
+    HitRunPersonLeadDialog,
+    HitRunVehicleLeadDialog,
+    MotorcycleInspectionDialog,
+    ParticipantDetailsDialog,
+    PersonDialog,
+    RoadwayDialog,
+    SurfaceObservationDialog,
+    TaskDialog,
+    VehicleDialog,
+    VehicleInspectionDialog,
+    VideoSourceDialog,
+    VRUAnalysisDialog,
+    WitnessDetailsDialog,
+)
+from traffic_crash_notebook.ui.main_window import ApplicationSettingsDialog, MainWindow
+from traffic_crash_notebook.ui.spellcheck_text_edit import (
+    SpellCheckedLineEdit,
+    SpellCheckedTextEdit,
+)
+
+
+class AddRecordWorkflowTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+        cls.app.setQuitOnLastWindowClosed(False)
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.repository = CaseRepository(Path(self.temp.name) / "ui-test.sqlite3")
+        self.case = self.repository.create_case("UI-TEST", "Automated Test")
+        self.window = MainWindow(self.repository)
+        self.window.show()
+        self.app.processEvents()
+        if self.window.current_case is None:
+            self.window.case_list.setCurrentRow(0)
+            self.app.processEvents()
+        self.assertEqual(self.window.current_case.id, self.case.id)
+
+    def test_selected_case_uses_readable_text_with_or_without_focus(self):
+        self.window.case_list.setCurrentRow(0)
+        self.app.processEvents()
+
+        palette = self.window.case_list.palette()
+        for color_group in (
+            QPalette.ColorGroup.Active,
+            QPalette.ColorGroup.Inactive,
+        ):
+            self.assertEqual(
+                palette.color(color_group, QPalette.ColorRole.Highlight).name().lower(),
+                "#2e6f95",
+            )
+            self.assertEqual(
+                palette.color(
+                    color_group,
+                    QPalette.ColorRole.HighlightedText,
+                ).name().lower(),
+                "#ffffff",
+            )
+
+        style_sheet = self.window.styleSheet()
+        self.assertIn("QListWidget::item:selected:!active", style_sheet)
+        self.assertIn("background: #2e6f95; color: #ffffff", style_sheet)
+
+    def tearDown(self):
+        self.window.loading = True
+        self.window.autosave_timer.stop()
+        for widget in self.app.topLevelWidgets():
+            widget.close()
+        self.app.processEvents()
+        self.window.autosave_timer.stop()
+        self.temp.cleanup()
+
+    def _complete_modal_dialog(self, action, dialog_type, configure) -> None:
+        errors: list[BaseException] = []
+
+        def complete() -> None:
+            dialog = self.app.activeModalWidget()
+            try:
+                if not isinstance(dialog, dialog_type):
+                    raise AssertionError(
+                        f"Expected {dialog_type.__name__}, got {type(dialog).__name__}"
+                    )
+                configure(dialog)
+                save = dialog.buttons.button(QDialogButtonBox.StandardButton.Save)
+                save.click()
+            except BaseException as exc:
+                errors.append(exc)
+                if isinstance(dialog, QDialog):
+                    dialog.reject()
+
+        QTimer.singleShot(0, complete)
+        action()
+        if errors:
+            raise errors[0]
+
+    def test_add_person_persists_and_refreshes_table(self):
+        def configure(dialog: PersonDialog) -> None:
+            dialog.first_name.setText("Alex")
+            dialog.last_name.setText("Tester")
+            dialog.dob.setText("08/05/1985")
+            dialog.address.setPlainText("123 Example Street")
+            dialog.city.setText("Portland")
+            dialog.state.setText("OR")
+            dialog.zip_code.setText("97201-1234")
+            dialog.role_boxes["Driver"].setChecked(True)
+
+        self._complete_modal_dialog(self.window.add_person, PersonDialog, configure)
+
+        people = self.repository.list_people(self.case.id)
+        self.assertEqual(len(people), 1)
+        self.assertEqual(people[0].display_name, "Alex Tester")
+        self.assertEqual(people[0].roles, ["Driver"])
+        self.assertEqual(people[0].dob, "1985-08-05")
+        self.assertEqual(people[0].address, "123 Example Street")
+        self.assertEqual(people[0].zip_code, "97201-1234")
+        self.assertEqual(self.window.people_table.rowCount(), 1)
+        self.assertEqual(self.window.people_table.item(0, 2).text(), "08/05/1985")
+
+    def test_add_vehicle_persists_and_refreshes_table(self):
+        driver = self.repository.save_person(Person(
+            id=new_id(), case_id=self.case.id, first_name="Dana", last_name="Driver",
+            roles=["Driver"],
+        ))
+        self.window.refresh_case_tables()
+
+        def configure(dialog: VehicleDialog) -> None:
+            dialog.vehicle_number.setText("V-1")
+            dialog.year.setText("2025")
+            dialog.make.setText("Example")
+            dialog.model.setText("Sedan")
+            dialog.body_style.setText("Four-door sedan")
+            dialog.driver.setCurrentIndex(dialog.driver.findData(driver.id))
+            dialog.insurance_company.setText("Example Mutual")
+            dialog.insurance_policy_number.setText("POL-13579")
+            dialog.property_damage.setPlainText("None")
+            for checkbox in dialog.vehicle_workflow_boxes.values():
+                checkbox.setChecked(True)
+
+        self._complete_modal_dialog(self.window.add_vehicle, VehicleDialog, configure)
+
+        vehicles = self.repository.list_vehicles(self.case.id)
+        self.assertEqual(len(vehicles), 1)
+        self.assertEqual(vehicles[0].vehicle_number, "V-1")
+        self.assertEqual(vehicles[0].description, "2025 Example Sedan")
+        self.assertEqual(vehicles[0].driver_person_id, driver.id)
+        self.assertEqual(vehicles[0].insurance_company, "Example Mutual")
+        self.assertEqual(vehicles[0].insurance_policy_number, "POL-13579")
+        self.assertEqual(vehicles[0].body_style, "Four-door sedan")
+        self.assertEqual(vehicles[0].property_damage, "None")
+        self.assertTrue(vehicles[0].warrant_obtained)
+        self.assertTrue(vehicles[0].vehicle_inspection_completed)
+        self.assertTrue(vehicles[0].cdr_equipped)
+        self.assertTrue(vehicles[0].cdr_imaged)
+        self.assertTrue(vehicles[0].cdr_report_uploaded)
+        self.assertEqual(self.window.vehicles_table.rowCount(), 1)
+        self.assertIn(
+            "CDR Report Uploaded",
+            self.window.vehicles_table.item(0, 4).text(),
+        )
+        self.assertEqual(
+            self.window.vehicles_table.item(0, 5).text(),
+            "Example Mutual / POL-13579",
+        )
+
+    def test_exchange_report_workspace_is_read_only_and_previews_existing_data(self):
+        tab_labels = [
+            self.window.tabs.tabText(index)
+            for index in range(self.window.tabs.count())
+        ]
+        self.assertIn("Exchange Report", tab_labels)
+        toolbar = self.window.findChild(QToolBar)
+        self.assertIn(
+            "Export Exchange Report",
+            [action.text() for action in toolbar.actions()],
+        )
+
+        driver = self.repository.save_person(Person(
+            id="",
+            case_id=self.case.id,
+            first_name="Taylor",
+            last_name="Driver",
+            address="123 Driver Street",
+            city="Portland",
+            state="OR",
+            zip_code="97201",
+            cell_phone="503-555-0101",
+            roles=["Driver"],
+        ))
+        self.repository.save_driver_profile(DriverProfile(
+            person_id=driver.id,
+            license_number="DL-EXCHANGE",
+            license_state="OR",
+        ))
+        vehicle = self.repository.save_vehicle(Vehicle(
+            id="",
+            case_id=self.case.id,
+            vehicle_number="V-1",
+            year="2025",
+            make="Example",
+            model="Sedan",
+            body_style="Four-door sedan",
+            color="Blue",
+            plate="ABC123",
+            plate_state="OR",
+            driver_person_id=driver.id,
+            insurance_company="Example Mutual",
+            insurance_policy_number="POL-EXCHANGE",
+            property_damage="None",
+        ))
+        passenger = self.repository.save_person(Person(
+            id="",
+            case_id=self.case.id,
+            first_name="Parker",
+            last_name="Passenger",
+            address="456 Passenger Avenue",
+            city="Portland",
+            state="OR",
+            zip_code="97202",
+            home_phone="503-555-0202",
+            roles=["Passenger"],
+        ))
+        self.repository.save_participant_details(ParticipantDetails(
+            person_id=passenger.id,
+            vehicle_id=vehicle.id,
+        ))
+        pedestrian = self.repository.save_person(Person(
+            id="",
+            case_id=self.case.id,
+            first_name="Pat",
+            last_name="Pedestrian",
+            address="789 Walking Lane",
+            city="Portland",
+            state="OR",
+            zip_code="97203",
+            cell_phone="503-555-0303",
+            roles=["Pedestrian"],
+        ))
+        self.window.investigator.setText("Officer Assigned")
+        self.window.assigned_officer_dpsst.setText("54321")
+        self.window.assignment.setText("Traffic Division")
+        self.window.crash_date.setText("08/05/2026")
+        self.window.crash_time.setText("02:35 PM")
+        self.window.save_overview()
+        self.window.refresh_case_tables()
+
+        loaded_case = self.repository.get_case(self.case.id)
+        self.assertEqual(loaded_case.investigator, "Officer Assigned")
+        self.assertEqual(loaded_case.assigned_officer_dpsst, "54321")
+        self.assertEqual(loaded_case.assignment, "Traffic Division")
+        self.assertEqual(loaded_case.crash_time, "14:35")
+        self.assertTrue(self.window.assigned_officer_dpsst.hasAcceptableInput())
+
+        exchange_tab_index = tab_labels.index("Exchange Report")
+        exchange_tab = self.window.tabs.widget(exchange_tab_index)
+        self.assertEqual(exchange_tab.findChildren(QLineEdit), [])
+        button_labels = {
+            button.text() for button in exchange_tab.findChildren(QPushButton)
+        }
+        self.assertEqual(
+            button_labels,
+            {"Refresh Preview", "Export Preview to PDF"},
+        )
+        self.window.tabs.setCurrentIndex(exchange_tab_index)
+        self.app.processEvents()
+
+        self.assertTrue(self.window.exchange_preview_path.is_file())
+        self.assertEqual(self.window.exchange_pdf_document.pageCount(), 2)
+        self.assertIn("1 vehicle(s)", self.window.exchange_readiness_label.text())
+        self.assertIn("2 additional person(s)", self.window.exchange_readiness_label.text())
+        self.assertIn("1 pedestrian", self.window.exchange_readiness_label.text())
+        self.assertIn("unused record blocks are not printed", self.window.exchange_readiness_label.text())
+        preview_text = "\n".join(
+            page.extract_text() or ""
+            for page in PdfReader(self.window.exchange_preview_path).pages
+        )
+        self.assertIn("08/05/2026 02:35 PM", preview_text)
+        self.assertIn("Officer Assigned", preview_text)
+        self.assertIn("54321", preview_text)
+        self.assertIn("Traffic Division", preview_text)
+        self.assertIn(pedestrian.last_name, preview_text)
+
+        exported_preview = Path(self.temp.name) / "exchange-preview-export.pdf"
+        with (
+            patch(
+                "traffic_crash_notebook.ui.main_window.QFileDialog.getSaveFileName",
+                return_value=(str(exported_preview), "PDF files (*.pdf)"),
+            ),
+            patch(
+                "traffic_crash_notebook.ui.main_window.QDesktopServices.openUrl"
+            ),
+        ):
+            self.window.export_exchange_report()
+        self.assertEqual(
+            exported_preview.read_bytes(),
+            self.window.exchange_preview_path.read_bytes(),
+        )
+
+    def test_about_identifies_exact_build_and_running_location(self):
+        self.assertIn(__version__, self.window.windowTitle())
+        self.assertEqual(
+            self.window.about_action.text(),
+            "About Traffic Crash Notebook",
+        )
+        self.assertEqual(
+            self.window.about_button.text(),
+            f"About v{__version__}",
+        )
+        about = self.window.about_text()
+        self.assertIn(f"Version: {__version__}", about)
+        self.assertIn("Build ID:", about)
+        self.assertIn("Build date:", about)
+        self.assertIn("Database schema: 16", about)
+        self.assertIn("Running from:", about)
+        self.assertIn(
+            f"Case data folder: {self.repository.database_path.parent}",
+            about,
+        )
+        self.assertEqual(
+            self.window.storage_location_action.text(),
+            "Data Storage Location...",
+        )
+        self.assertEqual(
+            self.window._reports_directory(),
+            self.repository.database_path.parent / "Reports",
+        )
+        self.assertEqual(
+            self.window._backups_directory(),
+            self.repository.database_path.parent / "Backups",
+        )
+
+    def test_settings_defaults_are_stored_with_data_and_prefill_new_cases(self):
+        self.assertEqual(self.window.settings_button.text(), "Settings")
+        self.assertEqual(
+            self.window.application_settings_action.text(),
+            "Application Settings...",
+        )
+        self.assertEqual(
+            self.window.check_updates_action.text(),
+            "Check for Updates...",
+        )
+
+        def configure(dialog: ApplicationSettingsDialog) -> None:
+            self.assertEqual(
+                dialog.data_directory_label.text(),
+                str(self.repository.database_path.parent),
+            )
+            self.assertEqual(
+                dialog.change_storage_button.text(),
+                "Change data location...",
+            )
+            dialog.user_name_edit.setText("Officer Defaults")
+            dialog.dpsst_edit.setText("654321")
+            dialog.assignment_edit.setText("Traffic Investigations Unit")
+            dialog.auto_check_updates_checkbox.setChecked(False)
+
+        self._complete_modal_dialog(
+            self.window.show_settings,
+            ApplicationSettingsDialog,
+            configure,
+        )
+
+        defaults = self.repository.get_user_defaults()
+        self.assertEqual(defaults.user_name, "Officer Defaults")
+        self.assertEqual(defaults.dpsst, "654321")
+        self.assertEqual(defaults.assignment, "Traffic Investigations Unit")
+        self.assertFalse(defaults.auto_check_updates)
+        self.assertEqual(
+            self.repository.get_case(self.case.id).investigator,
+            "Automated Test",
+        )
+
+        with patch(
+            "traffic_crash_notebook.ui.main_window.QInputDialog.getText",
+            return_value=("UI-DEFAULTS", True),
+        ):
+            self.window.new_case()
+
+        created = next(
+            case
+            for case in self.repository.list_cases()
+            if case.case_number == "UI-DEFAULTS"
+        )
+        self.assertEqual(created.investigator, "Officer Defaults")
+        self.assertEqual(created.assigned_officer_dpsst, "654321")
+        self.assertEqual(created.assignment, "Traffic Investigations Unit")
+
+    def test_manual_update_results_are_reported_and_success_is_timestamped(self):
+        portable = PortableRelease(
+            filename=f"TrafficCrashNotebook-{__version__}-Windows-Portable.zip",
+            download_url=(
+                "https://github.com/gdowkpc/traffic-crash-notebook/releases/download/"
+                f"v{__version__}/TrafficCrashNotebook-{__version__}-Windows-Portable.zip"
+            ),
+            sha256="a" * 64,
+            size_bytes=1,
+            build_id="ui-test",
+        )
+        current = UpdateManifest(
+            version=__version__,
+            release_tag=f"v{__version__}",
+            published_at="2026-08-05T21:00:00Z",
+            release_page_url=(
+                "https://github.com/gdowkpc/traffic-crash-notebook/releases/tag/"
+                f"v{__version__}"
+            ),
+            release_notes="Current release",
+            minimum_supported_version="0.4.8",
+            portable=portable,
+        )
+        self.window.update_check_was_manual = True
+        with patch(
+            "traffic_crash_notebook.ui.main_window.QMessageBox.information"
+        ) as information:
+            self.window._update_manifest_received(current)
+        information.assert_called_once()
+        self.assertTrue(self.repository.get_user_defaults().last_update_check)
+
+        newer = UpdateManifest(
+            version="99.0.0",
+            release_tag="v99.0.0",
+            published_at="2026-08-05T21:00:00Z",
+            release_page_url=(
+                "https://github.com/gdowkpc/traffic-crash-notebook/releases/tag/v99.0.0"
+            ),
+            release_notes="New release",
+            minimum_supported_version="0.4.8",
+            portable=portable,
+        )
+        with patch.object(self.window, "_show_update_available") as available:
+            self.window._update_manifest_received(newer)
+        available.assert_called_once_with(newer)
+
+    def test_reports_and_backups_default_to_the_configured_case_folder(self):
+        with patch(
+            "traffic_crash_notebook.ui.main_window.QFileDialog.getSaveFileName",
+            return_value=("", ""),
+        ) as chooser:
+            self.window.export_exchange_report()
+            exchange_default = Path(chooser.call_args.args[2])
+            self.assertEqual(
+                exchange_default.parent,
+                self.repository.database_path.parent / "Reports",
+            )
+
+            self.window.backup_database()
+            backup_default = Path(chooser.call_args.args[2])
+            self.assertEqual(
+                backup_default.parent,
+                self.repository.database_path.parent / "Backups",
+            )
+
+    def test_save_failure_reports_unavailable_storage_without_switching_database(self):
+        original_database = self.repository.database_path
+        with patch.object(
+            self.repository,
+            "save_road_conditions",
+            side_effect=sqlite3.OperationalError("network drive unavailable"),
+        ), patch(
+            "traffic_crash_notebook.ui.main_window.QMessageBox.critical"
+        ) as error_dialog:
+            self.assertFalse(self.window.save_overview())
+
+        self.assertEqual(self.repository.database_path, original_database)
+        self.assertTrue(self.window.storage_error_active)
+        error_dialog.assert_called_once()
+        self.assertIn(
+            str(original_database),
+            error_dialog.call_args.args[2],
+        )
+
+    def test_hit_run_workspace_round_trip_adds_all_lead_types(self):
+        tab_labels = [
+            self.window.tabs.tabText(index)
+            for index in range(self.window.tabs.count())
+        ]
+        self.assertIn("Hit & Run", tab_labels)
+        self.window.hit_run_enabled.setChecked(True)
+        self.window.hit_run_status.setCurrentText("Vehicle Lead Developed")
+        self.window.hit_run_last_known_location.setText("Example Street at First Avenue")
+        self.window.hit_run_last_seen_date.setText("08/04/2026")
+        self.window.hit_run_last_seen_time.setText("21:15")
+        self.window.hit_run_direction.setText("Northbound")
+        self.window.hit_run_initial_source.setText("Witness and surveillance video")
+        self.window.hit_run_narrative.setPlainText("Vehicle left the scene.")
+        self.window.hit_run_follow_up.setPlainText("Complete neighborhood canvass.")
+        self.window.save_overview()
+
+        overview = self.repository.get_hit_run_overview(self.case.id)
+        self.assertTrue(overview.is_hit_and_run)
+        self.assertEqual(overview.last_seen_date, "2026-08-04")
+        self.assertEqual(overview.direction_of_travel, "Northbound")
+
+        def configure_vehicle_lead(dialog: HitRunVehicleLeadDialog) -> None:
+            self.assertEqual(dialog.lead_number.text(), "HRV-1")
+            dialog.status.setCurrentText("Investigating")
+            dialog.year_range.setText("2019-2022")
+            dialog.make.setText("Example")
+            dialog.model.setText("SUV")
+            dialog.color.setText("Dark blue")
+            dialog.plate.setText("ABC123")
+            dialog.plate_state.setText("OR")
+            dialog.last_seen_date.setText("08/04/2026")
+            dialog.observed_damage.setPlainText("Right-front damage")
+            dialog.missing_parts.setPlainText("Passenger mirror cover")
+
+        self._complete_modal_dialog(
+            self.window.add_hit_run_vehicle_lead,
+            HitRunVehicleLeadDialog,
+            configure_vehicle_lead,
+        )
+        vehicle_lead = self.repository.list_hit_run_vehicle_leads(self.case.id)[0]
+        self.assertEqual(vehicle_lead.last_seen_date, "2026-08-04")
+        self.assertEqual(self.window.hit_run_vehicle_leads_table.rowCount(), 1)
+
+        def configure_evidence(dialog: HitRunEvidenceDialog) -> None:
+            self.assertEqual(dialog.evidence_number.text(), "HRE-1")
+            dialog.evidence_type.setText("Recovered vehicle part")
+            dialog.part_number.setText("PART-321")
+            dialog.part_description.setPlainText("Mirror cover fragment")
+            dialog.recovery_date.setText("08/05/2026")
+            dialog.vehicle_lead.setCurrentIndex(
+                dialog.vehicle_lead.findData(vehicle_lead.id)
+            )
+
+        self._complete_modal_dialog(
+            self.window.add_hit_run_evidence,
+            HitRunEvidenceDialog,
+            configure_evidence,
+        )
+        evidence = self.repository.list_hit_run_evidence_items(self.case.id)[0]
+        self.assertEqual(evidence.part_number, "PART-321")
+        self.assertEqual(evidence.recovery_date, "2026-08-05")
+        self.assertEqual(evidence.vehicle_lead_id, vehicle_lead.id)
+        self.assertEqual(self.window.hit_run_evidence_table.rowCount(), 1)
+
+        def configure_person_lead(dialog: HitRunPersonLeadDialog) -> None:
+            self.assertEqual(dialog.lead_number.text(), "HRP-1")
+            self.assertTrue(callable(dialog.height))
+            dialog.first_name.setText("Morgan")
+            dialog.last_name.setText("Possible")
+            dialog.alias.setText("Mo")
+            dialog.height_value.setText("6 ft 1 in")
+            dialog.reason_for_lead.setPlainText("Registered owner of possible vehicle")
+            dialog.vehicle_lead.setCurrentIndex(
+                dialog.vehicle_lead.findData(vehicle_lead.id)
+            )
+
+        self._complete_modal_dialog(
+            self.window.add_hit_run_person_lead,
+            HitRunPersonLeadDialog,
+            configure_person_lead,
+        )
+        person_lead = self.repository.list_hit_run_person_leads(self.case.id)[0]
+        self.assertEqual(person_lead.display_name, "Morgan Possible (aka Mo)")
+        self.assertEqual(person_lead.height, "6 ft 1 in")
+        self.assertEqual(person_lead.vehicle_lead_id, vehicle_lead.id)
+        self.assertEqual(self.window.hit_run_person_leads_table.rowCount(), 1)
+
+    def test_hit_run_leads_promote_into_confirmed_records(self):
+        vehicle_lead = self.repository.save_hit_run_vehicle_lead(HitRunVehicleLead(
+            id="",
+            case_id=self.case.id,
+            lead_number="HRV-1",
+            year_range="2020-2022",
+            make="Example",
+            model="Pickup",
+            color="White",
+            observed_damage="Left-front damage",
+        ))
+        person_lead = self.repository.save_hit_run_person_lead(HitRunPersonLead(
+            id="",
+            case_id=self.case.id,
+            lead_number="HRP-1",
+            first_name="Casey",
+            last_name="Possible",
+            reason_for_lead="Seen leaving the vehicle",
+            vehicle_lead_id=vehicle_lead.id,
+        ))
+        self.window.refresh_case_tables()
+
+        self.window.hit_run_vehicle_leads_table.selectRow(0)
+
+        def configure_vehicle(dialog: VehicleDialog) -> None:
+            self.assertEqual(dialog.vehicle_number.text(), "V-1")
+            self.assertEqual(dialog.make.text(), "Example")
+            self.assertEqual(dialog.model.text(), "Pickup")
+
+        self._complete_modal_dialog(
+            self.window.promote_hit_run_vehicle_lead,
+            VehicleDialog,
+            configure_vehicle,
+        )
+        confirmed_vehicle = self.repository.list_vehicles(self.case.id)[0]
+        promoted_vehicle_lead = self.repository.get_hit_run_vehicle_lead(vehicle_lead.id)
+        self.assertEqual(promoted_vehicle_lead.status, "Confirmed")
+        self.assertEqual(promoted_vehicle_lead.linked_vehicle_id, confirmed_vehicle.id)
+
+        self.window.hit_run_person_leads_table.selectRow(0)
+
+        def configure_person(dialog: PersonDialog) -> None:
+            self.assertEqual(dialog.first_name.text(), "Casey")
+            self.assertTrue(dialog.role_boxes["Suspect"].isChecked())
+
+        self._complete_modal_dialog(
+            self.window.promote_hit_run_person_lead,
+            PersonDialog,
+            configure_person,
+        )
+        confirmed_person = self.repository.list_people(self.case.id)[0]
+        promoted_person_lead = self.repository.get_hit_run_person_lead(person_lead.id)
+        self.assertIn("Suspect", confirmed_person.roles)
+        self.assertEqual(promoted_person_lead.status, "Confirmed")
+        self.assertEqual(promoted_person_lead.linked_person_id, confirmed_person.id)
+
+    def test_packet_case_fields_round_trip(self):
+        self.assertEqual(self.window.crash_date.placeholderText(), "MM/DD/YYYY")
+        self.assertEqual(
+            self.window.packet_widgets["team_notified_date"].placeholderText(),
+            "MM/DD/YYYY",
+        )
+        self.window.crash_date.setText("08/04/2026")
+        self.window.checklist_boxes["Participant Interviews"].setChecked(True)
+        self.window.checklist_widgets["assigned_dda"].setText("Taylor Example")
+        self.window.packet_widgets["nearest_city"].setText("Gresham")
+        self.window.packet_widgets["road_name"].setText("SE Stark Street")
+        self.window.packet_widgets["intersection_road"].setText("SE 182nd Avenue")
+        self.window.packet_widgets["team_notified_time"].setText("14:05")
+        self.window.packet_widgets["team_notified_date"].setText("08/04/2026")
+        self.window.scene_evidence_boxes["FARO"].setChecked(True)
+        self.window.save_overview()
+
+        checklist = self.repository.get_investigative_checklist(self.case.id)
+        details = self.repository.get_crash_details(self.case.id)
+        self.assertIn("Participant Interviews", checklist.completed_items)
+        self.assertEqual(checklist.assigned_dda, "Taylor Example")
+        self.assertEqual(details.nearest_city, "Gresham")
+        self.assertEqual(details.road_name, "SE Stark Street")
+        self.assertEqual(details.intersection_road, "SE 182nd Avenue")
+        self.assertEqual(details.team_notified_time, "14:05")
+        self.assertEqual(details.team_notified_date, "2026-08-04")
+        self.assertEqual(
+            self.repository.get_case(self.case.id).crash_date,
+            "2026-08-04",
+        )
+        self.assertEqual(details.scene_evidence, ["FARO"])
+        self.assertEqual(
+            self.repository.get_case(self.case.id).location,
+            "SE Stark Street / SE 182nd Avenue",
+        )
+        self.assertEqual(
+            self.window.location.text(),
+            "SE Stark Street / SE 182nd Avenue",
+        )
+        self.assertTrue(self.window.location.isReadOnly())
+
+        self.window.load_case(self.repository.get_case(self.case.id))
+        self.assertEqual(self.window.crash_date.text(), "08/04/2026")
+        self.assertEqual(
+            self.window.packet_widgets["team_notified_date"].text(),
+            "08/04/2026",
+        )
+        self.assertTrue(self.window.checklist_boxes["Participant Interviews"].isChecked())
+        self.assertEqual(self.window.packet_widgets["nearest_city"].text(), "Gresham")
+        self.assertTrue(self.window.scene_evidence_boxes["FARO"].isChecked())
+
+    def test_reporting_checklist_uses_new_items_and_persists_dates(self):
+        self.assertNotIn("DIMS CD Ordered", self.window.checklist_boxes)
+        self.assertIn("Toxicology", self.window.checklist_boxes)
+        for retired_vehicle_item in (
+            "Warrant",
+            "Vehicle Inspection",
+            "CDR Download",
+            "CDR Downloaded",
+            "CDR Download - Attach to RegJIN",
+            "Insurance",
+        ):
+            self.assertNotIn(retired_vehicle_item, self.window.checklist_boxes)
+        self.assertIn("Insurance - Exchange Report", self.window.checklist_boxes)
+        self.assertIn("Release", self.window.checklist_boxes)
+        self.assertIn("Crash Diagram Completed", self.window.checklist_boxes)
+        self.assertIn("Axon Shared to DA", self.window.checklist_boxes)
+        self.assertEqual(
+            list(self.window.checklist_boxes)[-1],
+            "Submitted to DA",
+        )
+        self.assertNotIn("submitted_to_da_date", self.window.checklist_widgets)
+
+        dated_items = {
+            "Report Peer Reviewed": "08/01/2026",
+            "Report Sgt Reviewed": "08/02/2026",
+            "Submitted to DA": "08/03/2026",
+        }
+        self.window.checklist_boxes["Crash Diagram Completed"].setChecked(True)
+        self.window.checklist_boxes["Axon Shared to DA"].setChecked(True)
+        for item, completion_date in dated_items.items():
+            date_widget = self.window.checklist_date_widgets[item]
+            self.assertFalse(date_widget.isEnabled())
+            self.assertEqual(date_widget.placeholderText(), "MM/DD/YYYY")
+            self.window.checklist_boxes[item].setChecked(True)
+            self.assertTrue(date_widget.isEnabled())
+            date_widget.setText(completion_date)
+
+        self.window.save_overview()
+        checklist = self.repository.get_investigative_checklist(self.case.id)
+        self.assertIn("Crash Diagram Completed", checklist.completed_items)
+        self.assertIn("Axon Shared to DA", checklist.completed_items)
+        self.assertIn("Report Peer Reviewed", checklist.completed_items)
+        self.assertIn("Report Sgt Reviewed", checklist.completed_items)
+        self.assertIn("Submitted to DA", checklist.completed_items)
+        self.assertEqual(checklist.peer_review_date, "2026-08-01")
+        self.assertEqual(checklist.sergeant_review_date, "2026-08-02")
+        self.assertEqual(checklist.submitted_to_da_date, "2026-08-03")
+
+        self.window.load_case(self.repository.get_case(self.case.id))
+        self.assertTrue(
+            self.window.checklist_boxes["Crash Diagram Completed"].isChecked()
+        )
+        for item, completion_date in dated_items.items():
+            self.assertTrue(self.window.checklist_boxes[item].isChecked())
+            self.assertEqual(
+                self.window.checklist_date_widgets[item].text(),
+                completion_date,
+            )
+
+    def test_all_record_date_editors_display_us_dates_and_store_iso(self):
+        person = Person(
+            id=new_id(), case_id=self.case.id, first_name="Date", last_name="Test",
+            dob="1985-01-02",
+        )
+        vehicle = Vehicle(id=new_id(), case_id=self.case.id, vehicle_number="V-1")
+
+        person_dialog = PersonDialog(self.case.id, person)
+        chronology_dialog = ChronologyDialog(
+            self.case.id,
+            ChronologyEntry(
+                id=new_id(), case_id=self.case.id, event_date="2026-02-03",
+            ),
+        )
+        task_dialog = TaskDialog(
+            self.case.id,
+            CaseTask(
+                id=new_id(), case_id=self.case.id, due_date="2026-03-04",
+                completed_date="2026-03-05",
+            ),
+        )
+        motorcycle_dialog = MotorcycleInspectionDialog(
+            vehicle,
+            MotorcycleInspection(vehicle_id=vehicle.id, inspection_date="2026-04-05"),
+        )
+        participant_dialog = ParticipantDetailsDialog(
+            person,
+            [vehicle],
+            ParticipantDetails(person_id=person.id, date_of_death="2026-05-06"),
+        )
+        witness_dialog = WitnessDetailsDialog(
+            person,
+            WitnessDetails(person_id=person.id, interview_date="2026-06-07"),
+        )
+
+        expected_display_values = (
+            (person_dialog.dob, "01/02/1985"),
+            (chronology_dialog.event_date, "02/03/2026"),
+            (task_dialog.due_date, "03/04/2026"),
+            (task_dialog.completed_date, "03/05/2026"),
+            (motorcycle_dialog.inspection_date, "04/05/2026"),
+            (participant_dialog.date_of_death, "05/06/2026"),
+            (witness_dialog.interview_date, "06/07/2026"),
+        )
+        for widget, expected in expected_display_values:
+            self.assertEqual(widget.text(), expected)
+            self.assertEqual(widget.placeholderText(), "MM/DD/YYYY")
+
+        person_dialog.dob.setText("01/12/1985")
+        chronology_dialog.event_date.setText("02/13/2026")
+        task_dialog.due_date.setText("03/14/2026")
+        task_dialog.completed_date.setText("03/15/2026")
+        motorcycle_dialog.inspection_date.setText("04/16/2026")
+        participant_dialog.date_of_death.setText("05/17/2026")
+        witness_dialog.interview_date.setText("06/18/2026")
+
+        self.assertEqual(person_dialog.result_record().dob, "1985-01-12")
+        chronology_record = chronology_dialog.result_record()
+        self.assertEqual(chronology_record.event_date, "2026-02-13")
+        task_record = task_dialog.result_record()
+        self.assertEqual(task_record.due_date, "2026-03-14")
+        self.assertEqual(task_record.completed_date, "2026-03-15")
+        self.assertEqual(
+            motorcycle_dialog.result_record().inspection_date,
+            "2026-04-16",
+        )
+        self.assertEqual(
+            participant_dialog.result_record().date_of_death,
+            "2026-05-17",
+        )
+        self.assertEqual(
+            witness_dialog.result_record().interview_date,
+            "2026-06-18",
+        )
+
+        chronology_record.summary = "Date format test"
+        task_record.description = "Date format test"
+        self.repository.save_chronology(chronology_record)
+        self.repository.save_task(task_record)
+        self.window.refresh_chronology()
+        self.window.refresh_tasks()
+        self.assertEqual(self.window.chronology_table.item(0, 0).text(), "02/13/2026")
+        self.assertEqual(self.window.tasks_table.item(0, 3).text(), "03/14/2026")
+
+    def test_weather_station_time_and_celestial_lighting_fields_persist(self):
+        expected_values = {
+            "weather_station": "KPDX ASOS",
+            "weather_time": "14:35 PDT",
+            "sunrise": "05:59",
+            "sunset": "20:31",
+            "civil_twilight_morning": "05:27",
+            "civil_twilight_evening": "21:03",
+            "moonrise": "22:44",
+            "moonset": "11:28",
+            "moon_phase": "Waxing gibbous",
+        }
+        labels = {label.text() for label in self.window.findChildren(QLabel)}
+        self.assertIn("Weather station", labels)
+        self.assertIn("Time of reading", labels)
+        self.assertNotIn("Observation time", labels)
+        self.assertIn("Civil twilight - morning", labels)
+        self.assertIn("Civil twilight - evening", labels)
+        self.assertIn("Moonrise", labels)
+        self.assertIn("Moonset", labels)
+        self.assertIn("Moon phase", labels)
+        self.assertIn("Interstate", self.window.area_type_boxes)
+
+        for name, value in expected_values.items():
+            self.window.condition_widgets[name].setText(value)
+        self.window.area_type_boxes["Interstate"].setChecked(True)
+        self.window.save_overview()
+
+        conditions = self.repository.get_road_conditions(self.case.id)
+        for name, value in expected_values.items():
+            self.assertEqual(getattr(conditions, name), value)
+        self.assertEqual(conditions.area_classifications, "Interstate")
+
+        self.window.load_case(self.repository.get_case(self.case.id))
+        for name, value in expected_values.items():
+            self.assertEqual(self.window.condition_widgets[name].text(), value)
+        self.assertTrue(self.window.area_type_boxes["Interstate"].isChecked())
+
+    def test_multiple_tagged_roadways_can_be_added_and_edited(self):
+        retired_single_roadway_fields = {
+            "speed_limit",
+            "speed_limit_posted",
+            "speed_limit_location",
+            "curve_radius",
+            "chord",
+            "middle_ordinate",
+            "critical_speed",
+            "roadway_characteristics",
+            "traffic_controls",
+        }
+        self.assertTrue(
+            retired_single_roadway_fields.isdisjoint(self.window.condition_widgets)
+        )
+
+        def add_roadway(
+            tag: str,
+            speed_limit: str,
+            characteristics: str,
+            controls: str,
+        ) -> None:
+            def configure(dialog: RoadwayDialog) -> None:
+                dialog.roadway_tag.setText(tag)
+                dialog.speed_limit.setText(speed_limit)
+                dialog.speed_limit_posted.setCurrentText("Yes")
+                dialog.speed_limit_location.setText("Approach sign")
+                dialog.roadway_characteristics.setPlainText(characteristics)
+                dialog.traffic_controls.setPlainText(controls)
+
+            self._complete_modal_dialog(
+                self.window.add_roadway,
+                RoadwayDialog,
+                configure,
+            )
+
+        add_roadway(
+            "North Main Street - northbound",
+            "35",
+            "Two northbound lanes",
+            "Traffic signal",
+        )
+        add_roadway(
+            "Cross Avenue - eastbound",
+            "25",
+            "Single eastbound lane",
+            "Marked stop line",
+        )
+
+        roadways = self.repository.list_roadway_records(self.case.id)
+        self.assertEqual(len(roadways), 2)
+        self.assertEqual(self.window.roadways_table.rowCount(), 2)
+        self.assertCountEqual(
+            [record.roadway_tag for record in roadways],
+            [
+                "North Main Street - northbound",
+                "Cross Avenue - eastbound",
+            ],
+        )
+
+        north_row = next(
+            row
+            for row in range(self.window.roadways_table.rowCount())
+            if self.window.roadways_table.item(row, 0).text()
+            == "North Main Street - northbound"
+        )
+        self.window.roadways_table.setCurrentCell(north_row, 0)
+
+        def configure_edit(dialog: RoadwayDialog) -> None:
+            self.assertEqual(dialog.roadway_tag.text(), "North Main Street - northbound")
+            dialog.speed_limit.setText("30")
+            dialog.traffic_controls.setPlainText("Traffic signal and marked crosswalk")
+
+        self._complete_modal_dialog(
+            self.window.edit_roadway,
+            RoadwayDialog,
+            configure_edit,
+        )
+        updated = {
+            record.roadway_tag: record
+            for record in self.repository.list_roadway_records(self.case.id)
+        }
+        self.assertEqual(updated["North Main Street - northbound"].speed_limit, "30")
+        self.assertIn(
+            "marked crosswalk",
+            updated["North Main Street - northbound"].traffic_controls,
+        )
+
+    def test_primary_phone_is_removed_while_legacy_values_are_preserved(self):
+        person = self.repository.save_person(Person(
+            id="",
+            case_id=self.case.id,
+            first_name="Legacy",
+            last_name="Person",
+            phone="LEGACY-PERSON-PRIMARY",
+            cell_phone="503-555-0101",
+        ))
+        contact = self.repository.save_contact(ContactRelationship(
+            id="",
+            case_id=self.case.id,
+            contact_name="Legacy Contact",
+            phone="LEGACY-CONTACT-PRIMARY",
+            cell_phone="503-555-0102",
+        ))
+
+        person_dialog = PersonDialog(self.case.id, person, self.window)
+        contact_dialog = ContactRelationshipDialog(
+            self.case.id,
+            [person],
+            [],
+            contact,
+            self.window,
+        )
+        self.assertFalse(hasattr(person_dialog, "phone"))
+        self.assertFalse(hasattr(contact_dialog, "phone"))
+        self.assertNotIn(
+            "Primary phone",
+            {label.text() for label in person_dialog.findChildren(QLabel)},
+        )
+        self.assertNotIn(
+            "Primary phone",
+            {label.text() for label in contact_dialog.findChildren(QLabel)},
+        )
+        self.assertIn(
+            "ZIP code",
+            {label.text() for label in person_dialog.findChildren(QLabel)},
+        )
+
+        person_dialog.cell_phone.setText("503-555-0111")
+        contact_dialog.cell_phone.setText("503-555-0112")
+        updated_person = person_dialog.result_record()
+        updated_contact = contact_dialog.result_record()
+        self.assertEqual(updated_person.phone, "LEGACY-PERSON-PRIMARY")
+        self.assertEqual(updated_contact.phone, "LEGACY-CONTACT-PRIMARY")
+        self.repository.save_person(updated_person)
+        self.repository.save_contact(updated_contact)
+        self.window.refresh_people()
+        self.window.refresh_contacts()
+        self.assertEqual(self.window.people_table.horizontalHeaderItem(3).text(), "Cell")
+        self.assertEqual(self.window.people_table.item(0, 3).text(), "503-555-0111")
+        self.assertEqual(self.window.contacts_table.item(0, 3).text(), "503-555-0112")
+        person_dialog.close()
+        contact_dialog.close()
+
+    def test_crash_location_form_omits_retired_fields_and_uses_city_label(self):
+        retired_fields = {
+            "outside_city_feet",
+            "outside_city_miles",
+            "outside_city_direction",
+            "non_intersection_reference",
+        }
+        self.assertTrue(retired_fields.isdisjoint(self.window.packet_widgets))
+
+        labels = {label.text() for label in self.window.findChildren(QLabel)}
+        self.assertIn("City", labels)
+        self.assertNotIn("Nearest city", labels)
+        self.assertNotIn("Outside city - feet", labels)
+        self.assertNotIn("Outside city - miles", labels)
+        self.assertNotIn("Outside city - direction", labels)
+        self.assertNotIn("Not at intersection - reference", labels)
+
+    def test_files_section_is_not_available_in_the_workspace(self):
+        tab_names = [
+            self.window.tabs.tabText(index)
+            for index in range(self.window.tabs.count())
+        ]
+        self.assertNotIn("Files", tab_names)
+        self.assertFalse(hasattr(self.window, "files_table"))
+
+    def test_diagrams_workspace_is_removed_but_completion_checkbox_remains(self):
+        tab_names = [
+            self.window.tabs.tabText(index)
+            for index in range(self.window.tabs.count())
+        ]
+        self.assertNotIn("Diagrams", tab_names)
+        self.assertFalse(hasattr(self.window, "diagrams_table"))
+        self.assertIn("Crash Diagram Completed", self.window.checklist_boxes)
+
+    def test_response_evidence_uses_revised_personnel_and_evidence_fields(self):
+        labels = {label.text() for label in self.window.findChildren(QLabel)}
+        self.assertIn("MCT Sergeant", labels)
+        self.assertIn("MDI", labels)
+        self.assertNotIn("Sergeant", labels)
+        self.assertNotIn("Medical examiner on scene", labels)
+        self.assertNotIn("Criminalist on scene", labels)
+        self.assertNotIn("criminalist_on_scene", self.window.packet_widgets)
+        self.assertNotIn("Crime Scene Log", self.window.checklist_boxes)
+
+        self.assertEqual(
+            set(self.window.scene_evidence_boxes),
+            {
+                "FED Photos",
+                "Investigator Photos",
+                "Uploaded to Axon",
+                "UAS",
+                "DIMS",
+                "FARO",
+            },
+        )
+        self.assertNotIn("Video Taken", self.window.scene_evidence_boxes)
+        self.assertNotIn("Surveillance Video", self.window.scene_evidence_boxes)
+        self.assertNotIn("PED", self.window.scene_evidence_boxes)
+        self.assertNotIn("Trimble", self.window.scene_evidence_boxes)
+
+    def test_axon_upload_requires_investigator_photos(self):
+        photos = self.window.scene_evidence_boxes["Investigator Photos"]
+        axon = self.window.scene_evidence_boxes["Uploaded to Axon"]
+        self.assertFalse(axon.isEnabled())
+        self.assertFalse(axon.isChecked())
+
+        photos.setChecked(True)
+        self.assertTrue(axon.isEnabled())
+        axon.setChecked(True)
+        self.window.save_overview()
+        self.assertEqual(
+            self.repository.get_crash_details(self.case.id).scene_evidence,
+            ["Investigator Photos", "Uploaded to Axon"],
+        )
+
+        photos.setChecked(False)
+        self.assertFalse(axon.isEnabled())
+        self.assertFalse(axon.isChecked())
+
+    def test_legacy_overview_location_is_adopted_by_crash_location_fields(self):
+        self.case.location = "Legacy Road / Legacy Avenue"
+        self.repository.save_case(self.case)
+
+        self.window.load_case(self.repository.get_case(self.case.id))
+
+        self.assertEqual(self.window.packet_widgets["road_name"].text(), "Legacy Road")
+        self.assertEqual(
+            self.window.packet_widgets["intersection_road"].text(),
+            "Legacy Avenue",
+        )
+        self.assertEqual(self.window.location.text(), "Legacy Road / Legacy Avenue")
+
+    def test_narrative_fields_use_offline_spell_check(self):
+        self.assertIsInstance(self.window.summary, SpellCheckedTextEdit)
+        self.assertIsInstance(self.window.key_questions, SpellCheckedTextEdit)
+        self.assertIsInstance(self.window.general_notes, SpellCheckedTextEdit)
+
+        dialog = PersonDialog(self.case.id, parent=self.window)
+        try:
+            self.assertIsInstance(dialog.address, SpellCheckedLineEdit)
+            self.assertIsInstance(dialog.notes, SpellCheckedTextEdit)
+        finally:
+            dialog.close()
+
+        toolbar = self.window.findChild(QToolBar)
+        self.assertIsNotNone(toolbar)
+        self.assertNotIn("Spell Check", [action.text() for action in toolbar.actions()])
+        self.assertFalse(hasattr(self.window, "spell_check_action"))
+
+    def test_person_street_address_is_single_line_and_tabs_to_city(self):
+        dialog = PersonDialog(self.case.id, parent=self.window)
+        try:
+            dialog.show()
+            self.app.processEvents()
+            self.assertIn(
+                "Street address",
+                {label.text() for label in dialog.findChildren(QLabel)},
+            )
+            dialog.address.setPlainText("123 Example Street\nApartment 4")
+            self.assertEqual(dialog.address.text(), "123 Example Street Apartment 4")
+            dialog.address.setFocus()
+            QTest.keyClick(dialog.address, Qt.Key.Key_Tab)
+            self.app.processEvents()
+            self.assertTrue(dialog.city.hasFocus())
+        finally:
+            dialog.close()
+
+    def test_add_charge_and_video_source_refresh_packet_tables(self):
+        def configure_charge(dialog: ChargeDispositionDialog) -> None:
+            dialog.charge.setText("Reckless Driving")
+            dialog.disposition.setText("Issued")
+
+        self._complete_modal_dialog(
+            self.window.add_charge_disposition,
+            ChargeDispositionDialog,
+            configure_charge,
+        )
+
+        def configure_video(dialog: VideoSourceDialog) -> None:
+            dialog.source.setText("North intersection camera")
+            dialog.dims_status.setCurrentText("Entered")
+            dialog.notes.setPlainText("Requested from city traffic operations")
+
+        self._complete_modal_dialog(
+            self.window.add_video_source,
+            VideoSourceDialog,
+            configure_video,
+        )
+
+        self.assertEqual(len(self.repository.list_charge_dispositions(self.case.id)), 1)
+        self.assertEqual(self.window.charges_table.rowCount(), 1)
+        self.assertEqual(len(self.repository.list_video_sources(self.case.id)), 1)
+        self.assertEqual(self.window.video_sources_table.rowCount(), 1)
+        self.assertTrue(self.window.surveillance_video_indicator.isChecked())
+        self.assertFalse(self.window.surveillance_video_indicator.isEnabled())
+        self.assertNotIn(
+            "Surveillance Video",
+            self.repository.get_crash_details(self.case.id).scene_evidence,
+        )
+
+        video_source = self.repository.list_video_sources(self.case.id)[0]
+        self.repository.delete_video_source(video_source.id)
+        self.window.refresh_video_sources()
+        self.assertFalse(self.window.surveillance_video_indicator.isChecked())
+
+    def test_expanded_packet_dialogs_persist_structured_data(self):
+        person = self.repository.save_person(Person(
+            id="", case_id=self.case.id, first_name="Riley", last_name="Example",
+            roles=["Driver", "Pedestrian", "Witness"],
+        ))
+        vehicle = self.repository.save_vehicle(Vehicle(
+            id="", case_id=self.case.id, vehicle_number="V-1", make="Example",
+            model="Motorcycle", driver_person_id=person.id,
+        ))
+        self.window.refresh_case_tables()
+
+        self.window.people_table.setCurrentCell(0, 0)
+
+        def configure_participant(dialog: ParticipantDetailsDialog) -> None:
+            dialog.height_value.setText("70 in")
+            dialog.weight_value.setText("180 lb")
+            dialog.hospital.setText("OHSU")
+            dialog.ejected.setCurrentText("No")
+            dialog.extracted.setCurrentText("Yes")
+            dialog.injury_code_boxes["1 - Laceration"].setChecked(True)
+            dialog.evidence_item_boxes["Blood"].setChecked(True)
+
+        self._complete_modal_dialog(
+            self.window.edit_participant_details,
+            ParticipantDetailsDialog,
+            configure_participant,
+        )
+
+        def configure_driver(dialog: DriverProfileDialog) -> None:
+            dialog.physical_condition_boxes["Vision"].setChecked(True)
+            dialog.testing_method_boxes["SFST"].setChecked(True)
+            dialog.license_restricted.setCurrentText("Yes")
+            dialog.license_restriction_explanation.setText("Corrective lenses")
+
+        self._complete_modal_dialog(
+            self.window.edit_driver_profile,
+            DriverProfileDialog,
+            configure_driver,
+        )
+
+        def configure_contact(dialog: ContactRelationshipDialog) -> None:
+            dialog.contact_name.setText("Morgan Example")
+            dialog.cell_phone.setText("503-555-0101")
+            dialog.home_phone.setText("503-555-0102")
+            dialog.work_phone.setText("503-555-0103")
+            dialog.city.setText("Portland")
+            dialog.state.setText("OR")
+
+        self._complete_modal_dialog(
+            self.window.add_contact,
+            ContactRelationshipDialog,
+            configure_contact,
+        )
+
+        def configure_vru(dialog: VRUAnalysisDialog) -> None:
+            dialog.person_id.setCurrentIndex(dialog.person_id.findData(person.id))
+            dialog.projection_boxes["Roof Vault"].setChecked(True)
+            dialog.prt_factor_boxes["Target Unexpected"].setChecked(True)
+
+        self._complete_modal_dialog(
+            self.window.add_vru_analysis,
+            VRUAnalysisDialog,
+            configure_vru,
+        )
+
+        def configure_surface(dialog: SurfaceObservationDialog) -> None:
+            dialog.location.setText("Northbound lane")
+            dialog.composition.setText("Asphalt")
+            dialog.condition.setText("Wet")
+            dialog.friction_value.setText("0.48")
+
+        self._complete_modal_dialog(
+            self.window.add_surface_observation,
+            SurfaceObservationDialog,
+            configure_surface,
+        )
+
+        self.window.vehicles_table.setCurrentCell(0, 0)
+
+        def configure_vehicle_inspection(dialog: VehicleInspectionDialog) -> None:
+            equipped, operable = dialog.system_check_widgets["headlights"]
+            equipped.setCurrentText("Yes")
+            operable.setCurrentText("No")
+            dialog.tire_contribution.setCurrentText("Yes")
+            dialog.tire_contribution_explanation.setPlainText("RF tread separation")
+
+        self._complete_modal_dialog(
+            self.window.edit_vehicle_inspection,
+            VehicleInspectionDialog,
+            configure_vehicle_inspection,
+        )
+
+        def configure_motorcycle(dialog: MotorcycleInspectionDialog) -> None:
+            dialog.frame_number.setText("FRAME-1")
+            dialog.item_rating_widgets[8].setCurrentText("2 - Damaged")
+            dialog.item_table.item(7, 3).setText("20 psi")
+
+        self._complete_modal_dialog(
+            self.window.edit_motorcycle_inspection,
+            MotorcycleInspectionDialog,
+            configure_motorcycle,
+        )
+
+        details = self.repository.get_participant_details(person.id)
+        self.assertEqual(details.height, "70 in")
+        self.assertEqual(details.ejected, "No")
+        self.assertEqual(details.extracted, "Yes")
+        self.assertIn("Laceration", details.injury_codes)
+        profile = self.repository.get_driver_profile(person.id)
+        self.assertEqual(profile.license_restricted, "Yes")
+        self.assertIn("SFST", profile.testing_methods)
+        contact = self.repository.list_contacts(self.case.id)[0]
+        self.assertEqual(contact.work_phone, "503-555-0103")
+        analysis = self.repository.list_vru_analyses(self.case.id)[0]
+        self.assertEqual(analysis.projection_classifications, "Roof Vault")
+        self.assertIn("Target Unexpected", analysis.prt_factors)
+        self.assertEqual(
+            self.repository.list_surface_observations(self.case.id)[0].friction_value,
+            "0.48",
+        )
+        inspection = self.repository.get_vehicle_inspection(vehicle.id)
+        self.assertEqual(inspection.headlights_operable, "No")
+        self.assertEqual(inspection.tire_contribution_explanation, "RF tread separation")
+        motorcycle = self.repository.get_motorcycle_inspection(vehicle.id)
+        self.assertEqual(motorcycle.frame_number, "FRAME-1")
+        self.assertEqual(motorcycle.items[0].measurement, "20 psi")
+
+    def test_person_dialog_keeps_save_visible_in_a_compact_window(self):
+        dialog = PersonDialog(self.case.id, parent=self.window)
+        dialog.resize(600, 420)
+        dialog.show()
+        self.app.processEvents()
+
+        save = dialog.buttons.button(QDialogButtonBox.StandardButton.Save)
+        self.assertTrue(save.isVisible())
+        self.assertLessEqual(dialog.height(), 420)
+        self.assertLessEqual(
+            dialog.buttons.geometry().bottom(),
+            dialog.rect().bottom(),
+        )
+        self.assertGreater(dialog.scroll_area.verticalScrollBar().maximum(), 0)
+
+    def test_vehicle_dialog_keeps_save_visible_in_a_compact_window(self):
+        dialog = VehicleDialog(self.case.id, [], parent=self.window)
+        dialog.resize(600, 420)
+        dialog.show()
+        self.app.processEvents()
+
+        save = dialog.buttons.button(QDialogButtonBox.StandardButton.Save)
+        self.assertTrue(save.isVisible())
+        self.assertLessEqual(dialog.height(), 420)
+        self.assertLessEqual(
+            dialog.buttons.geometry().bottom(),
+            dialog.rect().bottom(),
+        )
+        self.assertGreater(dialog.scroll_area.verticalScrollBar().maximum(), 0)
+
+    def test_packet_forms_scroll_in_compact_main_window(self):
+        self.window.resize(900, 560)
+        self.window.tabs.setCurrentIndex(1)
+        packet_tab = self.window.tabs.currentWidget()
+        nested_tabs = packet_tab.findChild(QTabWidget)
+        self.assertIsNotNone(nested_tabs)
+        nested_tabs.setCurrentIndex(2)
+        self.app.processEvents()
+        scroll_area = nested_tabs.currentWidget()
+        self.assertIsInstance(scroll_area, QScrollArea)
+        self.assertGreater(scroll_area.verticalScrollBar().maximum(), 0)
+
+
+if __name__ == "__main__":
+    unittest.main()

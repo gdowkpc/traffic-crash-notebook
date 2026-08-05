@@ -1,0 +1,112 @@
+TRAFFIC CRASH NOTEBOOK - PORTABLE WINDOWS EDITION
+=================================================
+
+This application does not use an installer and does not require administrator
+rights on the computer where it will be used.
+
+FIRST USE
+---------
+1. Extract the entire TrafficCrashNotebook folder to a writable location.
+   A folder under Documents is normally suitable.
+2. Keep every file and subfolder together. Do not copy only the EXE.
+3. Double-click TrafficCrashNotebook.exe.
+4. Complete Data Storage Setup. Select the investigator's assigned K: drive or
+   another approved folder. If existing cases are found, leave the copy option
+   selected unless you intentionally want to open a different existing database.
+5. Create a fictional test case before entering working information.
+6. Test Export Full Working Packet, Export Compact Packet, Export Quick Review,
+   and Export Exchange Report, then make a database backup.
+
+The selected folder contains the active case database plus Reports and Backups
+subfolders. The small pointer to that folder is stored under:
+
+  %LOCALAPPDATA%\TrafficCrashNotebook\storage_config.json
+
+Replacing the portable application folder therefore does not replace the case
+database. Version 0.5.0 upgrades older databases additively when they are opened;
+existing cases are retained. Use the Back Up button regularly and store backups
+in an approved location.
+
+DATA STORAGE / NETWORK DRIVE
+----------------------------
+Use the Settings button in the case header, or Settings > Application Settings,
+to review or change the selected folder. The same screen stores the investigator's
+name, numeric DPSST, and assignment as defaults for new cases. These defaults are
+kept in the selected case database, not AppData, and existing cases are not changed.
+The wizard tests file creation, reading, renaming, deletion, and SQLite database
+integrity before accepting a location. When changing folders, it can safely copy
+the current database and leaves the original unchanged as a recovery copy.
+
+If the selected K: or other network drive is unavailable, the application will
+not create or open an empty substitute database. Reconnect the drive and Retry,
+choose another location, or Exit. Use a network-hosted database from only one
+computer at a time; do not share one database between simultaneous users.
+
+PDF exports default to the selected folder's Reports subfolder. Manual database
+backups default to its Backups subfolder.
+
+SPELL CHECK
+-----------
+Spell check runs automatically in real time in narrative, summary, address, and
+notes fields. A red underline marks a possible misspelling. Right-click the word
+for suggested corrections, to ignore it for the current session, or to add it
+to the personal dictionary. The dictionary is bundled and works completely
+offline.
+
+Personal words are stored separately under:
+
+  %LOCALAPPDATA%\TrafficCrashNotebook\personal_dictionary.txt
+
+PRINT OPTIONS
+-------------
+Export Full Working Packet creates the attorney-folder copy. It keeps the full
+section order, ruled handwriting areas, case identity on every page, final
+"Page X of Y" numbering, and a top-edge punch-safe content margin. One-sided
+printing is recommended when practical so handwritten updates remain easy to use.
+
+Export Compact Packet contains the complete entered record while suppressing
+unused sections and dedicated handwriting areas. Export Quick Review is a
+short briefing copy and is not a substitute for the complete packet.
+
+Export Exchange Report creates a searchable traffic-crash information exchange
+form from the case's shared people, driver-license, vehicle, and insurance data.
+It automatically adds numbered continuation pages when more than three vehicles
+or four passengers/witnesses must be printed.
+
+VERSION / BUILD INFORMATION
+---------------------------
+Open Help > About Traffic Crash Notebook, or select the visible About version
+button beside the case header. The dialog shows the exact application version,
+build ID, build date, database schema, and the executable path that is running.
+
+OPTIONAL PORTABLE CHECK
+-----------------------
+Double-click VERIFY_PORTABLE.bat. It creates a temporary fictional database and
+full working packet PDF, compact packet PDF, quick-review PDF, and exchange-report
+PDF; verifies the packaged database, PDF, spell-check dictionary, and logo; and
+reports PASS or FAIL. It does not open or modify the normal case database.
+
+VERIFIED UPDATES
+----------------
+Automatic update checks are enabled by default and run at most once every 24 hours.
+Change that preference from the header Settings screen, or use Help > Check for
+Updates for an immediate check. A check requests only the public GitHub release
+manifest and never sends case information.
+
+An approved update downloads to the selected data folder's Updates subfolder. The
+application verifies the official release URL, exact size, SHA-256 digest, ZIP
+integrity, and required portable files. It never installs or extracts an update.
+Close the application, extract the complete new folder to a writable location, and
+run the new executable. The separate case-data folder remains unchanged.
+
+SECURITY / WINDOWS WARNINGS
+---------------------------
+This personal build is not digitally signed. Windows or agency security tools
+may identify it as an unrecognized application. If agency policy blocks it,
+stop and use the agency's normal approval or allow-listing process. No security
+controls need to be disabled for the application to run.
+
+IMPORTANT
+---------
+Traffic Crash Notebook is for personal investigative working notes. It is not
+an official report-writing, evidence-management, or records-retention system.
