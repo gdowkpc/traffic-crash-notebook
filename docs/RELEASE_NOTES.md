@@ -1,3 +1,21 @@
+## Unreleased
+
+- Adds direct printing from the embedded Exchange Report preview through the standard Windows printer dialog, including all pages, current page, and selected page ranges.
+- Prevents WinError 32 during preview refresh by loading the displayed PDF from memory and using generation-specific temporary files.
+
+## Traffic Crash Notebook 0.5.3
+
+This testing release improves case organization and removes duplicated or generalized fields.
+
+- Moves contacts under People and requires each contact to belong to one person.
+- Moves release status, release date, and release information to each individual vehicle.
+- Simplifies VRU night visibility to Light Meter Used and Light Board Used and removes the Perception / Response section from active entry and packet output.
+- Separates Weather and Surface into distinct subtabs and supports unlimited surface records with add, edit, and remove actions.
+- Migrates legacy single-surface values into the new multi-surface records without duplicating existing entries.
+- Renames the investigator-facing Chronology workflow to Journal throughout data entry and packet output while preserving existing saved entries.
+- Adds a dedicated packet cover page populated from shared case, investigator, calculated count, review, and DA-routing data without duplicate entry.
+- Updates packet output, portable self-test coverage, and database schema migration checks for the revised workflows.
+
 ## Traffic Crash Notebook 0.5.1
 
 This maintenance release corrects Traffic Crash Exchange Report output.

@@ -23,7 +23,7 @@ subfolders. The small pointer to that folder is stored under:
   %LOCALAPPDATA%\TrafficCrashNotebook\storage_config.json
 
 Replacing the portable application folder therefore does not replace the case
-database. Version 0.5.1 upgrades older databases additively when they are opened;
+database. Version 0.5.3 upgrades older databases additively when they are opened;
 existing cases are retained. Use the Back Up button regularly and store backups
 in an approved location.
 
@@ -59,8 +59,9 @@ Personal words are stored separately under:
 
 PRINT OPTIONS
 -------------
-Export Full Working Packet creates the attorney-folder copy. It keeps the full
-section order, ruled handwriting areas, case identity on every page, final
+Export Full Working Packet creates the attorney-folder copy. It begins with a
+dedicated case and routing cover, then keeps the full section order, ruled
+handwriting areas, case identity on every page, final
 "Page X of Y" numbering, and a top-edge punch-safe content margin. One-sided
 printing is recommended when practical so handwritten updates remain easy to use.
 

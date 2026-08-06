@@ -16,6 +16,7 @@ from traffic_crash_notebook.models import (
     ParticipantDetails,
     Person,
     RoadConditions,
+    SurfaceObservation,
     TireInspection,
     Vehicle,
     VehicleInspection,
@@ -79,13 +80,22 @@ def main() -> None:
     repository.save_road_conditions(RoadConditions(
         case_id=case.id, temperature="74 F", dew_point="54 F", winds="NW 6 mph",
         humidity="43%", weather_condition="Clear", precipitation="None",
-        weather_time="14:45", surface_composition="Asphalt", surface_condition="Dry",
-        friction_value="0.78", lighting_conditions="Daylight; sun southwest of the intersection",
+        weather_time="14:45", lighting_conditions="Daylight; sun southwest of the intersection",
         streetlights_working="Not applicable", area_type="Business",
         speed_limit="35", speed_limit_posted="Yes", speed_limit_location="Both approaches",
         roadway_characteristics="Level four-leg intersection with two through lanes in each direction.",
         traffic_controls="Traffic signals and marked crosswalks on all approaches.",
         initial_point_of_collision="Fictional debris and tire evidence placed the initial contact near the center of the intersection.",
+    ))
+    repository.save_surface_observation(SurfaceObservation(
+        id="", case_id=case.id, location="Example Avenue eastbound lanes",
+        composition="Asphalt", condition="Dry", friction_value="0.78",
+        notes="Fictional drag-factor entry for the primary travel surface.",
+    ))
+    repository.save_surface_observation(SurfaceObservation(
+        id="", case_id=case.id, location="South crosswalk marking",
+        composition="Thermoplastic marking over asphalt", condition="Dry",
+        notes="Separate surface record demonstrating multiple locations.",
     ))
     repository.save_participant_details(ParticipantDetails(
         person_id=driver.id, vehicle_id=vehicle.id, occupant_position="Driver",
@@ -147,12 +157,7 @@ def main() -> None:
         vru_impairment="Unknown", impact_location_on_vehicle="Right-front bumper and hood edge",
         vehicle_approach_speed="Approximately 28 mph", vehicle_direction="Eastbound",
         vru_approach_speed="Walking pace", vru_direction="Southbound", person_throw_distance="34 feet",
-        night_test_parameters="Not applicable; daytime crash. Fields retained to demonstrate the workup.",
-        detection_distance="Approximately 165 feet", distance_adjustment="Subtract 12 feet for driver eye position",
-        result_67_percent="153 feet adjusted", result_15_percentile="Review pending",
-        prt_base="0.50", prt_expected="0.25", prt_sun="0.10", prt_offset="0.15",
-        prt_adjustment="0.20", prt_total="1.20 seconds",
-        prt_justification="Fictional values included only to demonstrate how PRT reasoning is organized.",
+        light_meter_used=True, light_board_used=True,
         notes="No reconstruction conclusion is implied by this demonstration.",
     ))
     repository.save_file_reference(FileReference(

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
+from traffic_crash_notebook.repository import SCHEMA_VERSION
 from traffic_crash_notebook.self_test import run_self_test
 
 
@@ -32,7 +33,7 @@ class PortableSelfTestTest(unittest.TestCase):
             information_text = exchange_reader.pages[-1].extract_text() or ""
             self.assertIn("INFORMATION / YOUR RESPONSIBILITIES", information_text)
             log_text = log.read_text(encoding="utf-8")
-            self.assertIn("Database schema: 16", log_text)
+            self.assertIn(f"Database schema: {SCHEMA_VERSION}", log_text)
             self.assertIn(
                 "Hit-and-run overview, evidence, lead, and confirmed-record links: PASS",
                 log_text,
@@ -40,7 +41,11 @@ class PortableSelfTestTest(unittest.TestCase):
             self.assertIn("Person ZIP code persistence: PASS", log_text)
             self.assertIn("Participant extracted status persistence: PASS", log_text)
             self.assertIn(
-                "Per-vehicle checklist and insurance persistence: PASS",
+                "Per-vehicle checklist, release, and insurance persistence: PASS",
+                log_text,
+            )
+            self.assertIn(
+                "VRU light-meter and light-board persistence: PASS",
                 log_text,
             )
             self.assertIn(

@@ -91,11 +91,32 @@ class PdfExportTest(unittest.TestCase):
             working_text = "\n".join(page.extract_text() or "" for page in working_reader.pages)
             compact_text = "\n".join(page.extract_text() or "" for page in compact_reader.pages)
 
+            for reader, mode in (
+                (working_reader, "FULL WORKING PACKET"),
+                (compact_reader, "COMPACT COMPLETED-CASE PACKET"),
+            ):
+                cover_text = reader.pages[0].extract_text() or ""
+                second_page_text = reader.pages[1].extract_text() or ""
+                self.assertIn("TRAFFIC CRASH INVESTIGATION PACKET", cover_text)
+                self.assertIn("CASE 26-EMPTY", cover_text)
+                self.assertIn(mode, cover_text)
+                self.assertIn("ASSIGNED INVESTIGATOR", cover_text)
+                self.assertIn("DPSST", cover_text)
+                self.assertIn("ASSIGNMENT", cover_text)
+                self.assertIn("PEER REVIEW", cover_text)
+                self.assertIn("MCT SERGEANT REVIEW", cover_text)
+                self.assertIn("SUBMITTED TO DA", cover_text)
+                self.assertNotIn("Investigative packet", cover_text)
+                self.assertIn("Investigative packet", second_page_text)
+
             self.assertGreater(len(working_reader.pages), len(compact_reader.pages))
             self.assertIn("FULL WORKING PACKET", working_text)
             self.assertIn("Participant and driver details", working_text)
             self.assertIn("Witness interviews and contacts", working_text)
             self.assertIn("Vulnerable road user analysis", working_text)
+            self.assertIn("Investigative journal", working_text)
+            self.assertIn("No journal entries.", working_text)
+            self.assertNotIn("Investigative chronology", working_text)
             self.assertNotIn("Handwritten sketch / diagram continuation", working_text)
             self.assertIn("GENERAL HANDWRITTEN CONTINUATION", working_text)
             self.assertIn("COMPACT COMPLETED-CASE PACKET", compact_text)
@@ -220,6 +241,8 @@ class PdfExportTest(unittest.TestCase):
             case = repository.create_case("26-123456", "Garrett Dow")
             case.crash_date = "2026-08-04"
             case.location = "North Example Street"
+            case.assigned_officer_dpsst = "123456"
+            case.assignment = "Traffic Investigations Unit"
             case.summary = "A detailed but unofficial investigative working summary."
             repository.save_case(case)
             person = Person(
@@ -245,11 +268,15 @@ class PdfExportTest(unittest.TestCase):
                 cdr_equipped=True,
                 cdr_imaged=True,
                 cdr_report_uploaded=True,
+                released=True,
+                release_date="2026-08-05",
+                release_information="Released to registered owner with receipt",
                 edr_status="Imaging completed without error",
             )
             repository.save_vehicle(vehicle)
             repository.save_road_conditions(RoadConditions(
-                case_id=case.id, temperature="71 F", surface_condition="Dry",
+                case_id=case.id, temperature="71 F",
+                surface_condition="LEGACY SINGLE SURFACE VALUE",
                 weather_station="KPDX ASOS", weather_time="14:35 PDT",
                 lighting_conditions="Daylight", speed_limit="35",
                 sunrise="05:59", sunset="20:31",
@@ -348,13 +375,18 @@ class PdfExportTest(unittest.TestCase):
             ))
             repository.save_contact(ContactRelationship(
                 id="", case_id=case.id, contact_type="Legacy",
+                subject_person_id=person.id,
                 contact_name="Legacy Primary Only",
                 phone="LEGACY CONTACT PRIMARY PHONE",
             ))
             repository.save_vru_analysis(VRUAnalysis(
                 id="", case_id=case.id, person_id=person.id, vehicle_id=vehicle.id,
-                roadway_position="North crosswalk", detection_distance="145 feet", prt_total="1.50 seconds",
-                projection_classifications="Roof Vault", prt_factors="Target Unexpected; Daytime",
+                roadway_position="North crosswalk", light_meter_used=True,
+                light_board_used=True, projection_classifications="Roof Vault",
+                night_test_parameters="RETIRED NIGHT TEST VALUE",
+                detection_distance="RETIRED DETECTION VALUE",
+                prt_total="RETIRED PRT VALUE",
+                prt_justification="RETIRED PRT JUSTIFICATION",
             ))
             repository.save_file_reference(FileReference(
                 id="", case_id=case.id, category="Legacy",
@@ -400,7 +432,23 @@ class PdfExportTest(unittest.TestCase):
             reader = PdfReader(pdf_path)
             text = "\n".join(page.extract_text() or "" for page in reader.pages)
             normalized_text = " ".join(text.split())
+            cover_text = reader.pages[0].extract_text() or ""
+            normalized_cover_text = " ".join(cover_text.split())
             self.assertGreaterEqual(len(reader.pages), 3)
+            self.assertIn("TRAFFIC CRASH INVESTIGATION PACKET", cover_text)
+            self.assertIn("CASE 26-123456", cover_text)
+            self.assertIn("123456", cover_text)
+            self.assertIn("Traffic Investigations Unit", cover_text)
+            self.assertIn("Complete - 08/06/2026", normalized_cover_text)
+            self.assertIn("Complete - 08/07/2026", normalized_cover_text)
+            self.assertIn("Complete - 08/08/2026", normalized_cover_text)
+            self.assertIn("Taylor Example", cover_text)
+            self.assertIn("DA-26-100", cover_text)
+            self.assertNotIn("Investigative packet", cover_text)
+            self.assertIn(
+                "Investigative packet",
+                reader.pages[1].extract_text() or "",
+            )
             self.assertIn("26-123456", text)
             self.assertIn("Morgan Lee", text)
             self.assertIn("123 Example Street, Portland, OR 97201", normalized_text)
@@ -411,12 +459,24 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("CDR EQUIPPED", normalized_text)
             self.assertIn("CDR IMAGED", normalized_text)
             self.assertIn("CDR REPORT UPLOADED", normalized_text)
+            self.assertIn("RELEASED", normalized_text)
+            self.assertIn("RELEASE DATE", normalized_text)
+            self.assertIn("08/05/2026", normalized_text)
+            self.assertIn(
+                "Released to registered owner with receipt",
+                normalized_text,
+            )
             self.assertIn("INSURANCE COMPANY", normalized_text)
             self.assertIn("POLICY NUMBER", normalized_text)
             self.assertIn("Example Mutual", normalized_text)
             self.assertIn("POL-24680", normalized_text)
             self.assertIn("Imaging completed without error", normalized_text)
             self.assertIn("Scene scan completed", text)
+            self.assertIn("Investigative journal", text)
+            self.assertIn("JOURNAL ENTRIES", normalized_text)
+            self.assertIn("JOURNAL CONTINUATION", normalized_text)
+            self.assertNotIn("Investigative chronology", text)
+            self.assertNotIn("CHRONOLOGY CONTINUATION", normalized_text)
             self.assertIn("Review surveillance video", text)
             self.assertIn("Road and weather conditions", text)
             self.assertIn("WEATHER STATION", normalized_text)
@@ -489,6 +549,7 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("LEGACY REFERENCE VALUE", text)
             self.assertIn("Surface observations", text)
             self.assertIn("0.48", text)
+            self.assertNotIn("LEGACY SINGLE SURFACE VALUE", text)
             self.assertIn("Corrective lenses", text)
             self.assertIn("Roof Vault", text)
             self.assertIn("RF tread separation", text)
@@ -501,11 +562,18 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("12,345", text)
             self.assertIn("225/45R18", text)
             self.assertIn("Witness interviews and contacts", text)
+            self.assertIn("PERSON", normalized_text)
             self.assertIn("The signal was visible", text)
             self.assertNotIn("LEGACY PERSON PRIMARY PHONE", text)
             self.assertNotIn("LEGACY CONTACT PRIMARY PHONE", text)
             self.assertIn("Vulnerable road user analysis", text)
-            self.assertIn("145 feet", text)
+            self.assertIn("LIGHT METER USED", normalized_text)
+            self.assertIn("LIGHT BOARD USED", normalized_text)
+            self.assertNotIn("PERCEPTION / RESPONSE", normalized_text)
+            self.assertNotIn("RETIRED NIGHT TEST VALUE", text)
+            self.assertNotIn("RETIRED DETECTION VALUE", text)
+            self.assertNotIn("RETIRED PRT VALUE", text)
+            self.assertNotIn("RETIRED PRT JUSTIFICATION", text)
             self.assertNotIn("Related files and records", text)
             self.assertNotIn("ADDITIONAL FILES / EVIDENCE REFERENCES", text)
             self.assertNotIn("LEGACY FILE REFERENCE TITLE", text)
@@ -518,7 +586,7 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("Crash Diagram Completed", text)
             self.assertIn("not an official report", text)
             self.assertIn("FULL WORKING PACKET", text)
-            self.assertIn("OVERVIEW UPDATES / INITIAL NOTES", text)
+            self.assertIn("COVER NOTES / ROUTING UPDATES", text)
             self.assertIn(f"Page 1 of {len(reader.pages)}", text)
             self.assertTrue(all("CASE 26-123456" in (page.extract_text() or "") for page in reader.pages))
 
@@ -527,7 +595,7 @@ class PdfExportTest(unittest.TestCase):
             compact_text = "\n".join(page.extract_text() or "" for page in compact_reader.pages)
             self.assertLess(len(compact_reader.pages), len(reader.pages))
             self.assertIn("COMPACT COMPLETED-CASE PACKET", compact_text)
-            self.assertNotIn("OVERVIEW UPDATES / INITIAL NOTES", compact_text)
+            self.assertNotIn("COVER NOTES / ROUTING UPDATES", compact_text)
             self.assertIn("Morgan Lee", compact_text)
             self.assertIn("KPDX ASOS", compact_text)
             self.assertIn("Waxing gibbous", compact_text)
