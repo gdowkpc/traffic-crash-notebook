@@ -21,7 +21,6 @@ from PySide6.QtGui import (
     QAction,
     QColor,
     QDesktopServices,
-    QFont,
     QIntValidator,
     QPageLayout,
     QPageSize,
@@ -118,6 +117,7 @@ from ..updates import (
     should_check_for_updates,
     successful_check_timestamp,
 )
+from .app_identity import configure_application
 from .dialogs import (
     ChronologyDialog,
     ChargeDispositionDialog,
@@ -3295,10 +3295,7 @@ class MainWindow(QMainWindow):
 
 def run(repository: CaseRepository) -> int:
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setApplicationName("Traffic Crash Notebook")
-    app.setApplicationVersion(__version__)
-    app.setOrganizationName("TrafficCrashNotebook")
-    app.setFont(QFont("Segoe UI", 9))
+    configure_application(app)
     window = MainWindow(repository)
     window.show()
     return app.exec()

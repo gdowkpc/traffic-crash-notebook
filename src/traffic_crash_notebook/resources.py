@@ -15,6 +15,14 @@ def tiu_logo_path() -> Path:
     return resource_path("assets/tiu_logo.jpg")
 
 
+def app_icon_path() -> Path:
+    return resource_path("assets/windows/TrafficCrashNotebook.png")
+
+
+def windows_executable_icon_path() -> Path:
+    return resource_path("assets/windows/TrafficCrashNotebook.ico")
+
+
 DIAGRAM_TEMPLATES = {
     "body": "Body - four views",
     "car": "Passenger car - three views",

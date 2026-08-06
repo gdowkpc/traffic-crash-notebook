@@ -39,6 +39,7 @@ from .paths import (
     validate_storage_directory,
 )
 from .repository import SCHEMA_VERSION, CaseRepository, new_id
+from .resources import app_icon_path
 from .spellcheck import SpellCheckService
 from .updates import is_update_available, parse_update_manifest
 
@@ -46,12 +47,20 @@ from .updates import is_update_available, parse_update_manifest
 def run_self_test(output_directory: str | Path) -> Path:
     """Exercise the bundled database, assets, and PDF engine without opening the GUI."""
     try:
+        from PySide6.QtGui import QImageReader
         from PySide6.QtPdf import QPdfDocument
         from PySide6.QtPdfWidgets import QPdfView
     except ImportError as error:
         raise RuntimeError("The embedded PDF preview components are unavailable.") from error
     if not QPdfDocument or not QPdfView:
         raise RuntimeError("The embedded PDF preview components did not load.")
+
+    icon_path = app_icon_path()
+    if not icon_path.is_file():
+        raise RuntimeError("The bundled TIU application icon is missing.")
+    icon_reader = QImageReader(str(icon_path))
+    if not icon_reader.canRead() or icon_reader.read().isNull():
+        raise RuntimeError("The bundled TIU application icon could not be loaded.")
 
     output = Path(output_directory).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -482,10 +491,11 @@ def run_self_test(output_directory: str | Path) -> Path:
             "Driver, pedestrian, and bicyclist exchange-report inclusion: PASS",
             "Dynamic exchange-report data, time formatting, and searchable information page: PASS",
             "Embedded PDF preview components: PASS",
+            "TIU application and taskbar icon: PASS",
             "Guided data-storage configuration and migration: PASS",
             "Verified release-manifest update checker: PASS",
             "Offline spell-check dictionary: PASS",
-            "The schema, full working packet PDF, compact packet PDF, quick review PDF, exchange-report PDF, offline spell-check dictionary, and packaged logo loaded successfully.",
+            "The schema, full working packet PDF, compact packet PDF, quick review PDF, exchange-report PDF, offline spell-check dictionary, report logo, and application icon loaded successfully.",
             "",
         )),
         encoding="utf-8",

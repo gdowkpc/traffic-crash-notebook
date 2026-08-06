@@ -1,12 +1,11 @@
-## Unreleased
-
-- Adds direct printing from the embedded Exchange Report preview through the standard Windows printer dialog, including all pages, current page, and selected page ranges.
-- Prevents WinError 32 during preview refresh by loading the displayed PDF from memory and using generation-specific temporary files.
-
 ## Traffic Crash Notebook 0.5.3
 
 This testing release improves case organization and removes duplicated or generalized fields.
 
+- Adds a high-contrast TIU application icon to the running window, Windows taskbar, and packaged executable.
+- Adds direct printing from the embedded Exchange Report preview through the standard Windows printer dialog, including all pages, current page, and selected page ranges.
+- Prevents WinError 32 during preview refresh by loading the displayed PDF from memory and using generation-specific temporary files.
+- Includes every saved passenger and witness in the Exchange Report without creating a second data-entry path.
 - Moves contacts under People and requires each contact to belong to one person.
 - Moves release status, release date, and release information to each individual vehicle.
 - Simplifies VRU night visibility to Light Meter Used and Light Board Used and removes the Perception / Response section from active entry and packet output.
