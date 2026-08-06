@@ -41,7 +41,7 @@ class PortableSelfTestTest(unittest.TestCase):
             self.assertIn("Person ZIP code persistence: PASS", log_text)
             self.assertIn("Participant extracted status persistence: PASS", log_text)
             self.assertIn(
-                "Per-vehicle checklist, towing, release, and insurance persistence: PASS",
+                "Per-vehicle checklist, towing, release, insurance, and claim persistence: PASS",
                 log_text,
             )
             self.assertIn(
@@ -68,6 +68,7 @@ class PortableSelfTestTest(unittest.TestCase):
             )
             self.assertIn("Embedded PDF preview components: PASS", log_text)
             self.assertIn("TIU application and taskbar icon: PASS", log_text)
+            self.assertIn("Early packaged startup splash: PASS", log_text)
             self.assertIn(
                 "Guided data-storage configuration and migration: PASS",
                 log_text,

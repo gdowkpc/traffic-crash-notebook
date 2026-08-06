@@ -93,6 +93,7 @@ try {
         --onedir `
         --windowed `
         --name TrafficCrashNotebook `
+        --splash "$ProjectRoot\assets\windows\TrafficCrashNotebookSplash.png" `
         --icon "$ProjectRoot\assets\windows\TrafficCrashNotebook.ico" `
         --manifest "$ProjectRoot\assets\windows\TrafficCrashNotebook.manifest" `
         --distpath "$PortableDistRoot" `

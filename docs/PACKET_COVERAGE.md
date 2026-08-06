@@ -30,21 +30,23 @@ presentation controls.
 
 ## Page-by-page coverage
 
-| Page(s) | Packet section | Required semantic data | v0.5.4 implementation |
+| Page(s) | Packet section | Required semantic data | v0.5.5 implementation |
 |---|---|---|---|
-| 1 | Packet cover | Case number, crash date/time/location/status, assigned investigator, DPSST, assignment, calculated people/vehicle/injury/fatal/VRU/Journal/task totals, peer and MCT sergeant review, DA submission, assigned DDA, DA case number, summary, and writable routing notes | Complete as a dedicated first page in the full and compact packet PDFs |
-| 2 | Investigative checklist | Evidence collection, vehicle work, crash-diagram completion, Axon sharing, dated peer review, sergeant review, and DA submission milestones, assigned DDA, DA case number, unlimited charge/disposition rows | Complete |
+| 1 | Packet cover | Case number, crash date/time/location/status, assigned investigator, DPSST, assignment, calculated people/vehicle/injury/fatal/VRU/Journal/task totals, peer and MCT sergeant review, DA submission, assigned DDA, DA case number, court case number, summary, and writable routing notes | Complete as a dedicated first page in the full and compact packet PDFs |
+| 2 | Investigative checklist | Evidence collection, vehicle work, crash-diagram completion, Axon sharing, dated peer review, sergeant review, and DA submission milestones, assigned DDA, DA case number, court case number, unlimited charge/disposition rows | Complete |
 | 3-4 | Investigative journal | Unlimited dated/timed journal entries with category, summary, and detail | Complete |
+| Generated continuation | Evidence | Unlimited property receipts with owner, Evidence/Found Property/Prison Property/Safe Keeping classification, lodging location/date, and unlimited numbered descriptive items | Complete |
+| Generated continuation | Tasks | Unlimited open, waiting, completed, and not-needed investigative tasks with category, due/completed dates, and notes | Complete |
 | 5 | Crash information | Date/day/time, city/county, road and intersection, coordinates, road jurisdiction, calculated participant/vehicle/fatal/VRU counts, team notification and response times, scene personnel, evidence/media methods, unlimited video sources with location address and Axon upload status | Complete; counts are calculated from shared records |
 | 6 | Road and weather | Compact weather entry with station and reading time plus automatic F, mph, percent, inHg, and inch display units; a dedicated Surface subtab with unlimited add/edit/remove records for roadway/location, composition, condition, friction/drag factor, and notes; ambient lighting, sunrise/sunset, morning/evening civil twilight, moonrise/moonset/phase, streetlight status and notes, visual obstructions, area classifications, unlimited roadway records with per-roadway speed posting, curve values, characteristics and traffic controls, initial point of collision, skid/drag notes | Complete |
 | 7 | VRU visibility | Clothing, roadway position/motion, projection classifications, sightlines, driver/VRU impairment and sleep, impact location, travel speeds/directions, throw distances, and light-meter/light-board use | Complete |
-| 8 | Background information | Participant/type link, trip, physical conditions, impairment/testing, sleep/work history, familiarity, driving history, license restrictions/explanation, endorsements, and license data | Complete |
-| 9 | Participant data | Gender, race, DOB, vehicle/position/type, injury status, height/weight, transport, medical records, restraint/airbag/ejection/extraction, autopsy/death/NOK, coded injuries, hospital, structured evidence collection, laboratory details | Complete |
+| 8 | Background information | Participant/type link, trip, physical conditions, impairment/testing, sleep/work history, familiarity, driving history, and license number/state/class/status/issued/expiration/endorsements/restrictions/explanation; non-driver packet backgrounds suppress driver-only physical-condition and sleep/awake output | Complete |
+| 9 | Participant data | Gender, race, DOB, vehicle/position/type, injury status, height/weight, transport, medical records, restraint/airbag/ejection/extraction, autopsy/death/NOK, coded injuries, hospital, structured evidence collection, laboratory details; deceased people are visibly identified in red in the People list Roles column | Complete |
 | 10 | Contacts | Participant identity, street/city/state/ZIP address, occupation, and business address plus unlimited participant, family, insurer, adjuster, attorney, employer, medical, and other contacts with separate phone types | Complete |
-| 11 | Vehicle information 1 | Identity/owner, mileage, transmission/gear/steering, weights, brakes, per-vehicle NHTSA recall-check confirmation plus recall results, NICB/VIN checks, detailed lighting/electrical states, switches, lens/wiper/horn/device observations, glass/mirrors/windows/restraints/airbags/body condition, EDR, insurance, explicit towing status and destination, per-vehicle release status/date/information, notes | Complete |
+| 11 | Vehicle information 1 | Identity/owner, mileage, transmission/gear/steering, weights, brakes, per-vehicle NHTSA recall-check confirmation plus recall results, NICB/VIN checks, detailed lighting/electrical states, switches, lens/wiper/horn/device observations, glass/mirrors/windows/restraints/airbags/body condition, EDR, insurance company/policy, claim number, adjuster name/phone/email, explicit towing status and destination, per-vehicle release status/date/information, notes | Complete |
 | 12 | Vehicle information 2 | Tire contribution and explanation, unlimited tires including inner duals, make/design/size/pressure/tread, per-position condition, damage description | Complete |
 | 14-15 | Motorcycle information and inspection | Motorcycle identifiers, frame/engine and inspection metadata, 44 rated inspection items, item-specific measurements, detailed comments, officer/DPSST/location/date | Complete |
-| 19 | At-scene witness list | Unlimited witnesses, identity/address/city/state/ZIP, separate cell/home/work phones, interviewed status, significance, and interview detail | Complete |
+| 19 | At-scene witness list | Unlimited witnesses, identity/address/city/state/ZIP, separate cell/home/work phones, interviewed status, significance, and interview detail | Complete; packet omits Occupation and Follow-up and gives Significance a full-width row |
 
 ## Cross-record rules
 
@@ -55,8 +57,8 @@ presentation controls.
   directly to one person.
 - Counts on crash information and PDF output are calculated from saved records.
 - Case number and other shared case values populate every applicable PDF page.
-- People, vehicles, witnesses, contacts, journal entries, charges, video
-  sources, and tires are not limited by paper row
+- People, vehicles, witnesses, contacts, evidence receipts and their items,
+  tasks, journal entries, charges, video sources, and tires are not limited by paper row
   counts.
 - The exchange report reuses shared person, driver-license, vehicle, and
   insurance records. It prints three vehicles and four passengers/witnesses per

@@ -6,12 +6,14 @@ import sqlite3
 import subprocess
 import sys
 import uuid
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import (
     QBuffer,
     QByteArray,
+    QDir,
     QIODevice,
     QTemporaryDir,
     Qt,
@@ -132,6 +134,8 @@ from .dialogs import (
     MotorcycleInspectionDialog,
     ParticipantDetailsDialog,
     PersonDialog,
+    PropertyReceiptDialog,
+    PropertyReceiptItemDialog,
     RoadwayDialog,
     SurfaceObservationDialog,
     TaskDialog,
@@ -144,6 +148,9 @@ from .dialogs import (
 from .spellcheck_text_edit import SpellCheckedTextEdit
 from .storage_setup import run_storage_setup
 from .update_support import UpdateCheckThread, UpdateDownloadThread
+
+
+WEATHER_HISTORY_URL = "https://www.wunderground.com/history"
 
 
 APP_STYLE = """
@@ -320,7 +327,10 @@ class MainWindow(QMainWindow):
         self.crash_details: CrashDetails | None = None
         self.hit_run_overview: HitRunOverview | None = None
         self.packet_preview_directory = QTemporaryDir(
-            "TrafficCrashNotebook-packet-preview-XXXXXX"
+            str(
+                Path(QDir.tempPath())
+                / "TrafficCrashNotebook-packet-preview-XXXXXX"
+            )
         )
         if not self.packet_preview_directory.isValid():
             raise RuntimeError("Unable to create the case-packet preview folder.")
@@ -330,7 +340,10 @@ class MainWindow(QMainWindow):
             self.packet_preview_directory.path()
         ) / "Traffic_Crash_Case_Packet_Preview_000000.pdf"
         self.exchange_preview_directory = QTemporaryDir(
-            "TrafficCrashNotebook-exchange-preview-XXXXXX"
+            str(
+                Path(QDir.tempPath())
+                / "TrafficCrashNotebook-exchange-preview-XXXXXX"
+            )
         )
         if not self.exchange_preview_directory.isValid():
             raise RuntimeError("Unable to create the exchange-report preview folder.")
@@ -474,6 +487,14 @@ class MainWindow(QMainWindow):
         self.counts_label = QLabel()
         self.counts_label.setStyleSheet("color: #5d6870; font-weight: 600;")
         header.addWidget(self.counts_label)
+        self.packet_preview_button = _button(
+            "Packet Preview",
+            self.show_packet_preview,
+        )
+        self.packet_preview_button.setToolTip(
+            "Open the full or compact case-packet preview, printing, and PDF export workspace"
+        )
+        header.addWidget(self.packet_preview_button)
         self.settings_button = _button(
             "Settings",
             self.show_settings,
@@ -491,24 +512,22 @@ class MainWindow(QMainWindow):
         self.about_button.setToolTip("Show the exact version, build date, and executable location")
         header.addWidget(self.about_button)
         layout.addLayout(header)
+        self.packet_preview_dialog = self._build_packet_preview_dialog()
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_overview_tab(), "Overview")
         self.tabs.addTab(self._build_packet_tab(), "Packet")
-        self.packet_preview_tab_index = self.tabs.addTab(
-            self._build_packet_preview_tab(),
-            "Packet Preview",
-        )
         self.tabs.addTab(self._build_conditions_tab(), "Road / Weather")
         self.tabs.addTab(self._build_people_tab(), "People")
         self.tabs.addTab(self._build_vehicles_tab(), "Vehicles")
+        self.tabs.addTab(self._build_hit_run_tab(), "Hit & Run")
+        self.tabs.addTab(self._build_vru_tab(), "VRU Analysis")
+        self.tabs.addTab(self._build_evidence_tab(), "Evidence")
+        self.tabs.addTab(self._build_tasks_tab(), "Tasks")
+        self.tabs.addTab(self._build_chronology_tab(), "Journal")
         self.exchange_report_tab_index = self.tabs.addTab(
             self._build_exchange_report_tab(),
             "Exchange Report",
         )
-        self.tabs.addTab(self._build_hit_run_tab(), "Hit & Run")
-        self.tabs.addTab(self._build_vru_tab(), "VRU Analysis")
-        self.tabs.addTab(self._build_chronology_tab(), "Journal")
-        self.tabs.addTab(self._build_tasks_tab(), "Tasks / Evidence")
         self.tabs.currentChanged.connect(self._case_tab_changed)
         layout.addWidget(self.tabs, 1)
         return container
@@ -632,6 +651,7 @@ class MainWindow(QMainWindow):
         for name, label, placeholder in (
             ("assigned_dda", "Assigned DDA", ""),
             ("da_case_number", "DA case number", ""),
+            ("court_case_number", "Court case number", ""),
         ):
             widget = QLineEdit()
             widget.setPlaceholderText(placeholder)
@@ -773,6 +793,27 @@ class MainWindow(QMainWindow):
         weather_layout = QVBoxLayout(weather)
         weather_layout.setContentsMargins(10, 10, 10, 10)
         weather_layout.setSpacing(6)
+        weather_source_row = QHBoxLayout()
+        weather_source_row.addWidget(QLabel("Historical weather source:"))
+        self.weather_history_link = QLabel(
+            f'<a href="{WEATHER_HISTORY_URL}">'
+            "Open Weather Underground History</a>"
+        )
+        self.weather_history_link.setObjectName("weather_history_link")
+        self.weather_history_link.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextBrowserInteraction
+        )
+        self.weather_history_link.setOpenExternalLinks(False)
+        self.weather_history_link.setToolTip(
+            "Opens the fixed Weather Underground history page in the default browser; "
+            "no case information is included in the link."
+        )
+        self.weather_history_link.linkActivated.connect(
+            self.open_weather_history
+        )
+        weather_source_row.addWidget(self.weather_history_link)
+        weather_source_row.addStretch(1)
+        weather_layout.addLayout(weather_source_row)
         self.weather_fields_grid = QGridLayout()
         self.weather_fields_grid.setObjectName("weather_fields_grid")
         self.weather_fields_grid.setHorizontalSpacing(10)
@@ -1016,7 +1057,7 @@ class MainWindow(QMainWindow):
                 "Vehicle Workflow",
                 "Towing",
                 "Release",
-                "Insurance",
+                "Insurance / Claim",
                 "Damage / Notes",
             ],
             self.add_vehicle, self.edit_vehicle, self.delete_vehicle,
@@ -1032,10 +1073,23 @@ class MainWindow(QMainWindow):
         self.vehicles_table.setColumnWidth(4, 230)
         self.vehicles_table.setColumnWidth(5, 220)
         self.vehicles_table.setColumnWidth(6, 250)
-        self.vehicles_table.setColumnWidth(7, 180)
+        self.vehicles_table.setColumnWidth(7, 280)
         return tab
 
-    def _build_packet_preview_tab(self) -> QWidget:
+    def _build_packet_preview_dialog(self) -> QDialog:
+        dialog = QDialog(self)
+        dialog.setObjectName("packetPreviewDialog")
+        dialog.setWindowTitle("Case Packet Preview")
+        dialog.setModal(False)
+        dialog.setMinimumSize(760, 540)
+        dialog.resize(1100, 800)
+        dialog.setSizeGripEnabled(True)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._build_packet_preview_panel())
+        return dialog
+
+    def _build_packet_preview_panel(self) -> QWidget:
         container = QWidget()
         layout = QVBoxLayout(container)
         title = QLabel("Case Packet Preview")
@@ -1081,7 +1135,9 @@ class MainWindow(QMainWindow):
         actions.addStretch(1)
         layout.addLayout(actions)
 
-        self.packet_preview_status = QLabel("Open this tab or choose Refresh Preview.")
+        self.packet_preview_status = QLabel(
+            "Open Packet Preview from the case header or choose Refresh Preview."
+        )
         self.packet_preview_status.setStyleSheet("color: #5d6870;")
         layout.addWidget(self.packet_preview_status)
 
@@ -1317,9 +1373,125 @@ class MainWindow(QMainWindow):
         self.chronology_table.setColumnWidth(3, 260)
         return tab
 
+    def _build_evidence_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        guidance = QLabel(
+            "Create a property receipt, record how and where it was lodged, then "
+            "add each evidence or property item under that receipt."
+        )
+        guidance.setObjectName("evidence_guidance")
+        guidance.setWordWrap(True)
+        layout.addWidget(guidance)
+
+        receipts_group = QGroupBox("Property receipts")
+        receipts_layout = QVBoxLayout(receipts_group)
+        receipt_buttons = QHBoxLayout()
+        receipt_buttons.addWidget(
+            _button("Add Property Receipt", self.add_property_receipt)
+        )
+        receipt_buttons.addWidget(
+            _button(
+                "Edit Property Receipt",
+                self.edit_property_receipt,
+                secondary=True,
+            )
+        )
+        receipt_buttons.addWidget(
+            _button(
+                "Remove Property Receipt",
+                self.delete_property_receipt,
+                secondary=True,
+            )
+        )
+        receipt_buttons.addStretch(1)
+        receipts_layout.addLayout(receipt_buttons)
+        self.property_receipts_table = QTableWidget(0, 5)
+        self.property_receipts_table.setObjectName("property_receipts_table")
+        self.property_receipts_table.setHorizontalHeaderLabels(
+            ["Receipt #", "Property Owner", "Lodged Under", "Lodged At", "Date"]
+        )
+        self.property_receipts_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.property_receipts_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.property_receipts_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.property_receipts_table.verticalHeader().setVisible(False)
+        self.property_receipts_table.horizontalHeader().setStretchLastSection(True)
+        self.property_receipts_table.setColumnWidth(0, 140)
+        self.property_receipts_table.setColumnWidth(1, 190)
+        self.property_receipts_table.setColumnWidth(2, 130)
+        self.property_receipts_table.setColumnWidth(3, 210)
+        self.property_receipts_table.doubleClicked.connect(
+            self.edit_property_receipt
+        )
+        self.property_receipts_table.currentCellChanged.connect(
+            self.refresh_property_receipt_items
+        )
+        receipts_layout.addWidget(self.property_receipts_table, 1)
+        layout.addWidget(receipts_group, 1)
+
+        self.property_receipt_items_group = QGroupBox(
+            "Items on selected property receipt"
+        )
+        items_layout = QVBoxLayout(self.property_receipt_items_group)
+        item_buttons = QHBoxLayout()
+        self.add_property_receipt_item_button = _button(
+            "Add Item",
+            self.add_property_receipt_item,
+        )
+        self.edit_property_receipt_item_button = _button(
+            "Edit Item",
+            self.edit_property_receipt_item,
+            secondary=True,
+        )
+        self.delete_property_receipt_item_button = _button(
+            "Remove Item",
+            self.delete_property_receipt_item,
+            secondary=True,
+        )
+        for button in (
+            self.add_property_receipt_item_button,
+            self.edit_property_receipt_item_button,
+            self.delete_property_receipt_item_button,
+        ):
+            button.setEnabled(False)
+            item_buttons.addWidget(button)
+        item_buttons.addStretch(1)
+        items_layout.addLayout(item_buttons)
+        self.property_receipt_items_table = QTableWidget(0, 2)
+        self.property_receipt_items_table.setObjectName(
+            "property_receipt_items_table"
+        )
+        self.property_receipt_items_table.setHorizontalHeaderLabels(
+            ["Item #", "Description"]
+        )
+        self.property_receipt_items_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.property_receipt_items_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.property_receipt_items_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.property_receipt_items_table.verticalHeader().setVisible(False)
+        self.property_receipt_items_table.horizontalHeader().setStretchLastSection(True)
+        self.property_receipt_items_table.setColumnWidth(0, 85)
+        self.property_receipt_items_table.doubleClicked.connect(
+            self.edit_property_receipt_item
+        )
+        items_layout.addWidget(self.property_receipt_items_table, 1)
+        layout.addWidget(self.property_receipt_items_group, 1)
+        return tab
+
     def _build_tasks_tab(self):
         tab, self.tasks_table = self._table_tab(
-            ["Status", "Category", "Task / Evidence", "Due", "Notes"],
+            ["Status", "Category", "Task", "Due", "Notes"],
             self.add_task, self.edit_task, self.delete_task,
         )
         self.tasks_table.setColumnWidth(0, 100)
@@ -1676,6 +1848,7 @@ class MainWindow(QMainWindow):
         self.refresh_hit_run_person_leads()
         self.refresh_contacts()
         self.refresh_vru_analyses()
+        self.refresh_property_receipts()
         self.refresh_chronology()
         self.refresh_tasks()
         self._update_header()
@@ -2019,9 +2192,27 @@ class MainWindow(QMainWindow):
                 for attribute, label in VEHICLE_WORKFLOW_FIELDS
                 if getattr(v, attribute)
             )
-            insurance = " / ".join(value for value in (
-                v.insurance_company or v.insurance,
-                v.insurance_policy_number,
+            insurance = "\n".join(value for value in (
+                " / ".join(value for value in (
+                    v.insurance_company or v.insurance,
+                    v.insurance_policy_number,
+                ) if value),
+                (
+                    f"Claim: {v.insurance_claim_number}"
+                    if v.insurance_claim_number else ""
+                ),
+                (
+                    f"Adjuster: {v.insurance_adjuster_name}"
+                    if v.insurance_adjuster_name else ""
+                ),
+                (
+                    f"Adjuster phone: {v.insurance_adjuster_phone}"
+                    if v.insurance_adjuster_phone else ""
+                ),
+                (
+                    f"Adjuster email: {v.insurance_adjuster_email}"
+                    if v.insurance_adjuster_email else ""
+                ),
             ) if value)
             release = " - ".join(value for value in (
                 "Released" if v.released else "",
@@ -2122,8 +2313,6 @@ class MainWindow(QMainWindow):
             return
         if self.current_case and not self.save_overview():
             return
-        if index == self.packet_preview_tab_index:
-            self.refresh_case_packet_preview(force_preview=True)
         if index == self.exchange_report_tab_index:
             self.refresh_exchange_report(force_preview=True)
 
@@ -2140,6 +2329,21 @@ class MainWindow(QMainWindow):
             export_case_pdf,
         )
 
+    def show_packet_preview(self) -> None:
+        if not self.current_case:
+            QMessageBox.information(
+                self,
+                "Case Packet Preview",
+                "Select or create a case before opening the packet preview.",
+            )
+            return
+        if not self.save_overview():
+            return
+        self.packet_preview_dialog.show()
+        self.packet_preview_dialog.raise_()
+        self.packet_preview_dialog.activateWindow()
+        self.refresh_case_packet_preview(force_preview=True)
+
     def preview_case_packet(self, *_args) -> None:
         if not self.current_case or not self.save_overview():
             return
@@ -2153,8 +2357,8 @@ class MainWindow(QMainWindow):
         if not self.current_case:
             return
         preview_is_visible = (
-            hasattr(self, "tabs")
-            and self.tabs.currentIndex() == self.packet_preview_tab_index
+            hasattr(self, "packet_preview_dialog")
+            and self.packet_preview_dialog.isVisible()
         )
         if not force_preview and not preview_is_visible:
             return
@@ -2995,6 +3199,167 @@ class MainWindow(QMainWindow):
             self.repository.delete_vru_analysis(analysis_id)
             self.refresh_vru_analyses()
 
+    def refresh_property_receipts(
+        self,
+        selected_receipt_id: str | None = None,
+    ) -> None:
+        if not self.current_case:
+            return
+        selected_receipt_id = (
+            selected_receipt_id
+            or self._selected_id(self.property_receipts_table)
+        )
+        receipts = self.repository.list_property_receipts(self.current_case.id)
+        self._populate_table(
+            self.property_receipts_table,
+            [
+                (
+                    receipt.id,
+                    [
+                        receipt.receipt_number,
+                        receipt.property_owner,
+                        receipt.lodging_type,
+                        receipt.lodged_location,
+                        format_date_for_display(receipt.lodged_date),
+                    ],
+                )
+                for receipt in receipts
+            ],
+        )
+        target_row = 0 if receipts else -1
+        if selected_receipt_id:
+            for row in range(self.property_receipts_table.rowCount()):
+                item = self.property_receipts_table.item(row, 0)
+                if (
+                    item
+                    and item.data(Qt.ItemDataRole.UserRole)
+                    == selected_receipt_id
+                ):
+                    target_row = row
+                    break
+        if target_row >= 0:
+            self.property_receipts_table.setCurrentCell(target_row, 0)
+        else:
+            self.property_receipts_table.clearSelection()
+            self.refresh_property_receipt_items()
+
+    def refresh_property_receipt_items(self, *_args) -> None:
+        receipt_id = self._selected_id(self.property_receipts_table)
+        has_receipt = bool(receipt_id)
+        for button in (
+            self.add_property_receipt_item_button,
+            self.edit_property_receipt_item_button,
+            self.delete_property_receipt_item_button,
+        ):
+            button.setEnabled(has_receipt)
+        if not receipt_id:
+            self.property_receipt_items_group.setTitle(
+                "Items on selected property receipt"
+            )
+            self._populate_table(self.property_receipt_items_table, [])
+            return
+        receipt = self.repository.get_property_receipt(receipt_id)
+        receipt_label = receipt.receipt_number if receipt else "selected receipt"
+        self.property_receipt_items_group.setTitle(
+            f"Items on property receipt {receipt_label}"
+        )
+        self._populate_table(
+            self.property_receipt_items_table,
+            [
+                (item.id, [str(item.item_number), item.description])
+                for item in self.repository.list_property_receipt_items(receipt_id)
+            ],
+        )
+
+    def add_property_receipt(self) -> None:
+        if not self.current_case:
+            return
+        dialog = PropertyReceiptDialog(self.current_case.id, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            receipt = self.repository.save_property_receipt(
+                dialog.result_record()
+            )
+            self.refresh_property_receipts(receipt.id)
+            self.refresh_case_packet_preview()
+
+    def edit_property_receipt(self, *_args) -> None:
+        receipt_id = self._selected_id(self.property_receipts_table)
+        if not receipt_id:
+            return
+        receipt = self.repository.get_property_receipt(receipt_id)
+        if not receipt:
+            return
+        dialog = PropertyReceiptDialog(receipt.case_id, receipt, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            saved = self.repository.save_property_receipt(dialog.result_record())
+            self.refresh_property_receipts(saved.id)
+            self.refresh_case_packet_preview()
+
+    def delete_property_receipt(self) -> None:
+        receipt_id = self._selected_id(self.property_receipts_table)
+        if receipt_id and self._confirm_remove(
+            "Remove this property receipt and all of its items?"
+        ):
+            self.repository.delete_property_receipt(receipt_id)
+            self.refresh_property_receipts()
+            self.refresh_case_packet_preview()
+
+    def add_property_receipt_item(self) -> None:
+        receipt_id = self._selected_id(self.property_receipts_table)
+        if not receipt_id:
+            return
+        next_number = self.repository.next_property_receipt_item_number(
+            receipt_id
+        )
+        dialog = PropertyReceiptItemDialog(
+            receipt_id,
+            next_number,
+            parent=self,
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            try:
+                self.repository.save_property_receipt_item(
+                    dialog.result_record()
+                )
+            except ValueError as error:
+                QMessageBox.warning(self, "Property item not saved", str(error))
+                return
+            self.refresh_property_receipt_items()
+            self.refresh_case_packet_preview()
+
+    def edit_property_receipt_item(self, *_args) -> None:
+        item_id = self._selected_id(self.property_receipt_items_table)
+        if not item_id:
+            return
+        item = self.repository.get_property_receipt_item(item_id)
+        if not item:
+            return
+        dialog = PropertyReceiptItemDialog(
+            item.receipt_id,
+            item.item_number,
+            item,
+            self,
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            try:
+                self.repository.save_property_receipt_item(
+                    dialog.result_record()
+                )
+            except ValueError as error:
+                QMessageBox.warning(self, "Property item not saved", str(error))
+                return
+            self.refresh_property_receipt_items()
+            self.refresh_case_packet_preview()
+
+    def delete_property_receipt_item(self) -> None:
+        item_id = self._selected_id(self.property_receipt_items_table)
+        if item_id and self._confirm_remove(
+            "Remove this item from the property receipt?"
+        ):
+            self.repository.delete_property_receipt_item(item_id)
+            self.refresh_property_receipt_items()
+            self.refresh_case_packet_preview()
+
     def refresh_chronology(self) -> None:
         if not self.current_case:
             return
@@ -3449,6 +3814,16 @@ class MainWindow(QMainWindow):
             QUrl.fromLocalFile(str(self.repository.database_path.parent))
         )
 
+    def open_weather_history(self, *_args) -> None:
+        if QDesktopServices.openUrl(QUrl(WEATHER_HISTORY_URL)):
+            return
+        QMessageBox.warning(
+            self,
+            "Unable to open weather history",
+            "Traffic Crash Notebook could not open the default browser. "
+            f"Open this address manually:\n\n{WEATHER_HISTORY_URL}",
+        )
+
     def _storage_subdirectory(self, name: str) -> Path | None:
         path = self.repository.database_path.parent / name
         try:
@@ -3775,9 +4150,15 @@ class MainWindow(QMainWindow):
         event.accept()
 
 
-def run(repository: CaseRepository) -> int:
+def run(
+    repository: CaseRepository,
+    on_ready: Callable[[], object] | None = None,
+) -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     configure_application(app)
     window = MainWindow(repository)
     window.show()
+    app.processEvents()
+    if on_ready is not None:
+        on_ready()
     return app.exec()

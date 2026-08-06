@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtCore import Qt
@@ -280,7 +281,10 @@ def run_storage_setup(
     return wizard.selected_config
 
 
-def ensure_startup_storage(parent=None) -> StorageConfig | None:
+def ensure_startup_storage(
+    parent=None,
+    before_user_prompt: Callable[[], object] | None = None,
+) -> StorageConfig | None:
     override = os.environ.get("TCN_DATA_DIR")
     if override:
         selected = validate_storage_directory(override)
@@ -291,6 +295,8 @@ def ensure_startup_storage(parent=None) -> StorageConfig | None:
     try:
         config = load_storage_config()
     except StorageConfigurationError as error:
+        if before_user_prompt is not None:
+            before_user_prompt()
         QMessageBox.warning(
             parent,
             "Storage configuration needs attention",
@@ -306,6 +312,8 @@ def ensure_startup_storage(parent=None) -> StorageConfig | None:
             if Path("K:/").is_dir()
             else recommended_documents_directory()
         )
+        if before_user_prompt is not None:
+            before_user_prompt()
         return run_storage_setup(
             current_directory=recommended,
             source_database=legacy_database if legacy_database.is_file() else None,
@@ -319,6 +327,8 @@ def ensure_startup_storage(parent=None) -> StorageConfig | None:
             (selected / "Backups").mkdir(parents=True, exist_ok=True)
             return config
         except (StorageValidationError, OSError) as error:
+            if before_user_prompt is not None:
+                before_user_prompt()
             message = QMessageBox(parent)
             message.setIcon(QMessageBox.Icon.Critical)
             message.setWindowTitle("Configured data folder is unavailable")

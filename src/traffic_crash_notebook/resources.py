@@ -19,6 +19,10 @@ def app_icon_path() -> Path:
     return resource_path("assets/windows/TrafficCrashNotebook.png")
 
 
+def startup_splash_path() -> Path:
+    return resource_path("assets/windows/TrafficCrashNotebookSplash.png")
+
+
 def windows_executable_icon_path() -> Path:
     return resource_path("assets/windows/TrafficCrashNotebook.ico")
 

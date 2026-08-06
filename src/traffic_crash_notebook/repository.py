@@ -27,6 +27,8 @@ from .models import (
     InvestigativeChecklist,
     ParticipantDetails,
     Person,
+    PropertyReceipt,
+    PropertyReceiptItem,
     RoadConditions,
     RoadwayRecord,
     MotorcycleInspection,
@@ -55,7 +57,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 28
 
 
 SCHEMA = """
@@ -132,6 +134,10 @@ CREATE TABLE IF NOT EXISTS vehicles (
     insurance TEXT NOT NULL DEFAULT '',
     insurance_company TEXT NOT NULL DEFAULT '',
     insurance_policy_number TEXT NOT NULL DEFAULT '',
+    insurance_claim_number TEXT NOT NULL DEFAULT '',
+    insurance_adjuster_name TEXT NOT NULL DEFAULT '',
+    insurance_adjuster_phone TEXT NOT NULL DEFAULT '',
+    insurance_adjuster_email TEXT NOT NULL DEFAULT '',
     property_damage TEXT NOT NULL DEFAULT '',
     towed INTEGER NOT NULL DEFAULT 0,
     tow_information TEXT NOT NULL DEFAULT '',
@@ -349,8 +355,9 @@ CREATE TABLE IF NOT EXISTS driver_profiles (
     license_restricted TEXT NOT NULL DEFAULT 'Unknown',
     license_restriction_explanation TEXT NOT NULL DEFAULT '',
     license_number TEXT NOT NULL DEFAULT '', license_state TEXT NOT NULL DEFAULT '',
-    license_class TEXT NOT NULL DEFAULT '', endorsements TEXT NOT NULL DEFAULT '',
-    license_status TEXT NOT NULL DEFAULT '',
+    license_class TEXT NOT NULL DEFAULT '', license_status TEXT NOT NULL DEFAULT '',
+    license_issued_date TEXT NOT NULL DEFAULT '',
+    license_expiration_date TEXT NOT NULL DEFAULT '', endorsements TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
 );
 
@@ -477,7 +484,30 @@ CREATE TABLE IF NOT EXISTS investigative_checklists (
     submitted_to_da_date TEXT NOT NULL DEFAULT '',
     assigned_dda TEXT NOT NULL DEFAULT '',
     da_case_number TEXT NOT NULL DEFAULT '',
+    court_case_number TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS property_receipts (
+    id TEXT PRIMARY KEY,
+    case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
+    receipt_number TEXT NOT NULL DEFAULT '',
+    property_owner TEXT NOT NULL DEFAULT '',
+    lodging_type TEXT NOT NULL DEFAULT 'Evidence',
+    lodged_location TEXT NOT NULL DEFAULT '',
+    lodged_date TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS property_receipt_items (
+    id TEXT PRIMARY KEY,
+    receipt_id TEXT NOT NULL REFERENCES property_receipts(id) ON DELETE CASCADE,
+    item_number INTEGER NOT NULL DEFAULT 1 CHECK (item_number > 0),
+    description TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (receipt_id, item_number)
 );
 
 CREATE TABLE IF NOT EXISTS charge_dispositions (
@@ -557,6 +587,10 @@ CREATE INDEX IF NOT EXISTS idx_people_case ON people(case_id);
 CREATE INDEX IF NOT EXISTS idx_vehicles_case ON vehicles(case_id);
 CREATE INDEX IF NOT EXISTS idx_chronology_case ON chronology(case_id, event_date, event_time);
 CREATE INDEX IF NOT EXISTS idx_tasks_case ON tasks(case_id, status, sort_order);
+CREATE INDEX IF NOT EXISTS idx_property_receipts_case
+    ON property_receipts(case_id, receipt_number, created_at);
+CREATE INDEX IF NOT EXISTS idx_property_receipt_items_receipt
+    ON property_receipt_items(receipt_id, item_number, created_at);
 CREATE INDEX IF NOT EXISTS idx_tires_vehicle ON tire_inspections(vehicle_id, position);
 CREATE INDEX IF NOT EXISTS idx_contacts_case ON contact_relationships(case_id, contact_type);
 CREATE INDEX IF NOT EXISTS idx_vru_case ON vru_analyses(case_id, created_at);
@@ -572,7 +606,7 @@ CREATE INDEX IF NOT EXISTS idx_hit_run_evidence_case
     ON hit_run_evidence_items(case_id, evidence_number, created_at);
 CREATE INDEX IF NOT EXISTS idx_hit_run_person_leads_case
     ON hit_run_person_leads(case_id, lead_number, created_at);
-PRAGMA user_version = 24;
+PRAGMA user_version = 28;
 """
 
 
@@ -598,10 +632,10 @@ class CaseRepository:
         with self._connect() as connection:
             previous_version = connection.execute("PRAGMA user_version").fetchone()[0]
             connection.executescript(SCHEMA)
-            self._migrate_schema_24(connection, previous_version)
+            self._migrate_schema_28(connection, previous_version)
 
     @staticmethod
-    def _migrate_schema_24(
+    def _migrate_schema_28(
         connection: sqlite3.Connection,
         previous_version: int,
     ) -> None:
@@ -617,6 +651,10 @@ class CaseRepository:
             "vehicles": {
                 "insurance_company": "TEXT NOT NULL DEFAULT ''",
                 "insurance_policy_number": "TEXT NOT NULL DEFAULT ''",
+                "insurance_claim_number": "TEXT NOT NULL DEFAULT ''",
+                "insurance_adjuster_name": "TEXT NOT NULL DEFAULT ''",
+                "insurance_adjuster_phone": "TEXT NOT NULL DEFAULT ''",
+                "insurance_adjuster_email": "TEXT NOT NULL DEFAULT ''",
                 "body_style": "TEXT NOT NULL DEFAULT ''",
                 "property_damage": "TEXT NOT NULL DEFAULT ''",
                 "towed": "INTEGER NOT NULL DEFAULT 0",
@@ -664,6 +702,8 @@ class CaseRepository:
                 "license_restricted": "TEXT NOT NULL DEFAULT 'Unknown'",
                 "license_restriction_explanation": "TEXT NOT NULL DEFAULT ''",
                 "endorsements": "TEXT NOT NULL DEFAULT ''",
+                "license_issued_date": "TEXT NOT NULL DEFAULT ''",
+                "license_expiration_date": "TEXT NOT NULL DEFAULT ''",
             },
             "contact_relationships": {
                 "cell_phone": "TEXT NOT NULL DEFAULT ''",
@@ -682,6 +722,7 @@ class CaseRepository:
             "investigative_checklists": {
                 "peer_review_date": "TEXT NOT NULL DEFAULT ''",
                 "sergeant_review_date": "TEXT NOT NULL DEFAULT ''",
+                "court_case_number": "TEXT NOT NULL DEFAULT ''",
             },
             "vehicle_inspections": {
                 "nicb_status": "TEXT NOT NULL DEFAULT ''",
@@ -924,7 +965,7 @@ class CaseRepository:
                 )
                 """
             )
-        connection.execute("PRAGMA user_version = 24")
+        connection.execute("PRAGMA user_version = 28")
 
     def get_user_defaults(self) -> UserDefaults:
         with self._connect() as connection:
@@ -1109,15 +1150,21 @@ class CaseRepository:
                 """INSERT INTO vehicles
                 (id, case_id, vehicle_number, year, make, model, body_style, color, vin, plate, plate_state,
                  owner_person_id, driver_person_id, insurance, insurance_company,
-                 insurance_policy_number, property_damage, towed, tow_information, edr_status,
+                 insurance_policy_number, insurance_claim_number,
+                 insurance_adjuster_name, insurance_adjuster_phone,
+                 insurance_adjuster_email, property_damage, towed,
+                 tow_information, edr_status,
                  warrant_obtained,
                  vehicle_inspection_completed, nhtsa_recalls_checked, cdr_equipped, cdr_imaged,
                  cdr_report_uploaded,
                  released, release_date, release_information, damage_notes, notes, created_at, updated_at)
                 VALUES (:id, :case_id, :vehicle_number, :year, :make, :model, :body_style, :color, :vin,
                         :plate, :plate_state, :owner_person_id, :driver_person_id, :insurance,
-                        :insurance_company, :insurance_policy_number, :property_damage, :towed,
-                        :tow_information, :edr_status, :warrant_obtained,
+                        :insurance_company, :insurance_policy_number,
+                        :insurance_claim_number, :insurance_adjuster_name,
+                        :insurance_adjuster_phone, :insurance_adjuster_email,
+                        :property_damage, :towed, :tow_information, :edr_status,
+                        :warrant_obtained,
                         :vehicle_inspection_completed,
                         :nhtsa_recalls_checked, :cdr_equipped, :cdr_imaged, :cdr_report_uploaded,
                         :released, :release_date,
@@ -1130,6 +1177,10 @@ class CaseRepository:
                   owner_person_id=excluded.owner_person_id, driver_person_id=excluded.driver_person_id,
                   insurance=excluded.insurance, insurance_company=excluded.insurance_company,
                   insurance_policy_number=excluded.insurance_policy_number,
+                  insurance_claim_number=excluded.insurance_claim_number,
+                  insurance_adjuster_name=excluded.insurance_adjuster_name,
+                  insurance_adjuster_phone=excluded.insurance_adjuster_phone,
+                  insurance_adjuster_email=excluded.insurance_adjuster_email,
                   property_damage=excluded.property_damage,
                   towed=excluded.towed, tow_information=excluded.tow_information,
                   edr_status=excluded.edr_status,
@@ -1275,6 +1326,97 @@ class CaseRepository:
     def delete_task(self, task_id: str) -> None:
         self._delete_simple("tasks", task_id)
 
+    def save_property_receipt(self, receipt: PropertyReceipt) -> PropertyReceipt:
+        return self._save_simple("property_receipts", receipt)
+
+    def list_property_receipts(self, case_id: str) -> list[PropertyReceipt]:
+        return self._list_simple(
+            "property_receipts",
+            PropertyReceipt,
+            case_id,
+            "receipt_number, created_at",
+        )
+
+    def get_property_receipt(self, receipt_id: str) -> Optional[PropertyReceipt]:
+        return self._get_simple("property_receipts", PropertyReceipt, receipt_id)
+
+    def delete_property_receipt(self, receipt_id: str) -> None:
+        self._delete_simple("property_receipts", receipt_id)
+
+    def next_property_receipt_item_number(self, receipt_id: str) -> int:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT COALESCE(MAX(item_number), 0) + 1 "
+                "FROM property_receipt_items WHERE receipt_id=?",
+                (receipt_id,),
+            ).fetchone()
+        return int(row[0])
+
+    def save_property_receipt_item(
+        self,
+        item: PropertyReceiptItem,
+    ) -> PropertyReceiptItem:
+        if item.item_number < 1:
+            raise ValueError("Property receipt item numbers must be positive.")
+        if not item.id:
+            item.id = new_id()
+        if not item.created_at:
+            item.created_at = utc_now()
+        item.updated_at = utc_now()
+        values = asdict(item)
+        with self._connect() as connection:
+            duplicate = connection.execute(
+                "SELECT id FROM property_receipt_items "
+                "WHERE receipt_id=? AND item_number=? AND id<>?",
+                (item.receipt_id, item.item_number, item.id),
+            ).fetchone()
+            if duplicate:
+                raise ValueError(
+                    f"Item {item.item_number} already exists on this property receipt."
+                )
+            connection.execute(
+                """INSERT INTO property_receipt_items
+                (id, receipt_id, item_number, description, created_at, updated_at)
+                VALUES (:id, :receipt_id, :item_number, :description, :created_at, :updated_at)
+                ON CONFLICT(id) DO UPDATE SET
+                  receipt_id=excluded.receipt_id,
+                  item_number=excluded.item_number,
+                  description=excluded.description,
+                  updated_at=excluded.updated_at""",
+                values,
+            )
+        return item
+
+    def list_property_receipt_items(
+        self,
+        receipt_id: str,
+    ) -> list[PropertyReceiptItem]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT * FROM property_receipt_items "
+                "WHERE receipt_id=? ORDER BY item_number, created_at",
+                (receipt_id,),
+            ).fetchall()
+        return [PropertyReceiptItem(**dict(row)) for row in rows]
+
+    def get_property_receipt_item(
+        self,
+        item_id: str,
+    ) -> Optional[PropertyReceiptItem]:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT * FROM property_receipt_items WHERE id=?",
+                (item_id,),
+            ).fetchone()
+        return PropertyReceiptItem(**dict(row)) if row else None
+
+    def delete_property_receipt_item(self, item_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM property_receipt_items WHERE id=?",
+                (item_id,),
+            )
+
     def get_investigative_checklist(self, case_id: str) -> InvestigativeChecklist:
         with self._connect() as connection:
             row = connection.execute(
@@ -1299,10 +1441,11 @@ class CaseRepository:
             connection.execute(
                 """INSERT INTO investigative_checklists
                 (case_id, completed_items_json, peer_review_date, sergeant_review_date,
-                 submitted_to_da_date, assigned_dda, da_case_number, updated_at)
+                 submitted_to_da_date, assigned_dda, da_case_number, court_case_number,
+                 updated_at)
                 VALUES (:case_id, :completed_items_json, :peer_review_date,
                         :sergeant_review_date, :submitted_to_da_date, :assigned_dda,
-                        :da_case_number, :updated_at)
+                        :da_case_number, :court_case_number, :updated_at)
                 ON CONFLICT(case_id) DO UPDATE SET
                   completed_items_json=excluded.completed_items_json,
                   peer_review_date=excluded.peer_review_date,
@@ -1310,6 +1453,7 @@ class CaseRepository:
                   submitted_to_da_date=excluded.submitted_to_da_date,
                   assigned_dda=excluded.assigned_dda,
                   da_case_number=excluded.da_case_number,
+                  court_case_number=excluded.court_case_number,
                   updated_at=excluded.updated_at""",
                 values,
             )
@@ -1640,7 +1784,7 @@ class CaseRepository:
         return cls(**dict(row)) if row else None
 
     def _save_simple(self, table: str, record: T) -> T:
-        if table not in {"chronology", "tasks", "contact_relationships", "vru_analyses",
+        if table not in {"chronology", "tasks", "property_receipts", "contact_relationships", "vru_analyses",
                          "file_references", "diagram_records", "charge_dispositions",
                          "video_sources", "surface_observations", "roadway_records",
                          "hit_run_vehicle_leads", "hit_run_person_leads",
@@ -1663,7 +1807,7 @@ class CaseRepository:
         return record
 
     def _list_simple(self, table: str, cls: type[T], case_id: str, order_by: str) -> list[T]:
-        if table not in {"chronology", "tasks", "contact_relationships", "vru_analyses",
+        if table not in {"chronology", "tasks", "property_receipts", "contact_relationships", "vru_analyses",
                          "file_references", "diagram_records", "charge_dispositions",
                          "video_sources", "surface_observations", "roadway_records",
                          "hit_run_vehicle_leads", "hit_run_person_leads",
@@ -1676,7 +1820,7 @@ class CaseRepository:
         return [cls(**dict(row)) for row in rows]
 
     def _get_simple(self, table: str, cls: type[T], record_id: str) -> Optional[T]:
-        if table not in {"chronology", "tasks", "contact_relationships", "vru_analyses",
+        if table not in {"chronology", "tasks", "property_receipts", "contact_relationships", "vru_analyses",
                          "file_references", "diagram_records", "charge_dispositions",
                          "video_sources", "surface_observations", "roadway_records",
                          "hit_run_vehicle_leads", "hit_run_person_leads",
@@ -1687,7 +1831,7 @@ class CaseRepository:
         return cls(**dict(row)) if row else None
 
     def _delete_simple(self, table: str, record_id: str) -> None:
-        if table not in {"chronology", "tasks", "contact_relationships", "vru_analyses",
+        if table not in {"chronology", "tasks", "property_receipts", "contact_relationships", "vru_analyses",
                          "file_references", "diagram_records", "charge_dispositions",
                          "video_sources", "surface_observations", "roadway_records",
                          "hit_run_vehicle_leads", "hit_run_person_leads",
@@ -1723,7 +1867,8 @@ class CaseRepository:
                            '', 'unknown', 'not injured', 'uninjured', 'none'
                          )
                          AND lower(pd.injury_status) NOT LIKE '%kill%'
-                         AND lower(pd.injury_status) NOT LIKE '%fatal%'""",
+                         AND lower(pd.injury_status) NOT LIKE '%fatal%'
+                         AND lower(pd.injury_status) NOT LIKE '%deceas%'""",
                     (case_id,),
                 ).fetchone()[0],
                 "fatal": connection.execute(
@@ -1732,6 +1877,7 @@ class CaseRepository:
                        WHERE p.case_id=? AND (
                          lower(pd.injury_status) LIKE '%kill%'
                          OR lower(pd.injury_status) LIKE '%fatal%'
+                         OR lower(pd.injury_status) LIKE '%deceas%'
                          OR trim(pd.date_of_death) <> ''
                        )""",
                     (case_id,),

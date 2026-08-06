@@ -44,6 +44,8 @@ from .models import (
     MotorcycleInspection,
     ParticipantDetails,
     Person,
+    PropertyReceipt,
+    PropertyReceiptItem,
     RoadConditions,
     RoadwayRecord,
     SurfaceObservation,
@@ -56,6 +58,7 @@ from .models import (
     WitnessDetails,
     format_crash_location,
     format_weather_measurement,
+    participant_is_deceased,
     scene_evidence_for_output,
 )
 from .repository import CaseRepository
@@ -68,6 +71,7 @@ PALE_BLUE = colors.HexColor("#EAF2F7")
 GRAY = colors.HexColor("#5D6870")
 LIGHT_GRAY = colors.HexColor("#E4E8EB")
 WARNING = colors.HexColor("#FFF3CD")
+DECEASED_RED = "#B00020"
 
 
 class _PacketCanvas(pdf_canvas.Canvas):
@@ -171,6 +175,11 @@ def export_case_pdf(
     vehicles = repository.list_vehicles(case_id)
     chronology = repository.list_chronology(case_id)
     tasks = repository.list_tasks(case_id)
+    property_receipts = repository.list_property_receipts(case_id)
+    property_receipt_items = {
+        receipt.id: repository.list_property_receipt_items(receipt.id)
+        for receipt in property_receipts
+    }
     conditions = repository.get_road_conditions(case_id)
     surface_observations = repository.list_surface_observations(case_id)
     roadway_records = repository.list_roadway_records(case_id)
@@ -280,7 +289,7 @@ def export_case_pdf(
             ))
 
     if working_copy or people_list:
-        story.extend(_people_section(people_list, styles))
+        story.extend(_people_section(people_list, participant_details, styles))
         if working_copy:
             story.extend(_write_in_area("Additional people / contact updates", styles, lines=12))
 
@@ -314,13 +323,11 @@ def export_case_pdf(
     if witness_contact_story:
         story.append(PageBreak() if working_copy else CondPageBreak(2.5 * inch))
         story.extend(witness_contact_story)
-        if working_copy:
-            story.extend(_write_in_area("Witness / contact follow-up", styles, lines=8))
     elif working_copy:
         story.append(PageBreak())
         story.extend(_empty_working_section(
             "Witness interviews and contacts",
-            "Record newly identified witnesses, interview follow-up, and contact information.",
+            "Record newly identified witnesses, interview information, and contact information.",
             styles,
             lines=9,
         ))
@@ -338,16 +345,28 @@ def export_case_pdf(
             lines=5,
         ))
 
-    if working_copy or chronology or tasks or case.notes:
+    if working_copy or property_receipts or tasks or chronology or case.notes:
         story.append(PageBreak())
+        if working_copy or property_receipts:
+            story.extend(_evidence_section(
+                property_receipts,
+                property_receipt_items,
+                styles,
+            ))
+            if working_copy:
+                story.extend(_write_in_area(
+                    "Evidence receipt / property item continuation",
+                    styles,
+                    lines=6,
+                ))
+        if working_copy or tasks:
+            story.extend(_tasks_section(tasks, styles))
+            if working_copy:
+                story.extend(_write_in_area("Task continuation", styles, lines=6))
         if working_copy or chronology:
             story.extend(_chronology_section(chronology, styles))
             if working_copy:
                 story.extend(_write_in_area("Journal continuation", styles, lines=7))
-        if working_copy or tasks:
-            story.extend(_tasks_section(tasks, styles))
-            if working_copy:
-                story.extend(_write_in_area("Task / evidence-tracking continuation", styles, lines=6))
         if working_copy or case.notes:
             story.extend(_notes_section(case, styles))
             if working_copy:
@@ -434,8 +453,17 @@ def export_case_summary_pdf(
             vehicles,
             styles,
         ))
-    story.extend(_chronology_section(repository.list_chronology(case_id), styles))
+    property_receipts = repository.list_property_receipts(case_id)
+    story.extend(_evidence_section(
+        property_receipts,
+        {
+            receipt.id: repository.list_property_receipt_items(receipt.id)
+            for receipt in property_receipts
+        },
+        styles,
+    ))
     story.extend(_tasks_section(repository.list_tasks(case_id), styles))
+    story.extend(_chronology_section(repository.list_chronology(case_id), styles))
     story.extend(_notes_section(case, styles))
     canvas_factory = partial(
         _PacketCanvas,
@@ -663,9 +691,13 @@ def _packet_cover(
         styles,
     )
     da_routing = _cover_detail_table(
-        ("ASSIGNED DDA", "DA CASE NUMBER"),
-        (checklist.assigned_dda, checklist.da_case_number),
-        [3.3 * inch, 3.3 * inch],
+        ("ASSIGNED DDA", "DA CASE NUMBER", "COURT CASE NUMBER"),
+        (
+            checklist.assigned_dda,
+            checklist.da_case_number,
+            checklist.court_case_number,
+        ),
+        [2.2 * inch, 2.2 * inch, 2.2 * inch],
         styles,
     )
     story.extend([
@@ -841,10 +873,18 @@ def _packet_case_section(
     story.extend([Paragraph("Investigative checklist", styles["Subsection"]), checklist_table])
 
     da_rows = [
-        [Paragraph("ASSIGNED DDA", styles["Label"]), Paragraph(_text(checklist.assigned_dda), styles["Cell"]),
-         Paragraph("DA CASE NUMBER", styles["Label"]), Paragraph(_text(checklist.da_case_number), styles["Cell"])],
+        [
+            Paragraph("ASSIGNED DDA", styles["Label"]),
+            Paragraph("DA CASE NUMBER", styles["Label"]),
+            Paragraph("COURT CASE NUMBER", styles["Label"]),
+        ],
+        [
+            Paragraph(_text(checklist.assigned_dda), styles["Cell"]),
+            Paragraph(_text(checklist.da_case_number), styles["Cell"]),
+            Paragraph(_text(checklist.court_case_number), styles["Cell"]),
+        ],
     ]
-    da_table = Table(da_rows, colWidths=[1.2 * inch, 2.1 * inch, 1.2 * inch, 2.1 * inch])
+    da_table = Table(da_rows, colWidths=[2.2 * inch, 2.2 * inch, 2.2 * inch])
     da_table.setStyle(_standard_table_style())
     story.extend([Paragraph("District attorney / charges", styles["Subsection"]), da_table])
     if charges:
@@ -1382,7 +1422,11 @@ def _conditions_section(
     return story
 
 
-def _people_section(people: list[Person], styles) -> list[object]:
+def _people_section(
+    people: list[Person],
+    participant_details: dict[str, ParticipantDetails],
+    styles,
+) -> list[object]:
     story: list[object] = [Paragraph("People", styles["Section"])]
     if not people:
         story.append(Paragraph("No people entered.", styles["Empty"]))
@@ -1391,6 +1435,12 @@ def _people_section(people: list[Person], styles) -> list[object]:
         "NAME", "ROLE(S)", "IDENTITY", "ADDRESS", "CONTACT", "OCCUPATION / NOTES"
     )]]
     for person in people:
+        role_markup = _text(", ".join(person.roles))
+        details = participant_details.get(person.id)
+        if details and participant_is_deceased(details):
+            role_markup += (
+                f'<br/><font color="{DECEASED_RED}"><b>DECEASED</b></font>'
+            )
         phones = "; ".join(value for value in (
             f"Cell {person.cell_phone}" if person.cell_phone else "",
             f"Home {person.home_phone}" if person.home_phone else "",
@@ -1411,7 +1461,7 @@ def _people_section(people: list[Person], styles) -> list[object]:
         ]
         data.append([
             Paragraph(_text(person.display_name), styles["Cell"]),
-            Paragraph(_text(", ".join(person.roles)), styles["Cell"]),
+            Paragraph(role_markup, styles["Cell"]),
             Paragraph("<br/>".join(identity_lines) or "-", styles["Cell"]),
             Paragraph(_text(_person_address(person)), styles["Cell"]),
             Paragraph(_text(phones), styles["Cell"]),
@@ -1493,41 +1543,126 @@ def _participant_sections(
                 if value:
                     story.extend([Paragraph(title, styles["Label"]), Paragraph(_text(value), styles["BodySmall"])])
         if _has_detail(profile, {"person_id", "updated_at"}):
+            is_driver = any(
+                role.strip().casefold() == "driver"
+                for role in person.roles
+            )
+            restrictions = profile.license_restrictions
+            if (
+                not restrictions
+                and profile.license_restricted not in ("", "Unknown")
+            ):
+                restrictions = profile.license_restricted
+            driving_history = "; ".join(
+                value
+                for value in (
+                    (
+                        f"Years driving: {profile.years_driving}"
+                        if profile.years_driving else ""
+                    ),
+                    (
+                        f"Previous collisions: {profile.previous_collisions}"
+                        if profile.previous_collisions else ""
+                    ),
+                    (
+                        "Prior traffic homicide convictions: "
+                        f"{profile.previous_traffic_homicide}"
+                        if profile.previous_traffic_homicide else ""
+                    ),
+                    profile.notes,
+                )
+                if value
+            )
             driver_data = [
+                [Paragraph("LICENSE NUMBER", styles["Label"]),
+                 Paragraph(_text(profile.license_number), styles["Cell"]),
+                 Paragraph("LICENSE STATE", styles["Label"]),
+                 Paragraph(_text(profile.license_state), styles["Cell"])],
+                [Paragraph("CLASS", styles["Label"]),
+                 Paragraph(_text(profile.license_class), styles["Cell"]),
+                 Paragraph("STATUS", styles["Label"]),
+                 Paragraph(_text(profile.license_status), styles["Cell"])],
+                [Paragraph("ISSUED", styles["Label"]),
+                 Paragraph(_text(format_date_for_display(
+                     profile.license_issued_date
+                 )), styles["Cell"]),
+                 Paragraph("EXPIRATION", styles["Label"]),
+                 Paragraph(_text(format_date_for_display(
+                     profile.license_expiration_date
+                 )), styles["Cell"])],
+                [Paragraph("ENDORSEMENTS", styles["Label"]),
+                 Paragraph(_text(profile.endorsements), styles["Cell"]),
+                 Paragraph("RESTRICTIONS", styles["Label"]),
+                 Paragraph(_text(restrictions), styles["Cell"])],
+                [Paragraph("RESTRICTIONS EXPLAINED", styles["Label"]),
+                 Paragraph(_text(profile.license_restriction_explanation), styles["Cell"]),
+                 "", ""],
                 [Paragraph("TRIP", styles["Label"]),
                  Paragraph(_text(f"{profile.trip_from} to {profile.trip_to}; {profile.trip_purpose}"), styles["Cell"]),
                  Paragraph("IMPAIRMENT", styles["Label"]),
                  Paragraph(_text("; ".join(x for x in (profile.impairment_status, profile.bac, profile.testing) if x)), styles["Cell"])],
-                [Paragraph("PHYSICAL CONDITIONS", styles["Label"]),
-                 Paragraph(_text(profile.physical_condition_types), styles["Cell"]), "", ""],
-                [Paragraph("SLEEP / AWAKE", styles["Label"]),
-                 Paragraph(_text(f"{profile.hours_asleep} asleep; {profile.hours_awake} awake"), styles["Cell"]),
-                 Paragraph("WORK", styles["Label"]),
-                 Paragraph(_text("; ".join(x for x in (profile.hours_worked, profile.type_of_work) if x)), styles["Cell"])],
                 [Paragraph("FAMILIARITY", styles["Label"]),
                  Paragraph(_text(f"Road {profile.familiar_with_road}; vehicle {profile.familiar_with_vehicle}"), styles["Cell"]),
                  Paragraph("DRIVING HISTORY", styles["Label"]),
-                 Paragraph(_text("; ".join(x for x in (profile.years_driving, profile.previous_collisions) if x)), styles["Cell"])],
-                [Paragraph("LICENSE", styles["Label"]),
-                 Paragraph(_text(" ".join(x for x in (profile.license_state, profile.license_number,
-                     profile.license_class, profile.license_status) if x)), styles["Cell"]),
-                 Paragraph("ENDORSEMENTS", styles["Label"]),
-                 Paragraph(_text(profile.endorsements), styles["Cell"])],
-                [Paragraph("RESTRICTIONS", styles["Label"]), Paragraph(_text("; ".join(value for value in (
-                     profile.license_restricted,
-                     profile.license_restriction_explanation,
-                     profile.license_restrictions,
-                 ) if value)), styles["Cell"]), "", ""],
+                 Paragraph(_text(driving_history), styles["Cell"])],
             ]
+            span_rows = [4]
+            work = "; ".join(
+                value
+                for value in (profile.hours_worked, profile.type_of_work)
+                if value
+            )
+            if is_driver:
+                driver_data.insert(6, [
+                    Paragraph("PHYSICAL CONDITIONS", styles["Label"]),
+                    Paragraph(_text(profile.physical_condition_types), styles["Cell"]),
+                    "",
+                    "",
+                ])
+                span_rows.append(6)
+                driver_data.insert(7, [
+                    Paragraph("SLEEP / AWAKE", styles["Label"]),
+                    Paragraph(_text(
+                        f"{profile.hours_asleep} asleep; "
+                        f"{profile.hours_awake} awake"
+                    ), styles["Cell"]),
+                    Paragraph("WORK", styles["Label"]),
+                    Paragraph(_text(work), styles["Cell"]),
+                ])
+            else:
+                driver_data.insert(6, [
+                    Paragraph("WORK", styles["Label"]),
+                    Paragraph(_text(work), styles["Cell"]),
+                    "",
+                    "",
+                ])
+                span_rows.append(6)
             table = Table(driver_data, colWidths=[1.3 * inch, 2.05 * inch, 1.18 * inch, 2.07 * inch])
             driver_table_style = _standard_table_style()
-            driver_table_style.add("SPAN", (1, 1), (3, 1))
-            driver_table_style.add("SPAN", (1, 5), (3, 5))
+            for row in span_rows:
+                driver_table_style.add("SPAN", (1, row), (3, row))
             table.setStyle(driver_table_style)
-            story.extend([Paragraph("Driver background", styles["Label"]), table])
-            for title, value in (("Medical conditions", "\n".join(x for x in (profile.permanent_conditions, profile.temporary_conditions) if x)),
-                                 ("Testing methods", profile.testing_methods),
-                                 ("Impairment notes", profile.impairment_notes), ("Driver notes", profile.notes)):
+            background_title = (
+                "Driver background" if is_driver else "Participant background"
+            )
+            story.extend([Paragraph(background_title, styles["Label"]), table])
+            additional_driver_details = [
+                ("Testing methods", profile.testing_methods),
+                ("Impairment notes", profile.impairment_notes),
+            ]
+            if is_driver:
+                additional_driver_details.insert(0, (
+                    "Medical conditions",
+                    "\n".join(
+                        value
+                        for value in (
+                            profile.permanent_conditions,
+                            profile.temporary_conditions,
+                        )
+                        if value
+                    ),
+                ))
+            for title, value in additional_driver_details:
                 if value:
                     story.extend([Paragraph(title, styles["Label"]), Paragraph(_text(value), styles["BodySmall"])])
         story.append(Spacer(1, 0.08 * inch))
@@ -1572,6 +1707,20 @@ def _vehicles_section(
         ]
         table = Table(details, colWidths=[1.25 * inch, 1.25 * inch, 2.15 * inch, 1.95 * inch])
         table.setStyle(_standard_table_style())
+        claim_table = Table(
+            [
+                [Paragraph("CLAIM NUMBER", styles["Label"]),
+                 Paragraph(_text(vehicle.insurance_claim_number), styles["Cell"]),
+                 Paragraph("ADJUSTER NAME", styles["Label"]),
+                 Paragraph(_text(vehicle.insurance_adjuster_name), styles["Cell"])],
+                [Paragraph("ADJUSTER PHONE", styles["Label"]),
+                 Paragraph(_text(vehicle.insurance_adjuster_phone), styles["Cell"]),
+                 Paragraph("ADJUSTER EMAIL", styles["Label"]),
+                 Paragraph(_text(vehicle.insurance_adjuster_email), styles["Cell"])],
+            ],
+            colWidths=[1.15 * inch, 2.15 * inch, 1.15 * inch, 2.15 * inch],
+        )
+        claim_table.setStyle(_standard_table_style())
         workflow_data = [
             [Paragraph(label.upper(), styles["Label"])
              for _attribute, label in VEHICLE_WORKFLOW_FIELDS],
@@ -1597,6 +1746,8 @@ def _vehicles_section(
         block: list[object] = [
             Paragraph(heading, styles["Subsection"]),
             table,
+            Paragraph("Insurance claim", styles["Label"]),
+            claim_table,
             Paragraph("Vehicle-specific checklist", styles["Label"]),
             workflow_table,
             Paragraph("Vehicle release", styles["Label"]),
@@ -1799,16 +1950,17 @@ def _witness_contact_sections(
                 f"Cell {person.cell_phone}" if person.cell_phone else "",
                 f"Home {person.home_phone}" if person.home_phone else "",
                 f"Work {person.work_phone}" if person.work_phone else "",
-            ) if value)), styles["Cell"]),
-             Paragraph("OCCUPATION", styles["Label"]), Paragraph(_text(person.occupation), styles["Cell"])],
+            ) if value)), styles["Cell"]), "", ""],
             [Paragraph("INTERVIEWED", styles["Label"]), Paragraph(_text(details.interviewed), styles["Cell"]),
              Paragraph("DATE / INTERVIEWER", styles["Label"]),
              Paragraph(_text(" / ".join(x for x in (format_date_for_display(details.interview_date), details.interviewer) if x)), styles["Cell"])],
-            [Paragraph("SIGNIFICANCE", styles["Label"]), Paragraph(_text(details.significance), styles["Cell"]),
-             Paragraph("FOLLOW-UP", styles["Label"]), Paragraph(_text(details.follow_up), styles["Cell"])],
+            [Paragraph("SIGNIFICANCE", styles["Label"]), Paragraph(_text(details.significance), styles["Cell"]), "", ""],
         ]
         table = Table(data, colWidths=[1.08 * inch, 2.15 * inch, 1.32 * inch, 2.05 * inch])
-        table.setStyle(_standard_table_style())
+        witness_style = _standard_table_style()
+        witness_style.add("SPAN", (1, 1), (3, 1))
+        witness_style.add("SPAN", (1, 3), (3, 3))
+        table.setStyle(witness_style)
         story.append(table)
         for title, value in (
             ("Statement summary", details.statement_summary),
@@ -1904,6 +2056,71 @@ def _vru_section(
     return story
 
 
+def _evidence_section(
+    receipts: list[PropertyReceipt],
+    items_by_receipt: dict[str, list[PropertyReceiptItem]],
+    styles,
+) -> list[object]:
+    story: list[object] = [Paragraph("Evidence", styles["Section"])]
+    if not receipts:
+        story.append(Paragraph("No property receipts entered.", styles["Empty"]))
+        return story
+    for receipt in receipts:
+        story.append(CondPageBreak(1.45 * inch))
+        story.append(Paragraph(
+            f"Property receipt {_text(receipt.receipt_number)}",
+            styles["Subsection"],
+        ))
+        receipt_table = Table(
+            [
+                [
+                    Paragraph("PROPERTY OWNER", styles["Label"]),
+                    Paragraph("LODGED UNDER", styles["Label"]),
+                    Paragraph("LODGED LOCATION", styles["Label"]),
+                    Paragraph("DATE LODGED", styles["Label"]),
+                ],
+                [
+                    Paragraph(_text(receipt.property_owner), styles["Cell"]),
+                    Paragraph(_text(receipt.lodging_type), styles["Cell"]),
+                    Paragraph(_text(receipt.lodged_location), styles["Cell"]),
+                    Paragraph(
+                        _text(format_date_for_display(receipt.lodged_date)),
+                        styles["Cell"],
+                    ),
+                ],
+            ],
+            colWidths=[1.6 * inch, 1.25 * inch, 2.65 * inch, 1.1 * inch],
+        )
+        receipt_table.setStyle(_standard_table_style())
+        story.append(receipt_table)
+        items = items_by_receipt.get(receipt.id, [])
+        if not items:
+            story.append(Paragraph(
+                "No items entered for this property receipt.",
+                styles["Empty"],
+            ))
+            continue
+        item_rows = [[
+            Paragraph("ITEM #", styles["Label"]),
+            Paragraph("DESCRIPTION", styles["Label"]),
+        ]]
+        item_rows.extend(
+            [
+                Paragraph(_text(item.item_number), styles["Cell"]),
+                Paragraph(_text(item.description), styles["Cell"]),
+            ]
+            for item in items
+        )
+        item_table = Table(
+            item_rows,
+            colWidths=[0.75 * inch, 5.85 * inch],
+            repeatRows=1,
+        )
+        item_table.setStyle(_standard_table_style())
+        story.append(item_table)
+    return story
+
+
 def _chronology_section(entries: list[ChronologyEntry], styles) -> list[object]:
     story: list[object] = [Paragraph("Investigative journal", styles["Section"])]
     if not entries:
@@ -1929,7 +2146,7 @@ def _chronology_section(entries: list[ChronologyEntry], styles) -> list[object]:
 
 
 def _tasks_section(tasks: list[CaseTask], styles) -> list[object]:
-    story: list[object] = [Paragraph("Tasks and evidence tracking", styles["Section"])]
+    story: list[object] = [Paragraph("Tasks", styles["Section"])]
     if not tasks:
         story.append(Paragraph("No tasks entered.", styles["Empty"]))
         return story

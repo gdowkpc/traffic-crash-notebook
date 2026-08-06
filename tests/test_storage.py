@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -60,6 +60,24 @@ class StorageConfigurationTest(unittest.TestCase):
             Path(setup.call_args.kwargs["current_directory"]),
             legacy_local_data_directory(),
         )
+
+    def test_startup_splash_closes_before_first_run_storage_wizard(self):
+        before_prompt = Mock()
+        with patch(
+            "traffic_crash_notebook.ui.storage_setup.load_storage_config",
+            return_value=None,
+        ), patch(
+            "traffic_crash_notebook.ui.storage_setup.Path.is_dir",
+            return_value=False,
+        ), patch(
+            "traffic_crash_notebook.ui.storage_setup.run_storage_setup",
+            return_value=None,
+        ):
+            self.assertIsNone(
+                ensure_startup_storage(before_user_prompt=before_prompt)
+            )
+
+        before_prompt.assert_called_once_with()
 
     def test_configuration_round_trip_and_configured_directory(self):
         with tempfile.TemporaryDirectory() as directory:

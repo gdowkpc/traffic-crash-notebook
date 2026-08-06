@@ -25,6 +25,8 @@ from traffic_crash_notebook.models import (
     MotorcycleInspectionItem,
     ParticipantDetails,
     Person,
+    PropertyReceipt,
+    PropertyReceiptItem,
     RoadConditions,
     RoadwayRecord,
     SurfaceObservation,
@@ -111,6 +113,146 @@ class RepositoryTest(unittest.TestCase):
             "people": 1, "vehicles": 1, "chronology": 1, "open_tasks": 1,
             "injured": 0, "fatal": 0, "vru": 0,
         })
+        self.repository.save_participant_details(ParticipantDetails(
+            person_id=person.id,
+            injury_status="Deceased",
+        ))
+        counts = self.repository.case_counts(self.case.id)
+        self.assertEqual(counts["injured"], 0)
+        self.assertEqual(counts["fatal"], 1)
+
+    def test_property_receipts_own_numbered_items_and_cascade_on_delete(self):
+        receipt = self.repository.save_property_receipt(PropertyReceipt(
+            id="",
+            case_id=self.case.id,
+            receipt_number="PR-24680",
+            property_owner="Alex Smith",
+            lodging_type="Evidence",
+            lodged_location="Central Property Room",
+            lodged_date="2026-08-06",
+        ))
+        first = self.repository.save_property_receipt_item(PropertyReceiptItem(
+            id="",
+            receipt_id=receipt.id,
+            item_number=1,
+            description="Black plastic mirror housing",
+        ))
+        second = self.repository.save_property_receipt_item(PropertyReceiptItem(
+            id="",
+            receipt_id=receipt.id,
+            item_number=2,
+            description="Paint transfer sample",
+        ))
+
+        loaded_receipt = self.repository.get_property_receipt(receipt.id)
+        self.assertEqual(loaded_receipt.receipt_number, "PR-24680")
+        self.assertEqual(loaded_receipt.property_owner, "Alex Smith")
+        self.assertEqual(loaded_receipt.lodging_type, "Evidence")
+        self.assertEqual(loaded_receipt.lodged_location, "Central Property Room")
+        self.assertEqual(loaded_receipt.lodged_date, "2026-08-06")
+        self.assertEqual(
+            [item.item_number for item in self.repository.list_property_receipt_items(receipt.id)],
+            [1, 2],
+        )
+        self.assertEqual(
+            self.repository.next_property_receipt_item_number(receipt.id),
+            3,
+        )
+
+        second.description = "Blue paint transfer sample"
+        self.repository.save_property_receipt_item(second)
+        self.assertEqual(
+            self.repository.get_property_receipt_item(second.id).description,
+            "Blue paint transfer sample",
+        )
+        with self.assertRaisesRegex(ValueError, "Item 1 already exists"):
+            self.repository.save_property_receipt_item(PropertyReceiptItem(
+                id="",
+                receipt_id=receipt.id,
+                item_number=1,
+                description="Duplicate item number",
+            ))
+
+        self.repository.delete_property_receipt_item(first.id)
+        self.assertEqual(
+            [item.item_number for item in self.repository.list_property_receipt_items(receipt.id)],
+            [2],
+        )
+        self.repository.delete_property_receipt(receipt.id)
+        self.assertIsNone(self.repository.get_property_receipt(receipt.id))
+        self.assertEqual(self.repository.list_property_receipt_items(receipt.id), [])
+
+    def test_schema_26_database_adds_property_receipt_tables(self):
+        with self.repository._connect() as connection:
+            connection.execute("DROP TABLE property_receipt_items")
+            connection.execute("DROP TABLE property_receipts")
+            connection.execute("PRAGMA user_version = 26")
+
+        migrated = CaseRepository(self.database)
+        receipt = migrated.save_property_receipt(PropertyReceipt(
+            id="",
+            case_id=self.case.id,
+            receipt_number="MIGRATED-PR",
+        ))
+        migrated.save_property_receipt_item(PropertyReceiptItem(
+            id="",
+            receipt_id=receipt.id,
+            item_number=1,
+            description="Preserved case can use the new evidence tables.",
+        ))
+        self.assertEqual(
+            migrated.list_property_receipt_items(receipt.id)[0].description,
+            "Preserved case can use the new evidence tables.",
+        )
+        with migrated._connect() as connection:
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                SCHEMA_VERSION,
+            )
+
+    def test_schema_27_driver_profiles_receive_license_dates_without_data_loss(self):
+        person = self.repository.save_person(Person(
+            id="",
+            case_id=self.case.id,
+            first_name="Legacy",
+            last_name="License Holder",
+            roles=["Driver"],
+        ))
+        self.repository.save_driver_profile(DriverProfile(
+            person_id=person.id,
+            license_number="LEGACY-DL-27",
+            license_state="OR",
+            endorsements="Tank",
+            notes="Preserve this driving history.",
+        ))
+        with self.repository._connect() as connection:
+            connection.execute(
+                "ALTER TABLE driver_profiles DROP COLUMN license_issued_date"
+            )
+            connection.execute(
+                "ALTER TABLE driver_profiles DROP COLUMN license_expiration_date"
+            )
+            connection.execute("PRAGMA user_version = 27")
+
+        migrated = CaseRepository(self.database)
+        profile = migrated.get_driver_profile(person.id)
+        self.assertEqual(profile.license_number, "LEGACY-DL-27")
+        self.assertEqual(profile.license_state, "OR")
+        self.assertEqual(profile.endorsements, "Tank")
+        self.assertEqual(profile.notes, "Preserve this driving history.")
+        self.assertEqual(profile.license_issued_date, "")
+        self.assertEqual(profile.license_expiration_date, "")
+        profile.license_issued_date = "2020-01-02"
+        profile.license_expiration_date = "2028-01-02"
+        migrated.save_driver_profile(profile)
+        reloaded = migrated.get_driver_profile(person.id)
+        self.assertEqual(reloaded.license_issued_date, "2020-01-02")
+        self.assertEqual(reloaded.license_expiration_date, "2028-01-02")
+        with migrated._connect() as connection:
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                SCHEMA_VERSION,
+            )
 
     def test_legacy_dims_scene_evidence_is_normalized_to_axon(self):
         self.repository.save_crash_details(CrashDetails(case_id=self.case.id))
@@ -140,6 +282,10 @@ class RepositoryTest(unittest.TestCase):
             vehicle_number="V-1",
             insurance_company="Example Mutual",
             insurance_policy_number="POL-24680",
+            insurance_claim_number="CLM-86420",
+            insurance_adjuster_name="Casey Adjuster",
+            insurance_adjuster_phone="503-555-0160",
+            insurance_adjuster_email="casey.adjuster@example.com",
             body_style="Four-door SUV",
             property_damage="None",
             towed=True,
@@ -159,6 +305,13 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(loaded.insurance, "Example Mutual")
         self.assertEqual(loaded.insurance_company, "Example Mutual")
         self.assertEqual(loaded.insurance_policy_number, "POL-24680")
+        self.assertEqual(loaded.insurance_claim_number, "CLM-86420")
+        self.assertEqual(loaded.insurance_adjuster_name, "Casey Adjuster")
+        self.assertEqual(loaded.insurance_adjuster_phone, "503-555-0160")
+        self.assertEqual(
+            loaded.insurance_adjuster_email,
+            "casey.adjuster@example.com",
+        )
         self.assertEqual(loaded.body_style, "Four-door SUV")
         self.assertEqual(loaded.property_damage, "None")
         self.assertTrue(loaded.towed)
@@ -400,7 +553,43 @@ class RepositoryTest(unittest.TestCase):
                 SCHEMA_VERSION,
             )
 
-    def test_schema_17_vru_data_survives_schema_24_migrations(self):
+    def test_schema_24_checklist_receives_court_case_number_without_data_loss(self):
+        self.repository.save_investigative_checklist(InvestigativeChecklist(
+            case_id=self.case.id,
+            assigned_dda="Legacy DDA",
+            da_case_number="DA-24-100",
+        ))
+        with self.repository._connect() as connection:
+            connection.execute(
+                "ALTER TABLE investigative_checklists DROP COLUMN court_case_number"
+            )
+            connection.execute("PRAGMA user_version = 24")
+
+        migrated = CaseRepository(self.database)
+        checklist = migrated.get_investigative_checklist(self.case.id)
+        self.assertEqual(checklist.assigned_dda, "Legacy DDA")
+        self.assertEqual(checklist.da_case_number, "DA-24-100")
+        self.assertEqual(checklist.court_case_number, "")
+        checklist.court_case_number = "COURT-24-200"
+        migrated.save_investigative_checklist(checklist)
+        self.assertEqual(
+            migrated.get_investigative_checklist(self.case.id).court_case_number,
+            "COURT-24-200",
+        )
+        with closing(sqlite3.connect(self.database)) as connection:
+            columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info(investigative_checklists)"
+                ).fetchall()
+            }
+            self.assertIn("court_case_number", columns)
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                SCHEMA_VERSION,
+            )
+
+    def test_schema_17_vru_data_survives_schema_26_migrations(self):
         analysis = self.repository.save_vru_analysis(VRUAnalysis(
             id="",
             case_id=self.case.id,
@@ -472,7 +661,7 @@ class RepositoryTest(unittest.TestCase):
                 SCHEMA_VERSION,
             )
 
-    def test_schema_12_data_survives_schema_24_exchange_report_migration(self):
+    def test_schema_12_data_survives_schema_26_exchange_report_migration(self):
         vehicle = self.repository.save_vehicle(Vehicle(
             id="",
             case_id=self.case.id,
@@ -599,7 +788,7 @@ class RepositoryTest(unittest.TestCase):
             self.repository.get_hit_run_person_lead(person_lead.id).vehicle_lead_id
         )
 
-    def test_schema_11_data_survives_schema_24_migration(self):
+    def test_schema_11_data_survives_schema_26_migration(self):
         vehicle = self.repository.save_vehicle(Vehicle(
             id="",
             case_id=self.case.id,
@@ -669,7 +858,12 @@ class RepositoryTest(unittest.TestCase):
         driver = DriverProfile(
             person_id=person.id, trip_from="Home", trip_to="Work",
             hours_asleep="7.5", familiar_with_road="Yes", license_state="OR",
-            endorsements="Passenger; Tank",
+            license_number="DL-13579", license_class="C", license_status="Valid",
+            license_issued_date="2024-07-01",
+            license_expiration_date="2032-07-01",
+            endorsements="Passenger; Tank", license_restrictions="Restriction B",
+            license_restriction_explanation="Corrective lenses",
+            notes="No preventable collisions documented.",
         )
         inspection = VehicleInspection(
             vehicle_id=vehicle.id, mileage="24,300", transmission="Automatic",
@@ -703,6 +897,12 @@ class RepositoryTest(unittest.TestCase):
             self.repository.get_driver_profile(person.id).endorsements,
             "Passenger; Tank",
         )
+        loaded_driver = self.repository.get_driver_profile(person.id)
+        self.assertEqual(loaded_driver.license_number, "DL-13579")
+        self.assertEqual(loaded_driver.license_issued_date, "2024-07-01")
+        self.assertEqual(loaded_driver.license_expiration_date, "2032-07-01")
+        self.assertEqual(loaded_driver.license_restrictions, "Restriction B")
+        self.assertEqual(loaded_driver.notes, "No preventable collisions documented.")
         self.assertEqual(self.repository.get_vehicle_inspection(vehicle.id).mileage, "24,300")
         self.assertEqual(self.repository.list_tires(vehicle.id)[0].position, "RF")
         self.assertEqual(self.repository.case_counts(self.case.id)["injured"], 1)
@@ -725,7 +925,55 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(reopened.get_road_conditions(self.case.id).temperature, "60 F")
         self.assertEqual(reopened.get_witness_details("missing").interviewed, "Unknown")
 
-    def test_schema_10_vehicle_data_survives_schema_24_migration(self):
+    def test_schema_25_vehicle_receives_insurance_claim_fields(self):
+        vehicle = self.repository.save_vehicle(Vehicle(
+            id="",
+            case_id=self.case.id,
+            vehicle_number="V-25",
+            insurance_company="Existing Insurance",
+            insurance_policy_number="EXISTING-POLICY",
+            notes="Preserve the existing vehicle",
+        ))
+        with closing(sqlite3.connect(self.database)) as connection:
+            for column in (
+                "insurance_claim_number",
+                "insurance_adjuster_name",
+                "insurance_adjuster_phone",
+                "insurance_adjuster_email",
+            ):
+                connection.execute(f"ALTER TABLE vehicles DROP COLUMN {column}")
+            connection.execute("PRAGMA user_version = 25")
+
+        migrated = CaseRepository(self.database)
+        loaded = migrated.get_vehicle(vehicle.id)
+        self.assertEqual(loaded.insurance_company, "Existing Insurance")
+        self.assertEqual(loaded.insurance_policy_number, "EXISTING-POLICY")
+        self.assertEqual(loaded.notes, "Preserve the existing vehicle")
+        self.assertEqual(loaded.insurance_claim_number, "")
+        self.assertEqual(loaded.insurance_adjuster_name, "")
+        self.assertEqual(loaded.insurance_adjuster_phone, "")
+        self.assertEqual(loaded.insurance_adjuster_email, "")
+
+        loaded.insurance_claim_number = "MIGRATED-CLAIM"
+        loaded.insurance_adjuster_name = "Morgan Adjuster"
+        loaded.insurance_adjuster_phone = "503-555-0188"
+        loaded.insurance_adjuster_email = "morgan.adjuster@example.com"
+        migrated.save_vehicle(loaded)
+        reloaded = migrated.get_vehicle(vehicle.id)
+        self.assertEqual(reloaded.insurance_claim_number, "MIGRATED-CLAIM")
+        self.assertEqual(reloaded.insurance_adjuster_name, "Morgan Adjuster")
+        self.assertEqual(reloaded.insurance_adjuster_phone, "503-555-0188")
+        self.assertEqual(
+            reloaded.insurance_adjuster_email,
+            "morgan.adjuster@example.com",
+        )
+        with closing(sqlite3.connect(self.database)) as connection:
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                SCHEMA_VERSION,
+            )
+
+    def test_schema_10_vehicle_data_survives_schema_26_migration(self):
         legacy_database = Path(self.temp.name) / "legacy-vehicle.sqlite3"
         with closing(sqlite3.connect(legacy_database)) as connection:
             connection.executescript("""
@@ -794,7 +1042,7 @@ class RepositoryTest(unittest.TestCase):
                 SCHEMA_VERSION,
             )
 
-    def test_schema_3_person_data_survives_schema_24_column_migration(self):
+    def test_schema_3_person_data_survives_schema_26_column_migration(self):
         legacy_database = Path(self.temp.name) / "legacy.sqlite3"
         with closing(sqlite3.connect(legacy_database)) as connection:
             connection.executescript("""
@@ -930,6 +1178,7 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(checklist.submitted_to_da_date, "2025-01-15")
         self.assertEqual(checklist.peer_review_date, "")
         self.assertEqual(checklist.sergeant_review_date, "")
+        self.assertEqual(checklist.court_case_number, "")
         with closing(sqlite3.connect(legacy_database)) as connection:
             columns = {
                 row[1]
@@ -939,6 +1188,7 @@ class RepositoryTest(unittest.TestCase):
             }
             self.assertIn("peer_review_date", columns)
             self.assertIn("sergeant_review_date", columns)
+            self.assertIn("court_case_number", columns)
             self.assertEqual(
                 connection.execute("PRAGMA user_version").fetchone()[0],
                 SCHEMA_VERSION,
@@ -1153,6 +1403,7 @@ class RepositoryTest(unittest.TestCase):
             submitted_to_da_date="2026-08-04",
             assigned_dda="Example DDA",
             da_case_number="DA-123",
+            court_case_number="COURT-456",
         ))
         charge = self.repository.save_charge_disposition(ChargeDisposition(
             id="", case_id=self.case.id, charge="Reckless driving", disposition="Pending",
@@ -1179,6 +1430,7 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(loaded_checklist.sergeant_review_date, "2026-08-03")
         self.assertEqual(loaded_checklist.submitted_to_da_date, "2026-08-04")
         self.assertEqual(loaded_checklist.da_case_number, "DA-123")
+        self.assertEqual(loaded_checklist.court_case_number, "COURT-456")
         self.assertEqual(
             self.repository.get_charge_disposition(charge.id).disposition, "Pending"
         )

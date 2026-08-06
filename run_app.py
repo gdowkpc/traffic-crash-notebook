@@ -13,6 +13,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from traffic_crash_notebook.repository import CaseRepository
+from traffic_crash_notebook.startup_splash import close_startup_splash
 
 
 def _run_self_test() -> int:
@@ -38,6 +39,7 @@ def _run_self_test() -> int:
 
 def main() -> int:
     if "--self-test" in sys.argv:
+        close_startup_splash()
         return _run_self_test()
     if "--data-dir" in sys.argv:
         index = sys.argv.index("--data-dir")
@@ -52,6 +54,7 @@ def main() -> int:
         from traffic_crash_notebook.ui.main_window import run
         from traffic_crash_notebook.ui.storage_setup import ensure_startup_storage
     except ModuleNotFoundError as exc:
+        close_startup_splash()
         if exc.name == "PySide6":
             print("PySide6 is required. Run: python -m pip install -r requirements.txt", file=sys.stderr)
             return 2
@@ -59,8 +62,11 @@ def main() -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     configure_application(app)
     try:
-        storage = ensure_startup_storage()
+        storage = ensure_startup_storage(
+            before_user_prompt=close_startup_splash,
+        )
     except Exception as exc:
+        close_startup_splash()
         QMessageBox.critical(
             None,
             "Traffic Crash Notebook could not start",
@@ -68,9 +74,10 @@ def main() -> int:
         )
         return 1
     if storage is None:
+        close_startup_splash()
         return 0
     repository = CaseRepository(storage.database_path)
-    return run(repository)
+    return run(repository, on_ready=close_startup_splash)
 
 
 if __name__ == "__main__":

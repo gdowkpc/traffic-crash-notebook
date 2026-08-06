@@ -1,3 +1,19 @@
+## Traffic Crash Notebook 0.5.5
+
+- Separates Evidence, Tasks, and Journal into dedicated workspaces and adds unlimited property receipts with owners, lodging classifications, lodging locations/dates, and automatically numbered evidence-item descriptions.
+- Moves home-address entry above phone fields in the Add/Edit Person workflow for a more natural tab order.
+- Makes License the first Driver Background tab, adds issued and expiration dates, simplifies restrictions entry, and renames Additional Notes to Driving History while preserving existing data.
+- Changes non-driver packet output to Participant Background and suppresses driver-only Physical Conditions and Sleep/Awake rows.
+- Removes Occupation and Follow-up from the packet's Witness Interviews area, removes the separate witness/contact follow-up write-in block, and gives Significance the full available row width for paragraph-length entries.
+- Adds a direct Weather Underground History link above the Weather fields, opening the fixed historical-weather page in the investigator's default browser without including case data in the URL.
+- Adds vehicle-specific insurance claim number and adjuster name, phone, and email fields to vehicle entry, saved case data, the Vehicles list, and both packet modes, with an additive migration for existing databases.
+- Moves Packet Preview out of the data-entry tab row and into a prominent case-header button that opens a resizable preview, print, and PDF export window.
+- Places the Exchange Report at the end of the main case tab bar.
+- Identifies deceased people with a red DECEASED label in the packet People list Roles column, based on the saved death date or killed, fatal, or deceased status.
+- Adds a separate Court Case Number beside the DA Case Number, preserves it with the case, and includes it on the packet cover and investigative checklist.
+- Displays a branded TIU startup splash from the Windows bootloader while the portable application loads, then closes it only after the main window can paint.
+- Closes the splash before first-run storage setup, storage-recovery prompts, startup errors, or portable self-tests so it never obscures a required dialog or automated verification.
+
 ## Traffic Crash Notebook 0.5.4
 
 - Adds an embedded Case Packet Preview for both the Full Working Packet and Compact Packet, with refresh, PDF export, and direct printing through the standard Windows printer dialog.

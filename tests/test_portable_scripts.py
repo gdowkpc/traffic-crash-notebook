@@ -27,6 +27,30 @@ class PortableScriptTest(unittest.TestCase):
 
         self.assertIn('--manifest "$ProjectRoot\\assets\\windows\\TrafficCrashNotebook.manifest"', build)
         self.assertIn('--icon "$ProjectRoot\\assets\\windows\\TrafficCrashNotebook.ico"', build)
+        self.assertIn(
+            '--splash "$ProjectRoot\\assets\\windows\\TrafficCrashNotebookSplash.png"',
+            build,
+        )
+        self.assertTrue(
+            (
+                PROJECT_ROOT
+                / "assets"
+                / "windows"
+                / "TrafficCrashNotebookSplash.png"
+            ).is_file()
+        )
+        launcher = (PROJECT_ROOT / "run_app.py").read_text(encoding="utf-8")
+        self.assertIn("before_user_prompt=close_startup_splash", launcher)
+        self.assertIn("on_ready=close_startup_splash", launcher)
+        main_window = (
+            PROJECT_ROOT
+            / "src"
+            / "traffic_crash_notebook"
+            / "ui"
+            / "main_window.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("app.processEvents()", main_window)
+        self.assertIn("on_ready()", main_window)
         self.assertIn("verify_windows_executable_manifest.py", build)
         self.assertIn("generate_release_manifests.py", build)
         self.assertIn("verify_release_assets.py", build)

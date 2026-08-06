@@ -11,7 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("TCN_DISABLE_UPDATE_CHECK", "1")
 
 from pypdf import PdfReader
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QDir, Qt, QTimer
 from PySide6.QtGui import QPageSize, QPalette
 from PySide6.QtPrintSupport import QPrinter
 from PySide6.QtTest import QTest
@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QDialogButtonBox,
+    QFormLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -39,6 +40,7 @@ from traffic_crash_notebook.models import (
     MotorcycleInspection,
     ParticipantDetails,
     Person,
+    PropertyReceipt,
     Vehicle,
     WitnessDetails,
 )
@@ -55,6 +57,8 @@ from traffic_crash_notebook.ui.dialogs import (
     MotorcycleInspectionDialog,
     ParticipantDetailsDialog,
     PersonDialog,
+    PropertyReceiptDialog,
+    PropertyReceiptItemDialog,
     RoadwayDialog,
     SurfaceObservationDialog,
     TaskDialog,
@@ -88,6 +92,17 @@ class AddRecordWorkflowTest(unittest.TestCase):
             self.window.case_list.setCurrentRow(0)
             self.app.processEvents()
         self.assertEqual(self.window.current_case.id, self.case.id)
+
+    def test_preview_workspaces_use_the_system_temp_folder(self):
+        expected_parent = Path(QDir.tempPath()).resolve()
+        self.assertEqual(
+            Path(self.window.packet_preview_directory.path()).resolve().parent,
+            expected_parent,
+        )
+        self.assertEqual(
+            Path(self.window.exchange_preview_directory.path()).resolve().parent,
+            expected_parent,
+        )
 
     def test_selected_case_uses_readable_text_with_or_without_focus(self):
         self.window.case_list.setCurrentRow(0)
@@ -148,6 +163,20 @@ class AddRecordWorkflowTest(unittest.TestCase):
 
     def test_add_person_persists_and_refreshes_table(self):
         def configure(dialog: PersonDialog) -> None:
+            form = dialog.root.itemAt(0).layout()
+            self.assertIsInstance(form, QFormLayout)
+            ordered_fields = (
+                dialog.address,
+                dialog.city,
+                dialog.state,
+                dialog.zip_code,
+                dialog.cell_phone,
+                dialog.home_phone,
+                dialog.work_phone,
+                dialog.email,
+            )
+            rows = [form.getWidgetPosition(field)[0] for field in ordered_fields]
+            self.assertEqual(rows, list(range(rows[0], rows[0] + len(rows))))
             dialog.first_name.setText("Alex")
             dialog.last_name.setText("Tester")
             dialog.dob.setText("08/05/1985")
@@ -185,6 +214,12 @@ class AddRecordWorkflowTest(unittest.TestCase):
             dialog.driver.setCurrentIndex(dialog.driver.findData(driver.id))
             dialog.insurance_company.setText("Example Mutual")
             dialog.insurance_policy_number.setText("POL-13579")
+            dialog.insurance_claim_number.setText("CLM-24680")
+            dialog.insurance_adjuster_name.setText("Riley Adjuster")
+            dialog.insurance_adjuster_phone.setText("503-555-0124")
+            dialog.insurance_adjuster_email.setText(
+                "riley.adjuster@example.com"
+            )
             self.assertFalse(dialog.towed.isChecked())
             self.assertFalse(dialog.towed_to.isEnabled())
             dialog.towed.setChecked(True)
@@ -207,6 +242,13 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(vehicles[0].driver_person_id, driver.id)
         self.assertEqual(vehicles[0].insurance_company, "Example Mutual")
         self.assertEqual(vehicles[0].insurance_policy_number, "POL-13579")
+        self.assertEqual(vehicles[0].insurance_claim_number, "CLM-24680")
+        self.assertEqual(vehicles[0].insurance_adjuster_name, "Riley Adjuster")
+        self.assertEqual(vehicles[0].insurance_adjuster_phone, "503-555-0124")
+        self.assertEqual(
+            vehicles[0].insurance_adjuster_email,
+            "riley.adjuster@example.com",
+        )
         self.assertEqual(vehicles[0].body_style, "Four-door sedan")
         self.assertEqual(vehicles[0].property_damage, "None")
         self.assertTrue(vehicles[0].towed)
@@ -227,6 +269,19 @@ class AddRecordWorkflowTest(unittest.TestCase):
             "Released to registered owner with receipt",
         )
         self.assertEqual(self.window.vehicles_table.rowCount(), 1)
+        self.assertEqual(
+            self.window.vehicles_table.horizontalHeaderItem(7).text(),
+            "Insurance / Claim",
+        )
+        insurance_summary = self.window.vehicles_table.item(0, 7).text()
+        self.assertIn("Example Mutual / POL-13579", insurance_summary)
+        self.assertIn("Claim: CLM-24680", insurance_summary)
+        self.assertIn("Adjuster: Riley Adjuster", insurance_summary)
+        self.assertIn("Adjuster phone: 503-555-0124", insurance_summary)
+        self.assertIn(
+            "Adjuster email: riley.adjuster@example.com",
+            insurance_summary,
+        )
         self.assertIn(
             "NHTSA Recalls Checked",
             self.window.vehicles_table.item(0, 4).text(),
@@ -243,10 +298,20 @@ class AddRecordWorkflowTest(unittest.TestCase):
             "Released - 08/05/2026 - Released to registered owner with receipt",
             self.window.vehicles_table.item(0, 6).text(),
         )
-        self.assertEqual(
-            self.window.vehicles_table.item(0, 7).text(),
-            "Example Mutual / POL-13579",
+        edit_dialog = VehicleDialog(
+            self.case.id,
+            [driver],
+            vehicles[0],
+            parent=self.window,
         )
+        self.assertEqual(edit_dialog.insurance_claim_number.text(), "CLM-24680")
+        self.assertEqual(edit_dialog.insurance_adjuster_name.text(), "Riley Adjuster")
+        self.assertEqual(edit_dialog.insurance_adjuster_phone.text(), "503-555-0124")
+        self.assertEqual(
+            edit_dialog.insurance_adjuster_email.text(),
+            "riley.adjuster@example.com",
+        )
+        edit_dialog.reject()
 
         saved_vehicle_id = vehicles[0].id
         self.window.loading = True
@@ -436,16 +501,132 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(self.window.chronology_table.rowCount(), 0)
         self.assertIn("0 journal entries", self.window.counts_label.text())
 
+    def test_evidence_tasks_and_journal_are_separate_ordered_tabs(self):
+        tab_labels = [
+            self.window.tabs.tabText(index)
+            for index in range(self.window.tabs.count())
+        ]
+        evidence_index = tab_labels.index("Evidence")
+        self.assertEqual(
+            tab_labels[evidence_index:evidence_index + 3],
+            ["Evidence", "Tasks", "Journal"],
+        )
+        self.assertNotIn("Tasks / Evidence", tab_labels)
+        self.assertEqual(
+            self.window.tasks_table.horizontalHeaderItem(2).text(),
+            "Task",
+        )
+
+        evidence_tab = self.window.tabs.widget(evidence_index)
+        guidance = evidence_tab.findChild(QLabel, "evidence_guidance")
+        self.assertIsNotNone(guidance)
+        self.assertIn("property receipt", guidance.text().lower())
+        button_labels = {
+            button.text() for button in evidence_tab.findChildren(QPushButton)
+        }
+        self.assertTrue({
+            "Add Property Receipt",
+            "Edit Property Receipt",
+            "Remove Property Receipt",
+            "Add Item",
+            "Edit Item",
+            "Remove Item",
+        }.issubset(button_labels))
+        self.assertFalse(self.window.add_property_receipt_item_button.isEnabled())
+
+        def configure_receipt(dialog: PropertyReceiptDialog) -> None:
+            self.assertEqual(
+                [
+                    dialog.lodging_type.itemText(index)
+                    for index in range(dialog.lodging_type.count())
+                ],
+                [
+                    "Evidence",
+                    "Found Property",
+                    "Prison Property",
+                    "Safe Keeping",
+                ],
+            )
+            dialog.receipt_number.setText("PR-13579")
+            dialog.property_owner.setText("Jordan Property Owner")
+            dialog.lodging_type.setCurrentText("Safe Keeping")
+            dialog.lodged_location.setText("Central Property Room")
+            dialog.lodged_date.setText("08/06/2026")
+
+        self._complete_modal_dialog(
+            self.window.add_property_receipt,
+            PropertyReceiptDialog,
+            configure_receipt,
+        )
+        receipts = self.repository.list_property_receipts(self.case.id)
+        self.assertEqual(len(receipts), 1)
+        receipt = receipts[0]
+        self.assertEqual(receipt.receipt_number, "PR-13579")
+        self.assertEqual(receipt.property_owner, "Jordan Property Owner")
+        self.assertEqual(receipt.lodging_type, "Safe Keeping")
+        self.assertEqual(receipt.lodged_location, "Central Property Room")
+        self.assertEqual(receipt.lodged_date, "2026-08-06")
+        self.assertEqual(self.window.property_receipts_table.rowCount(), 1)
+        self.assertEqual(
+            self.window.property_receipts_table.item(0, 4).text(),
+            "08/06/2026",
+        )
+        self.assertTrue(self.window.add_property_receipt_item_button.isEnabled())
+
+        def add_item(expected_number: int, description: str) -> None:
+            def configure_item(dialog: PropertyReceiptItemDialog) -> None:
+                self.assertEqual(dialog.item_number.value(), expected_number)
+                dialog.description.setPlainText(description)
+
+            self._complete_modal_dialog(
+                self.window.add_property_receipt_item,
+                PropertyReceiptItemDialog,
+                configure_item,
+            )
+
+        add_item(1, "Black passenger-side mirror housing")
+        add_item(2, "Blue paint transfer sample")
+        items = self.repository.list_property_receipt_items(receipt.id)
+        self.assertEqual(
+            [(item.item_number, item.description) for item in items],
+            [
+                (1, "Black passenger-side mirror housing"),
+                (2, "Blue paint transfer sample"),
+            ],
+        )
+        self.assertEqual(self.window.property_receipt_items_table.rowCount(), 2)
+
+        self.window.property_receipts_table.setCurrentCell(0, 0)
+        with patch.object(self.window, "_confirm_remove", return_value=True) as confirm:
+            self.window.delete_property_receipt()
+        confirm.assert_called_once_with(
+            "Remove this property receipt and all of its items?"
+        )
+        self.assertEqual(self.repository.list_property_receipts(self.case.id), [])
+        self.assertEqual(
+            self.repository.list_property_receipt_items(receipt.id),
+            [],
+        )
+        self.assertFalse(self.window.add_property_receipt_item_button.isEnabled())
+
     def test_case_packet_workspace_previews_prints_and_exports_both_packet_types(self):
         tab_labels = [
             self.window.tabs.tabText(index)
             for index in range(self.window.tabs.count())
         ]
-        self.assertIn("Packet Preview", tab_labels)
-        packet_tab_index = tab_labels.index("Packet Preview")
-        packet_tab = self.window.tabs.widget(packet_tab_index)
+        self.assertNotIn("Packet Preview", tab_labels)
+        self.assertEqual(self.window.packet_preview_button.text(), "Packet Preview")
+        self.assertFalse(self.window.packet_preview_dialog.isModal())
+        self.assertFalse(self.window.packet_preview_dialog.isVisible())
+
+        self.window.show_packet_preview()
+        self.app.processEvents()
+        self.assertTrue(self.window.packet_preview_dialog.isVisible())
+        self.assertTrue(self.window.packet_preview_dialog.isWindow())
+        self.assertTrue(self.window.packet_preview_dialog.isSizeGripEnabled())
         button_labels = {
-            button.text() for button in packet_tab.findChildren(QPushButton)
+            button.text()
+            for button in self.window.packet_preview_dialog.findChildren(QPushButton)
         }
         self.assertEqual(
             button_labels,
@@ -459,8 +640,6 @@ class AddRecordWorkflowTest(unittest.TestCase):
             ["Full Working Packet", "Compact Packet"],
         )
 
-        self.window.tabs.setCurrentIndex(packet_tab_index)
-        self.app.processEvents()
         full_preview_path = self.window.packet_preview_path
         self.assertTrue(full_preview_path.is_file())
         full_page_count = self.window.packet_pdf_document.pageCount()
@@ -570,6 +749,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
             for index in range(self.window.tabs.count())
         ]
         self.assertIn("Exchange Report", tab_labels)
+        self.assertEqual(tab_labels[-1], "Exchange Report")
+        self.assertEqual(
+            self.window.exchange_report_tab_index,
+            self.window.tabs.count() - 1,
+        )
         toolbar = self.window.findChild(QToolBar)
         self.assertIn(
             "Export Exchange Report",
@@ -1302,6 +1486,8 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.window.crash_date.setText("08/04/2026")
         self.window.checklist_boxes["Participant Interviews"].setChecked(True)
         self.window.checklist_widgets["assigned_dda"].setText("Taylor Example")
+        self.window.checklist_widgets["da_case_number"].setText("DA-26-100")
+        self.window.checklist_widgets["court_case_number"].setText("COURT-26-200")
         self.window.packet_widgets["nearest_city"].setText("Gresham")
         self.window.packet_widgets["road_name"].setText("SE Stark Street")
         self.window.packet_widgets["intersection_road"].setText("SE 182nd Avenue")
@@ -1314,6 +1500,8 @@ class AddRecordWorkflowTest(unittest.TestCase):
         details = self.repository.get_crash_details(self.case.id)
         self.assertIn("Participant Interviews", checklist.completed_items)
         self.assertEqual(checklist.assigned_dda, "Taylor Example")
+        self.assertEqual(checklist.da_case_number, "DA-26-100")
+        self.assertEqual(checklist.court_case_number, "COURT-26-200")
         self.assertEqual(details.nearest_city, "Gresham")
         self.assertEqual(details.road_name, "SE Stark Street")
         self.assertEqual(details.intersection_road, "SE 182nd Avenue")
@@ -1341,6 +1529,10 @@ class AddRecordWorkflowTest(unittest.TestCase):
             "08/04/2026",
         )
         self.assertTrue(self.window.checklist_boxes["Participant Interviews"].isChecked())
+        self.assertEqual(
+            self.window.checklist_widgets["court_case_number"].text(),
+            "COURT-26-200",
+        )
         self.assertEqual(self.window.packet_widgets["nearest_city"].text(), "Gresham")
         self.assertTrue(self.window.scene_evidence_boxes["FARO"].isChecked())
 
@@ -1424,6 +1616,22 @@ class AddRecordWorkflowTest(unittest.TestCase):
                 completed_date="2026-03-05",
             ),
         )
+        property_receipt_dialog = PropertyReceiptDialog(
+            self.case.id,
+            PropertyReceipt(
+                id=new_id(),
+                case_id=self.case.id,
+                lodged_date="2026-03-06",
+            ),
+        )
+        driver_profile_dialog = DriverProfileDialog(
+            person,
+            DriverProfile(
+                person_id=person.id,
+                license_issued_date="2024-03-07",
+                license_expiration_date="2032-03-08",
+            ),
+        )
         motorcycle_dialog = MotorcycleInspectionDialog(
             vehicle,
             MotorcycleInspection(vehicle_id=vehicle.id, inspection_date="2026-04-05"),
@@ -1443,6 +1651,9 @@ class AddRecordWorkflowTest(unittest.TestCase):
             (chronology_dialog.event_date, "02/03/2026"),
             (task_dialog.due_date, "03/04/2026"),
             (task_dialog.completed_date, "03/05/2026"),
+            (property_receipt_dialog.lodged_date, "03/06/2026"),
+            (driver_profile_dialog.license_issued_date, "03/07/2024"),
+            (driver_profile_dialog.license_expiration_date, "03/08/2032"),
             (motorcycle_dialog.inspection_date, "04/05/2026"),
             (participant_dialog.date_of_death, "05/06/2026"),
             (witness_dialog.interview_date, "06/07/2026"),
@@ -1455,6 +1666,9 @@ class AddRecordWorkflowTest(unittest.TestCase):
         chronology_dialog.event_date.setText("02/13/2026")
         task_dialog.due_date.setText("03/14/2026")
         task_dialog.completed_date.setText("03/15/2026")
+        property_receipt_dialog.lodged_date.setText("03/16/2026")
+        driver_profile_dialog.license_issued_date.setText("03/17/2024")
+        driver_profile_dialog.license_expiration_date.setText("03/18/2032")
         motorcycle_dialog.inspection_date.setText("04/16/2026")
         participant_dialog.date_of_death.setText("05/17/2026")
         witness_dialog.interview_date.setText("06/18/2026")
@@ -1465,6 +1679,19 @@ class AddRecordWorkflowTest(unittest.TestCase):
         task_record = task_dialog.result_record()
         self.assertEqual(task_record.due_date, "2026-03-14")
         self.assertEqual(task_record.completed_date, "2026-03-15")
+        self.assertEqual(
+            property_receipt_dialog.result_record().lodged_date,
+            "2026-03-16",
+        )
+        driver_profile_record = driver_profile_dialog.result_record()
+        self.assertEqual(
+            driver_profile_record.license_issued_date,
+            "2024-03-17",
+        )
+        self.assertEqual(
+            driver_profile_record.license_expiration_date,
+            "2032-03-18",
+        )
         self.assertEqual(
             motorcycle_dialog.result_record().inspection_date,
             "2026-04-16",
@@ -1486,6 +1713,33 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.window.refresh_tasks()
         self.assertEqual(self.window.chronology_table.item(0, 0).text(), "02/13/2026")
         self.assertEqual(self.window.tasks_table.item(0, 3).text(), "03/14/2026")
+
+    def test_weather_subtab_links_to_wunderground_history(self):
+        weather_history_url = "https://www.wunderground.com/history"
+        weather_history_link = self.window.findChild(
+            QLabel,
+            "weather_history_link",
+        )
+        self.assertIsNotNone(weather_history_link)
+        self.assertIn(
+            f'href="{weather_history_url}"',
+            weather_history_link.text(),
+        )
+        self.assertIn(
+            "Open Weather Underground History",
+            weather_history_link.text(),
+        )
+        self.assertFalse(weather_history_link.openExternalLinks())
+        with patch(
+            "traffic_crash_notebook.ui.main_window.QDesktopServices.openUrl",
+            return_value=True,
+        ) as open_url:
+            weather_history_link.linkActivated.emit(weather_history_url)
+        open_url.assert_called_once()
+        self.assertEqual(
+            open_url.call_args.args[0].toString(),
+            weather_history_url,
+        )
 
     def test_weather_station_time_and_celestial_lighting_fields_persist(self):
         expected_values = {
@@ -1958,11 +2212,52 @@ class AddRecordWorkflowTest(unittest.TestCase):
         )
 
         def configure_driver(dialog: DriverProfileDialog) -> None:
+            tabs = dialog.findChild(QTabWidget)
+            self.assertEqual(tabs.tabText(0), "License")
+            license_form = tabs.widget(0).layout()
+            license_fields = (
+                dialog.license_number,
+                dialog.license_state,
+                dialog.license_class,
+                dialog.license_status,
+                dialog.license_issued_date,
+                dialog.license_expiration_date,
+                dialog.endorsements,
+                dialog.license_restrictions,
+                dialog.license_restriction_explanation,
+                dialog.driving_history,
+            )
+            self.assertEqual(
+                [license_form.labelForField(field).text() for field in license_fields],
+                [
+                    "License Number",
+                    "License State",
+                    "Class",
+                    "Status",
+                    "Issued",
+                    "Expiration",
+                    "Endorsements",
+                    "Restrictions",
+                    "Restrictions Explained",
+                    "Driving History",
+                ],
+            )
+            self.assertFalse(hasattr(dialog, "license_restricted"))
+            self.assertFalse(hasattr(dialog, "driver_notes"))
             dialog.physical_condition_boxes["Vision"].setChecked(True)
             dialog.testing_method_boxes["SFST"].setChecked(True)
-            dialog.license_restricted.setCurrentText("Yes")
+            dialog.license_number.setText("DL-24680")
+            dialog.license_state.setText("OR")
+            dialog.license_class.setText("C")
+            dialog.license_status.setText("Valid")
+            dialog.license_issued_date.setText("07/01/2024")
+            dialog.license_expiration_date.setText("07/01/2032")
+            dialog.license_restrictions.setText("Restriction B")
             dialog.license_restriction_explanation.setText("Corrective lenses")
             dialog.endorsements.setText("Passenger; Tank")
+            dialog.driving_history.setPlainText(
+                "No preventable collisions documented."
+            )
 
         self._complete_modal_dialog(
             self.window.edit_driver_profile,
@@ -2054,7 +2349,22 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertIn("Laceration", details.injury_codes)
         profile = self.repository.get_driver_profile(person.id)
         self.assertEqual(profile.license_restricted, "Yes")
+        self.assertEqual(profile.license_number, "DL-24680")
+        self.assertEqual(profile.license_state, "OR")
+        self.assertEqual(profile.license_class, "C")
+        self.assertEqual(profile.license_status, "Valid")
+        self.assertEqual(profile.license_issued_date, "2024-07-01")
+        self.assertEqual(profile.license_expiration_date, "2032-07-01")
+        self.assertEqual(profile.license_restrictions, "Restriction B")
+        self.assertEqual(
+            profile.license_restriction_explanation,
+            "Corrective lenses",
+        )
         self.assertEqual(profile.endorsements, "Passenger; Tank")
+        self.assertEqual(
+            profile.notes,
+            "No preventable collisions documented.",
+        )
         self.assertIn("SFST", profile.testing_methods)
         contact = self.repository.list_contacts(self.case.id)[0]
         self.assertEqual(contact.work_phone, "503-555-0103")
@@ -2106,6 +2416,12 @@ class AddRecordWorkflowTest(unittest.TestCase):
 
     def test_packet_forms_scroll_in_compact_main_window(self):
         self.window.resize(900, 560)
+        self.app.processEvents()
+        self.assertTrue(self.window.packet_preview_button.isVisible())
+        self.assertLessEqual(
+            self.window.packet_preview_button.geometry().right(),
+            self.window.packet_preview_button.parentWidget().rect().right(),
+        )
         self.window.tabs.setCurrentIndex(1)
         packet_tab = self.window.tabs.currentWidget()
         nested_tabs = packet_tab.findChild(QTabWidget)
