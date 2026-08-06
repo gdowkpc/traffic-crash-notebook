@@ -452,11 +452,19 @@ class AddRecordWorkflowTest(unittest.TestCase):
             self.window.tabs.tabText(index)
             for index in range(self.window.tabs.count())
         ]
-        self.assertIn("Packet Preview", tab_labels)
-        packet_tab_index = tab_labels.index("Packet Preview")
-        packet_tab = self.window.tabs.widget(packet_tab_index)
+        self.assertNotIn("Packet Preview", tab_labels)
+        self.assertEqual(self.window.packet_preview_button.text(), "Packet Preview")
+        self.assertFalse(self.window.packet_preview_dialog.isModal())
+        self.assertFalse(self.window.packet_preview_dialog.isVisible())
+
+        self.window.show_packet_preview()
+        self.app.processEvents()
+        self.assertTrue(self.window.packet_preview_dialog.isVisible())
+        self.assertTrue(self.window.packet_preview_dialog.isWindow())
+        self.assertTrue(self.window.packet_preview_dialog.isSizeGripEnabled())
         button_labels = {
-            button.text() for button in packet_tab.findChildren(QPushButton)
+            button.text()
+            for button in self.window.packet_preview_dialog.findChildren(QPushButton)
         }
         self.assertEqual(
             button_labels,
@@ -470,8 +478,6 @@ class AddRecordWorkflowTest(unittest.TestCase):
             ["Full Working Packet", "Compact Packet"],
         )
 
-        self.window.tabs.setCurrentIndex(packet_tab_index)
-        self.app.processEvents()
         full_preview_path = self.window.packet_preview_path
         self.assertTrue(full_preview_path.is_file())
         full_page_count = self.window.packet_pdf_document.pageCount()
@@ -2130,6 +2136,12 @@ class AddRecordWorkflowTest(unittest.TestCase):
 
     def test_packet_forms_scroll_in_compact_main_window(self):
         self.window.resize(900, 560)
+        self.app.processEvents()
+        self.assertTrue(self.window.packet_preview_button.isVisible())
+        self.assertLessEqual(
+            self.window.packet_preview_button.geometry().right(),
+            self.window.packet_preview_button.parentWidget().rect().right(),
+        )
         self.window.tabs.setCurrentIndex(1)
         packet_tab = self.window.tabs.currentWidget()
         nested_tabs = packet_tab.findChild(QTabWidget)

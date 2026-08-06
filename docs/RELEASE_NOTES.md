@@ -1,5 +1,6 @@
 ## Traffic Crash Notebook 0.5.5 (Unreleased)
 
+- Moves Packet Preview out of the data-entry tab row and into a prominent case-header button that opens a resizable preview, print, and PDF export window.
 - Places the Exchange Report at the end of the main case tab bar.
 - Identifies deceased people with a red DECEASED label in the packet People list Roles column, based on the saved death date or killed, fatal, or deceased status.
 - Adds a separate Court Case Number beside the DA Case Number, preserves it with the case, and includes it on the packet cover and investigative checklist.

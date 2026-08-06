@@ -154,7 +154,7 @@ entered text to a network service.
 
 ## Printing modes
 
-- **Case Packet Preview** displays either the Full Working Packet or Compact Packet inside the application and supports refresh, PDF export, and direct printing of all pages, the current page, or a selected page range.
+- **Case Packet Preview** is opened from the case header in its own resizable window. It displays either the Full Working Packet or Compact Packet and supports refresh, PDF export, and direct printing of all pages, the current page, or a selected page range.
 - **Full Working Packet** preserves the complete section order and adds ruled areas for handwritten updates after printing. It is the intended attorney-folder copy. Print one-sided when practical so every ruled area remains easy to use.
 - **Compact Packet** includes the complete entered record but omits unused sections and dedicated handwriting areas.
 - **Export Quick Review** creates a concise briefing copy rather than the complete packet.
