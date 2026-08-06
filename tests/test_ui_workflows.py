@@ -11,7 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("TCN_DISABLE_UPDATE_CHECK", "1")
 
 from pypdf import PdfReader
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QDir, Qt, QTimer
 from PySide6.QtGui import QPageSize, QPalette
 from PySide6.QtPrintSupport import QPrinter
 from PySide6.QtTest import QTest
@@ -88,6 +88,17 @@ class AddRecordWorkflowTest(unittest.TestCase):
             self.window.case_list.setCurrentRow(0)
             self.app.processEvents()
         self.assertEqual(self.window.current_case.id, self.case.id)
+
+    def test_preview_workspaces_use_the_system_temp_folder(self):
+        expected_parent = Path(QDir.tempPath()).resolve()
+        self.assertEqual(
+            Path(self.window.packet_preview_directory.path()).resolve().parent,
+            expected_parent,
+        )
+        self.assertEqual(
+            Path(self.window.exchange_preview_directory.path()).resolve().parent,
+            expected_parent,
+        )
 
     def test_selected_case_uses_readable_text_with_or_without_focus(self):
         self.window.case_list.setCurrentRow(0)

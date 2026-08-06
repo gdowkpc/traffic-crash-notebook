@@ -68,6 +68,7 @@ class PortableSelfTestTest(unittest.TestCase):
             )
             self.assertIn("Embedded PDF preview components: PASS", log_text)
             self.assertIn("TIU application and taskbar icon: PASS", log_text)
+            self.assertIn("Early packaged startup splash: PASS", log_text)
             self.assertIn(
                 "Guided data-storage configuration and migration: PASS",
                 log_text,

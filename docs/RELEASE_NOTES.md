@@ -1,3 +1,8 @@
+## Traffic Crash Notebook 0.5.5 (Unreleased)
+
+- Displays a branded TIU startup splash from the Windows bootloader while the portable application loads, then closes it only after the main window can paint.
+- Closes the splash before first-run storage setup, storage-recovery prompts, startup errors, or portable self-tests so it never obscures a required dialog or automated verification.
+
 ## Traffic Crash Notebook 0.5.4
 
 - Adds an embedded Case Packet Preview for both the Full Working Packet and Compact Packet, with refresh, PDF export, and direct printing through the standard Windows printer dialog.

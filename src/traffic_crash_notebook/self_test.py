@@ -39,7 +39,7 @@ from .paths import (
     validate_storage_directory,
 )
 from .repository import SCHEMA_VERSION, CaseRepository, new_id
-from .resources import app_icon_path
+from .resources import app_icon_path, startup_splash_path
 from .spellcheck import SpellCheckService
 from .updates import is_update_available, parse_update_manifest
 
@@ -61,6 +61,13 @@ def run_self_test(output_directory: str | Path) -> Path:
     icon_reader = QImageReader(str(icon_path))
     if not icon_reader.canRead() or icon_reader.read().isNull():
         raise RuntimeError("The bundled TIU application icon could not be loaded.")
+
+    splash_path = startup_splash_path()
+    if not splash_path.is_file():
+        raise RuntimeError("The bundled startup splash image is missing.")
+    splash_reader = QImageReader(str(splash_path))
+    if not splash_reader.canRead() or splash_reader.read().isNull():
+        raise RuntimeError("The bundled startup splash image could not be loaded.")
 
     output = Path(output_directory).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -527,10 +534,11 @@ def run_self_test(output_directory: str | Path) -> Path:
             "Dynamic exchange-report data, time formatting, and searchable information page: PASS",
             "Embedded PDF preview components: PASS",
             "TIU application and taskbar icon: PASS",
+            "Early packaged startup splash: PASS",
             "Guided data-storage configuration and migration: PASS",
             "Verified release-manifest update checker: PASS",
             "Offline spell-check dictionary: PASS",
-            "The schema, full working packet PDF, compact packet PDF, quick review PDF, exchange-report PDF, offline spell-check dictionary, report logo, and application icon loaded successfully.",
+            "The schema, full working packet PDF, compact packet PDF, quick review PDF, exchange-report PDF, offline spell-check dictionary, report logo, application icon, and startup splash loaded successfully.",
             "",
         )),
         encoding="utf-8",

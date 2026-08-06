@@ -6,12 +6,14 @@ import sqlite3
 import subprocess
 import sys
 import uuid
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import (
     QBuffer,
     QByteArray,
+    QDir,
     QIODevice,
     QTemporaryDir,
     Qt,
@@ -320,7 +322,10 @@ class MainWindow(QMainWindow):
         self.crash_details: CrashDetails | None = None
         self.hit_run_overview: HitRunOverview | None = None
         self.packet_preview_directory = QTemporaryDir(
-            "TrafficCrashNotebook-packet-preview-XXXXXX"
+            str(
+                Path(QDir.tempPath())
+                / "TrafficCrashNotebook-packet-preview-XXXXXX"
+            )
         )
         if not self.packet_preview_directory.isValid():
             raise RuntimeError("Unable to create the case-packet preview folder.")
@@ -330,7 +335,10 @@ class MainWindow(QMainWindow):
             self.packet_preview_directory.path()
         ) / "Traffic_Crash_Case_Packet_Preview_000000.pdf"
         self.exchange_preview_directory = QTemporaryDir(
-            "TrafficCrashNotebook-exchange-preview-XXXXXX"
+            str(
+                Path(QDir.tempPath())
+                / "TrafficCrashNotebook-exchange-preview-XXXXXX"
+            )
         )
         if not self.exchange_preview_directory.isValid():
             raise RuntimeError("Unable to create the exchange-report preview folder.")
@@ -3775,9 +3783,15 @@ class MainWindow(QMainWindow):
         event.accept()
 
 
-def run(repository: CaseRepository) -> int:
+def run(
+    repository: CaseRepository,
+    on_ready: Callable[[], object] | None = None,
+) -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     configure_application(app)
     window = MainWindow(repository)
     window.show()
+    app.processEvents()
+    if on_ready is not None:
+        on_ready()
     return app.exec()
