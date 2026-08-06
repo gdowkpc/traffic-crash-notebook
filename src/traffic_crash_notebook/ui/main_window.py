@@ -509,14 +509,14 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self._build_conditions_tab(), "Road / Weather")
         self.tabs.addTab(self._build_people_tab(), "People")
         self.tabs.addTab(self._build_vehicles_tab(), "Vehicles")
-        self.exchange_report_tab_index = self.tabs.addTab(
-            self._build_exchange_report_tab(),
-            "Exchange Report",
-        )
         self.tabs.addTab(self._build_hit_run_tab(), "Hit & Run")
         self.tabs.addTab(self._build_vru_tab(), "VRU Analysis")
         self.tabs.addTab(self._build_chronology_tab(), "Journal")
         self.tabs.addTab(self._build_tasks_tab(), "Tasks / Evidence")
+        self.exchange_report_tab_index = self.tabs.addTab(
+            self._build_exchange_report_tab(),
+            "Exchange Report",
+        )
         self.tabs.currentChanged.connect(self._case_tab_changed)
         layout.addWidget(self.tabs, 1)
         return container

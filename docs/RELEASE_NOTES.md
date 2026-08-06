@@ -1,5 +1,6 @@
 ## Traffic Crash Notebook 0.5.5 (Unreleased)
 
+- Places the Exchange Report at the end of the main case tab bar.
 - Identifies deceased people with a red DECEASED label in the packet People list Roles column, based on the saved death date or killed, fatal, or deceased status.
 - Adds a separate Court Case Number beside the DA Case Number, preserves it with the case, and includes it on the packet cover and investigative checklist.
 - Displays a branded TIU startup splash from the Windows bootloader while the portable application loads, then closes it only after the main window can paint.

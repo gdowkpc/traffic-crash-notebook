@@ -581,6 +581,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
             for index in range(self.window.tabs.count())
         ]
         self.assertIn("Exchange Report", tab_labels)
+        self.assertEqual(tab_labels[-1], "Exchange Report")
+        self.assertEqual(
+            self.window.exchange_report_tab_index,
+            self.window.tabs.count() - 1,
+        )
         toolbar = self.window.findChild(QToolBar)
         self.assertIn(
             "Export Exchange Report",
