@@ -44,10 +44,6 @@ def main() -> None:
         "The fictional investigation is focused on documenting the vehicle and pedestrian paths, interviewing a "
         "witness, and comparing the physical evidence with the available video."
     )
-    case.key_questions = (
-        "Confirm the traffic-signal phase; reconcile the witness account with the video timing; "
-        "and determine whether another camera covered the approach to the intersection."
-    )
     case.notes = "This demonstration contains fictionalized working-note content for layout verification."
     repository.save_case(case)
 
@@ -73,13 +69,15 @@ def main() -> None:
         id=new_id(), case_id=case.id, vehicle_number="V-1", year="2022", make="Toyota",
         model="Camry", color="Blue", plate="123ABC", plate_state="OR",
         driver_person_id=driver.id, edr_status="Download scheduled",
+        towed=True,
         tow_information="Example Towing - Hold for inspection",
+        nhtsa_recalls_checked=True,
         damage_notes="Fictional frontal damage concentrated at the bumper, grille, and leading edge of the hood.",
     )
     repository.save_vehicle(vehicle)
     repository.save_road_conditions(RoadConditions(
-        case_id=case.id, temperature="74 F", dew_point="54 F", winds="NW 6 mph",
-        humidity="43%", weather_condition="Clear", precipitation="None",
+        case_id=case.id, temperature="74", dew_point="54", winds="NW 6",
+        humidity="43", weather_condition="Clear", precipitation="None",
         weather_time="14:45", lighting_conditions="Daylight; sun southwest of the intersection",
         streetlights_working="Not applicable", area_type="Business",
         speed_limit="35", speed_limit_posted="Yes", speed_limit_location="Both approaches",

@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -143,6 +144,7 @@ class RecordDialog(QDialog):
         self.buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
+        self.record_dirty = False
         self.buttons.accepted.connect(self._validate_and_accept)
         self.buttons.rejected.connect(self.reject)
         save_button = self.buttons.button(QDialogButtonBox.StandardButton.Save)
@@ -150,6 +152,48 @@ class RecordDialog(QDialog):
 
     def finish_layout(self) -> None:
         self.window_layout.addWidget(self.buttons)
+        for widget in self.findChildren(QLineEdit):
+            widget.textEdited.connect(self._mark_dirty)
+        for widget in self.findChildren(QTextEdit):
+            widget.textChanged.connect(
+                lambda text_widget=widget: self._mark_text_edit_dirty(text_widget)
+            )
+        for widget in self.findChildren(QComboBox):
+            widget.activated.connect(self._mark_dirty)
+        for widget in self.findChildren(QCheckBox):
+            widget.clicked.connect(self._mark_dirty)
+        for widget in self.findChildren(QTableWidget):
+            widget.itemChanged.connect(self._mark_dirty)
+
+    def _mark_dirty(self, *_args) -> None:
+        self.record_dirty = True
+
+    def _mark_text_edit_dirty(self, widget: QTextEdit) -> None:
+        if widget.hasFocus() and widget.document().isModified():
+            self.record_dirty = True
+
+    def _confirm_discard(self) -> bool:
+        if not self.record_dirty:
+            return True
+        answer = QMessageBox.question(
+            self,
+            "Discard unsaved record changes?",
+            "This record contains changes that have not been saved. Choose No to "
+            "return to the record and use Save, or Yes to discard the changes.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        return answer == QMessageBox.StandardButton.Yes
+
+    def reject(self) -> None:
+        if self._confirm_discard():
+            super().reject()
+
+    def closeEvent(self, event) -> None:
+        if self._confirm_discard():
+            event.accept()
+        else:
+            event.ignore()
 
     def showEvent(self, event) -> None:
         screen = self.screen() or QApplication.primaryScreen()
@@ -275,7 +319,16 @@ class VehicleDialog(RecordDialog):
         self.insurance_policy_number = _line(
             self.vehicle.insurance_policy_number
         )
-        self.tow_information = _line(self.vehicle.tow_information)
+        self.towed = QCheckBox("Yes")
+        self.towed.setChecked(
+            bool(self.vehicle.towed or self.vehicle.tow_information)
+        )
+        self.towed_to = _line(
+            self.vehicle.tow_information,
+            "Tow yard, evidence facility, or other destination",
+        )
+        self.towed_to.setEnabled(self.towed.isChecked())
+        self.towed.toggled.connect(self.towed_to.setEnabled)
         self.edr_status = _line(
             self.vehicle.edr_status,
             "Optional explanatory or legacy CDR / EDR notes",
@@ -300,7 +353,8 @@ class VehicleDialog(RecordDialog):
         form.addRow("Owner", self.owner)
         form.addRow("Insurance company", self.insurance_company)
         form.addRow("Insurance policy number", self.insurance_policy_number)
-        form.addRow("Tow information", self.tow_information)
+        form.addRow("Towed", self.towed)
+        form.addRow("Towed to", self.towed_to)
         form.addRow("CDR / EDR notes", self.edr_status)
         form.addRow("Release date", self.release_date)
         form.addRow("Release information", self.release_information)
@@ -349,8 +403,12 @@ class VehicleDialog(RecordDialog):
     def result_record(self) -> Vehicle:
         for attribute in ("vehicle_number", "year", "make", "model", "body_style", "color", "vin", "plate",
                           "plate_state", "insurance_company", "insurance_policy_number",
-                          "tow_information", "edr_status", "release_information"):
+                          "edr_status", "release_information"):
             setattr(self.vehicle, attribute, getattr(self, attribute).text().strip())
+        self.vehicle.towed = self.towed.isChecked()
+        self.vehicle.tow_information = (
+            self.towed_to.text().strip() if self.vehicle.towed else ""
+        )
         self.vehicle.release_date = normalize_date_for_storage(
             self.release_date.text()
         )
@@ -490,11 +548,16 @@ class VideoSourceDialog(RecordDialog):
         self.resize(640, 400)
         form = QFormLayout()
         self.source = _line(self.record.source, "Camera, business, witness, vehicle...")
-        self.dims_status = _combo(YES_NO_UNKNOWN, self.record.dims_status)
+        self.address = _line(
+            self.record.address,
+            "Street address for the camera, business, residence, or other source",
+        )
+        self.axon_status = _combo(YES_NO_UNKNOWN, self.record.axon_status)
         self.notes = SpellCheckedTextEdit(self.record.notes)
         self.notes.setMaximumHeight(170)
         form.addRow("Source", self.source)
-        form.addRow("Entered in DIMS", self.dims_status)
+        form.addRow("Address", self.address)
+        form.addRow("Uploaded to Axon", self.axon_status)
         form.addRow("Notes", self.notes)
         self.root.addLayout(form)
         self.finish_layout()
@@ -503,11 +566,19 @@ class VideoSourceDialog(RecordDialog):
         if not self.source.text().strip():
             QMessageBox.warning(self, "Source required", "Describe the video source.")
             return
+        if not self.address.text().strip():
+            QMessageBox.warning(
+                self,
+                "Address required",
+                "Enter the address where the video source is located.",
+            )
+            return
         super()._validate_and_accept()
 
     def result_record(self) -> VideoSource:
         self.record.source = self.source.text().strip()
-        self.record.dims_status = self.dims_status.currentText()
+        self.record.address = self.address.text().strip()
+        self.record.axon_status = self.axon_status.currentText()
         self.record.notes = self.notes.toPlainText().strip()
         return self.record
 
@@ -582,7 +653,7 @@ class RoadwayDialog(RecordDialog):
         self.chord = _line(self.record.chord, "feet")
         self.middle_ordinate = _line(self.record.middle_ordinate, "feet")
         self.critical_speed = _line(self.record.critical_speed, "mph")
-        form.addRow("Roadway / tag", self.roadway_tag)
+        form.addRow("Roadway", self.roadway_tag)
         form.addRow("Speed limit", self.speed_limit)
         form.addRow("Speed limit posted", self.speed_limit_posted)
         form.addRow("Posting location", self.speed_limit_location)
@@ -615,8 +686,8 @@ class RoadwayDialog(RecordDialog):
         if not self.roadway_tag.text().strip():
             QMessageBox.warning(
                 self,
-                "Roadway tag required",
-                "Enter a road name, route, direction, or other roadway tag.",
+                "Roadway required",
+                "Enter a road name, route, direction, or approach.",
             )
             return
         super()._validate_and_accept()
@@ -957,6 +1028,7 @@ class DriverProfileDialog(RecordDialog):
         for attribute, label in (
             ("license_restrictions", "Restrictions"), ("license_number", "License number"),
             ("license_state", "State"), ("license_class", "Class"),
+            ("endorsements", "Endorsements"),
             ("license_status", "Status"),
         ):
             setattr(self, attribute, _line(getattr(profile, attribute)))
@@ -973,7 +1045,8 @@ class DriverProfileDialog(RecordDialog):
             "bac", "testing", "controlled_substances", "sleep_time", "wake_time",
             "hours_asleep", "hours_awake", "work_start", "work_end", "hours_worked",
             "type_of_work", "years_driving", "previous_collisions", "previous_traffic_homicide",
-            "license_restrictions", "license_number", "license_state", "license_class", "license_status",
+            "license_restrictions", "license_number", "license_state", "license_class", "endorsements",
+            "license_status",
             "license_restriction_explanation",
         )
         for attribute in line_fields:

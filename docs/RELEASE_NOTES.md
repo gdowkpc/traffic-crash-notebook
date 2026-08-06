@@ -1,3 +1,23 @@
+## Traffic Crash Notebook 0.5.4
+
+- Adds an embedded Case Packet Preview for both the Full Working Packet and Compact Packet, with refresh, PDF export, and direct printing through the standard Windows printer dialog.
+- Uses in-memory, generation-specific packet previews so refresh remains reliable even when Windows temporarily retains a handle to the previously displayed PDF.
+- Adds a required location address to every new or edited video-source record and includes the address in the case packet.
+- Uses "Uploaded to Axon" throughout the video-source workflow and packet, with an automatic schema migration that preserves upload statuses stored by earlier releases under the legacy field name.
+- Replaces the remaining user-facing DIMS scene-evidence labels with Axon while preserving and automatically translating legacy saved values.
+- Removes the Key Questions / Unresolved Issues field from case entry, the packet cover, and Quick Review; the automatic database migration removes the retired stored field.
+- Renames the user-facing "Roadway / Tag" label to "Roadway" in case entry and packet output while retaining unlimited separate roadway records.
+- Reformats each People identity cell in the packet with Sex / Race on the first line and a separately labeled DOB on the second line without adding another table row.
+- Reorders Participant Details so Gender / Race and DOB are included and Height / Weight appears before Transport; adds license Endorsements to driver entry, storage, and Driver Background output.
+- Moves the structured Physical Conditions selections into a full-width Driver Background table row instead of rendering them as loose continuation text.
+- Adds a per-vehicle NHTSA Recalls Checked checklist item to vehicle entry and both full and compact packet output while retaining the detailed recall-results field.
+- Adds explicit per-vehicle Towed status and Towed to destination fields, preserves existing tow-information records during migration, and shows the result in the Vehicles list and both packet modes.
+- Tightens the Weather subtab into a compact two-column layout, identifies expected entry units, and automatically adds missing F, mph, percent, inHg, and inch units in Full and Compact packet output without changing saved source values.
+- Binds every Exchange Report preview to its source case, hides a prior case's preview immediately when cases change, and blocks export or printing if generation of the selected case's verified preview fails.
+- Saves overview, packet, road, weather, and hit-and-run edits whenever investigators move between main tabs or subtabs, retains the existing short debounce, and adds a 30-second dirty-record safety retry.
+- Warns before discarding unsaved add/edit dialog changes and verifies each vehicle is readable from the database after Save; a failed vehicle save reopens the populated vehicle window instead of silently losing the entry.
+- Generates Exchange Report exports atomically from the currently selected case rather than copying the embedded preview, so a preview-renderer failure cannot export an older case or prevent creation of a valid current-case PDF.
+
 ## Traffic Crash Notebook 0.5.3
 
 This testing release improves case organization and removes duplicated or generalized fields.

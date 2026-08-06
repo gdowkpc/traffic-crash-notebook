@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -95,6 +96,7 @@ CHECKLIST_DATE_FIELDS = {
 VEHICLE_WORKFLOW_FIELDS = (
     ("warrant_obtained", "Warrant"),
     ("vehicle_inspection_completed", "Vehicle Inspection"),
+    ("nhtsa_recalls_checked", "NHTSA Recalls Checked"),
     ("cdr_equipped", "CDR Equipped"),
     ("cdr_imaged", "CDR Imaged"),
     ("cdr_report_uploaded", "CDR Report Uploaded"),
@@ -106,11 +108,23 @@ SCENE_EVIDENCE_METHODS = (
     "Investigator Photos",
     "Uploaded to Axon",
     "UAS",
-    "DIMS",
+    "Axon",
     "FARO",
 )
 
+SCENE_EVIDENCE_ALIASES = {
+    "DIMS": "Axon",
+}
+
 SURVEILLANCE_VIDEO_EVIDENCE = "Surveillance Video"
+
+
+def normalize_scene_evidence_methods(selected_methods: list[str]) -> list[str]:
+    """Translate retired scene-evidence labels while preserving saved choices."""
+    return list(dict.fromkeys(
+        SCENE_EVIDENCE_ALIASES.get(method, method)
+        for method in selected_methods
+    ))
 
 
 def scene_evidence_for_output(
@@ -119,7 +133,7 @@ def scene_evidence_for_output(
     has_video_sources: bool,
 ) -> list[str]:
     """Filter retired choices and append evidence derived from related records."""
-    selected = set(selected_methods)
+    selected = set(normalize_scene_evidence_methods(selected_methods))
     methods = [
         method
         for method in SCENE_EVIDENCE_METHODS
@@ -131,6 +145,52 @@ def scene_evidence_for_output(
     return methods
 
 CARDINAL_DIRECTIONS = ("", "North", "South", "East", "West")
+
+WEATHER_DISPLAY_UNITS = {
+    "temperature": "F",
+    "dew_point": "F",
+    "winds": "mph",
+    "humidity": "%",
+    "pressure": "inHg",
+    "precipitation": "in",
+}
+
+_WEATHER_UNIT_PATTERNS = {
+    "temperature": re.compile(
+        r"(?:\d\s*°?\s*[fc]|degrees?\s*[fc]|fahrenheit|celsius)\.?$",
+        re.IGNORECASE,
+    ),
+    "dew_point": re.compile(
+        r"(?:\d\s*°?\s*[fc]|degrees?\s*[fc]|fahrenheit|celsius)\.?$",
+        re.IGNORECASE,
+    ),
+    "winds": re.compile(
+        r"\b(?:mph|kph|km/h|knots?|kt|m/s)\b",
+        re.IGNORECASE,
+    ),
+    "humidity": re.compile(r"%|\bpercent\b", re.IGNORECASE),
+    "pressure": re.compile(
+        r"\b(?:in\s*hg|inhg|hpa|mbar|millibars?|mb|kpa|mm\s*hg)\b",
+        re.IGNORECASE,
+    ),
+    "precipitation": re.compile(
+        r"\b(?:in(?:ch(?:es)?)?|mm|cm)\b|[\"″]",
+        re.IGNORECASE,
+    ),
+}
+
+
+def format_weather_measurement(field_name: str, value: str | None) -> str:
+    """Add the customary display unit once without changing saved source data."""
+    text = (value or "").strip()
+    unit = WEATHER_DISPLAY_UNITS.get(field_name)
+    if not text or not unit or not any(character.isdigit() for character in text):
+        return text
+    pattern = _WEATHER_UNIT_PATTERNS.get(field_name)
+    if pattern and pattern.search(text):
+        return text
+    separator = "" if unit == "%" else " "
+    return f"{text}{separator}{unit}"
 
 ROAD_AREA_OPTIONS = (
     "Residential",
@@ -257,7 +317,6 @@ class CrashCase:
     assignment: str = ""
     status: str = "Active"
     summary: str = ""
-    key_questions: str = ""
     notes: str = ""
     created_at: str = ""
     updated_at: str = ""
@@ -315,10 +374,12 @@ class Vehicle:
     insurance_company: str = ""
     insurance_policy_number: str = ""
     property_damage: str = ""
+    towed: bool = False
     tow_information: str = ""
     edr_status: str = ""
     warrant_obtained: bool = False
     vehicle_inspection_completed: bool = False
+    nhtsa_recalls_checked: bool = False
     cdr_equipped: bool = False
     cdr_imaged: bool = False
     cdr_report_uploaded: bool = False
@@ -572,7 +633,8 @@ class VideoSource:
     id: str
     case_id: str
     source: str = ""
-    dims_status: str = "Unknown"
+    address: str = ""
+    axon_status: str = "Unknown"
     notes: str = ""
     created_at: str = ""
     updated_at: str = ""
@@ -707,6 +769,7 @@ class DriverProfile:
     license_number: str = ""
     license_state: str = ""
     license_class: str = ""
+    endorsements: str = ""
     license_status: str = ""
     notes: str = ""
     updated_at: str = ""

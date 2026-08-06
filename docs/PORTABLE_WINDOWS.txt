@@ -14,8 +14,9 @@ FIRST USE
    another approved folder. If existing cases are found, leave the copy option
    selected unless you intentionally want to open a different existing database.
 5. Create a fictional test case before entering working information.
-6. Test Export Full Working Packet, Export Compact Packet, Export Quick Review,
-   and Export Exchange Report, then make a database backup.
+6. Open Packet Preview and test the Full Working and Compact previews, direct
+   printing, and PDF export. Also test Export Quick Review and the Exchange Report,
+   then make a database backup.
 
 The selected folder contains the active case database plus Reports and Backups
 subfolders. The small pointer to that folder is stored under:
@@ -23,9 +24,10 @@ subfolders. The small pointer to that folder is stored under:
   %LOCALAPPDATA%\TrafficCrashNotebook\storage_config.json
 
 Replacing the portable application folder therefore does not replace the case
-database. Version 0.5.3 upgrades older databases additively when they are opened;
-existing cases are retained. Use the Back Up button regularly and store backups
-in an approved location.
+database. Version 0.5.4 upgrades older databases automatically when they are
+opened; existing cases are retained, while the retired Key Questions field is
+removed. Use the Back Up button regularly and store backups in an approved
+location.
 
 DATA STORAGE / NETWORK DRIVE
 ----------------------------
@@ -59,6 +61,11 @@ Personal words are stored separately under:
 
 PRINT OPTIONS
 -------------
+Packet Preview displays the Full Working Packet or Compact Packet inside the
+application. Refresh after changing case information, export the displayed packet
+to PDF, or use Print Packet to open the standard Windows printer dialog. Printing
+supports all pages, the current page, and selected page ranges.
+
 Export Full Working Packet creates the attorney-folder copy. It begins with a
 dedicated case and routing cover, then keeps the full section order, ruled
 handwriting areas, case identity on every page, final

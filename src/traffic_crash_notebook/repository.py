@@ -40,6 +40,7 @@ from .models import (
     VEHICLE_WORKFLOW_FIELDS,
     VideoSource,
     WitnessDetails,
+    normalize_scene_evidence_methods,
 )
 
 
@@ -54,7 +55,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 24
 
 
 SCHEMA = """
@@ -81,7 +82,6 @@ CREATE TABLE IF NOT EXISTS cases (
     assignment TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'Active',
     summary TEXT NOT NULL DEFAULT '',
-    key_questions TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
@@ -133,10 +133,12 @@ CREATE TABLE IF NOT EXISTS vehicles (
     insurance_company TEXT NOT NULL DEFAULT '',
     insurance_policy_number TEXT NOT NULL DEFAULT '',
     property_damage TEXT NOT NULL DEFAULT '',
+    towed INTEGER NOT NULL DEFAULT 0,
     tow_information TEXT NOT NULL DEFAULT '',
     edr_status TEXT NOT NULL DEFAULT '',
     warrant_obtained INTEGER NOT NULL DEFAULT 0,
     vehicle_inspection_completed INTEGER NOT NULL DEFAULT 0,
+    nhtsa_recalls_checked INTEGER NOT NULL DEFAULT 0,
     cdr_equipped INTEGER NOT NULL DEFAULT 0,
     cdr_imaged INTEGER NOT NULL DEFAULT 0,
     cdr_report_uploaded INTEGER NOT NULL DEFAULT 0,
@@ -347,7 +349,8 @@ CREATE TABLE IF NOT EXISTS driver_profiles (
     license_restricted TEXT NOT NULL DEFAULT 'Unknown',
     license_restriction_explanation TEXT NOT NULL DEFAULT '',
     license_number TEXT NOT NULL DEFAULT '', license_state TEXT NOT NULL DEFAULT '',
-    license_class TEXT NOT NULL DEFAULT '', license_status TEXT NOT NULL DEFAULT '',
+    license_class TEXT NOT NULL DEFAULT '', endorsements TEXT NOT NULL DEFAULT '',
+    license_status TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
 );
 
@@ -510,7 +513,8 @@ CREATE TABLE IF NOT EXISTS exchange_report_details (
 CREATE TABLE IF NOT EXISTS video_sources (
     id TEXT PRIMARY KEY,
     case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
-    source TEXT NOT NULL DEFAULT '', dims_status TEXT NOT NULL DEFAULT 'Unknown',
+    source TEXT NOT NULL DEFAULT '', address TEXT NOT NULL DEFAULT '',
+    axon_status TEXT NOT NULL DEFAULT 'Unknown',
     notes TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 
@@ -568,7 +572,7 @@ CREATE INDEX IF NOT EXISTS idx_hit_run_evidence_case
     ON hit_run_evidence_items(case_id, evidence_number, created_at);
 CREATE INDEX IF NOT EXISTS idx_hit_run_person_leads_case
     ON hit_run_person_leads(case_id, lead_number, created_at);
-PRAGMA user_version = 19;
+PRAGMA user_version = 24;
 """
 
 
@@ -594,10 +598,10 @@ class CaseRepository:
         with self._connect() as connection:
             previous_version = connection.execute("PRAGMA user_version").fetchone()[0]
             connection.executescript(SCHEMA)
-            self._migrate_schema_19(connection, previous_version)
+            self._migrate_schema_24(connection, previous_version)
 
     @staticmethod
-    def _migrate_schema_19(
+    def _migrate_schema_24(
         connection: sqlite3.Connection,
         previous_version: int,
     ) -> None:
@@ -615,8 +619,10 @@ class CaseRepository:
                 "insurance_policy_number": "TEXT NOT NULL DEFAULT ''",
                 "body_style": "TEXT NOT NULL DEFAULT ''",
                 "property_damage": "TEXT NOT NULL DEFAULT ''",
+                "towed": "INTEGER NOT NULL DEFAULT 0",
                 "warrant_obtained": "INTEGER NOT NULL DEFAULT 0",
                 "vehicle_inspection_completed": "INTEGER NOT NULL DEFAULT 0",
+                "nhtsa_recalls_checked": "INTEGER NOT NULL DEFAULT 0",
                 "cdr_equipped": "INTEGER NOT NULL DEFAULT 0",
                 "cdr_imaged": "INTEGER NOT NULL DEFAULT 0",
                 "cdr_report_uploaded": "INTEGER NOT NULL DEFAULT 0",
@@ -657,6 +663,7 @@ class CaseRepository:
                 "testing_methods": "TEXT NOT NULL DEFAULT ''",
                 "license_restricted": "TEXT NOT NULL DEFAULT 'Unknown'",
                 "license_restriction_explanation": "TEXT NOT NULL DEFAULT ''",
+                "endorsements": "TEXT NOT NULL DEFAULT ''",
             },
             "contact_relationships": {
                 "cell_phone": "TEXT NOT NULL DEFAULT ''",
@@ -728,6 +735,38 @@ class CaseRepository:
             for column, declaration in columns.items():
                 if column not in existing:
                     connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+        if previous_version < 24:
+            connection.execute(
+                """
+                UPDATE vehicles
+                SET towed = 1
+                WHERE TRIM(tow_information) <> ''
+                """
+            )
+        case_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(cases)").fetchall()
+        }
+        if "key_questions" in case_columns:
+            connection.execute("ALTER TABLE cases DROP COLUMN key_questions")
+        video_source_columns = {
+            row["name"]
+            for row in connection.execute("PRAGMA table_info(video_sources)").fetchall()
+        }
+        if "axon_status" not in video_source_columns:
+            if "dims_status" in video_source_columns:
+                connection.execute(
+                    "ALTER TABLE video_sources RENAME COLUMN dims_status TO axon_status"
+                )
+            else:
+                connection.execute(
+                    "ALTER TABLE video_sources "
+                    "ADD COLUMN axon_status TEXT NOT NULL DEFAULT 'Unknown'"
+                )
+        if "address" not in video_source_columns:
+            connection.execute(
+                "ALTER TABLE video_sources ADD COLUMN address TEXT NOT NULL DEFAULT ''"
+            )
         if previous_version < 8:
             legacy_roadways = connection.execute(
                 """
@@ -885,7 +924,7 @@ class CaseRepository:
                 )
                 """
             )
-        connection.execute("PRAGMA user_version = 19")
+        connection.execute("PRAGMA user_version = 24")
 
     def get_user_defaults(self) -> UserDefaults:
         with self._connect() as connection:
@@ -950,19 +989,19 @@ class CaseRepository:
             connection.execute(
                 """INSERT INTO cases
                 (id, case_number, crash_date, crash_time, location, investigator,
-                 assigned_officer_dpsst, assignment, status, summary, key_questions,
-                 notes, created_at, updated_at)
+                 assigned_officer_dpsst, assignment, status, summary, notes,
+                 created_at, updated_at)
                 VALUES (:id, :case_number, :crash_date, :crash_time, :location, :investigator,
-                        :assigned_officer_dpsst, :assignment, :status, :summary,
-                        :key_questions, :notes, :created_at, :updated_at)
+                        :assigned_officer_dpsst, :assignment, :status, :summary, :notes,
+                        :created_at, :updated_at)
                 ON CONFLICT(id) DO UPDATE SET
                   case_number=excluded.case_number, crash_date=excluded.crash_date,
                   crash_time=excluded.crash_time, location=excluded.location,
                   investigator=excluded.investigator,
                   assigned_officer_dpsst=excluded.assigned_officer_dpsst,
                   assignment=excluded.assignment, status=excluded.status,
-                  summary=excluded.summary, key_questions=excluded.key_questions,
-                  notes=excluded.notes, updated_at=excluded.updated_at""",
+                  summary=excluded.summary, notes=excluded.notes,
+                  updated_at=excluded.updated_at""",
                 values,
             )
         return case
@@ -1050,6 +1089,7 @@ class CaseRepository:
     @staticmethod
     def _vehicle_from_row(row: sqlite3.Row) -> Vehicle:
         values = dict(row)
+        values["towed"] = bool(values["towed"])
         for attribute, _label in VEHICLE_WORKFLOW_FIELDS:
             values[attribute] = bool(values[attribute])
         return Vehicle(**values)
@@ -1069,14 +1109,18 @@ class CaseRepository:
                 """INSERT INTO vehicles
                 (id, case_id, vehicle_number, year, make, model, body_style, color, vin, plate, plate_state,
                  owner_person_id, driver_person_id, insurance, insurance_company,
-                 insurance_policy_number, property_damage, tow_information, edr_status, warrant_obtained,
-                 vehicle_inspection_completed, cdr_equipped, cdr_imaged, cdr_report_uploaded,
+                 insurance_policy_number, property_damage, towed, tow_information, edr_status,
+                 warrant_obtained,
+                 vehicle_inspection_completed, nhtsa_recalls_checked, cdr_equipped, cdr_imaged,
+                 cdr_report_uploaded,
                  released, release_date, release_information, damage_notes, notes, created_at, updated_at)
                 VALUES (:id, :case_id, :vehicle_number, :year, :make, :model, :body_style, :color, :vin,
                         :plate, :plate_state, :owner_person_id, :driver_person_id, :insurance,
-                        :insurance_company, :insurance_policy_number, :property_damage, :tow_information,
-                        :edr_status, :warrant_obtained, :vehicle_inspection_completed,
-                        :cdr_equipped, :cdr_imaged, :cdr_report_uploaded, :released, :release_date,
+                        :insurance_company, :insurance_policy_number, :property_damage, :towed,
+                        :tow_information, :edr_status, :warrant_obtained,
+                        :vehicle_inspection_completed,
+                        :nhtsa_recalls_checked, :cdr_equipped, :cdr_imaged, :cdr_report_uploaded,
+                        :released, :release_date,
                         :release_information, :damage_notes, :notes, :created_at, :updated_at)
                 ON CONFLICT(id) DO UPDATE SET
                   vehicle_number=excluded.vehicle_number, year=excluded.year, make=excluded.make,
@@ -1087,9 +1131,11 @@ class CaseRepository:
                   insurance=excluded.insurance, insurance_company=excluded.insurance_company,
                   insurance_policy_number=excluded.insurance_policy_number,
                   property_damage=excluded.property_damage,
-                  tow_information=excluded.tow_information, edr_status=excluded.edr_status,
+                  towed=excluded.towed, tow_information=excluded.tow_information,
+                  edr_status=excluded.edr_status,
                   warrant_obtained=excluded.warrant_obtained,
                   vehicle_inspection_completed=excluded.vehicle_inspection_completed,
+                  nhtsa_recalls_checked=excluded.nhtsa_recalls_checked,
                   cdr_equipped=excluded.cdr_equipped, cdr_imaged=excluded.cdr_imaged,
                   cdr_report_uploaded=excluded.cdr_report_uploaded,
                   released=excluded.released, release_date=excluded.release_date,
@@ -1291,11 +1337,16 @@ class CaseRepository:
         if not row:
             return CrashDetails(case_id=case_id)
         values = dict(row)
-        scene_evidence = self._json_list(values.pop("scene_evidence_json"))
+        scene_evidence = normalize_scene_evidence_methods(
+            self._json_list(values.pop("scene_evidence_json"))
+        )
         return CrashDetails(**values, scene_evidence=scene_evidence)
 
     def save_crash_details(self, record: CrashDetails) -> CrashDetails:
         record.updated_at = utc_now()
+        record.scene_evidence = normalize_scene_evidence_methods(
+            record.scene_evidence
+        )
         values = asdict(record)
         values["scene_evidence_json"] = json.dumps(
             list(dict.fromkeys(record.scene_evidence)), ensure_ascii=True

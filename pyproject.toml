@@ -1,6 +1,6 @@
 [project]
 name = "traffic-crash-notebook"
-version = "0.5.3"
+version = "0.5.4"
 description = "Personal traffic crash investigative working-notes application"
 requires-python = ">=3.11"
 dependencies = [
