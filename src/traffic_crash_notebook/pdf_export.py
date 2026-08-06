@@ -1409,10 +1409,10 @@ def _people_section(
         "NAME", "ROLE(S)", "IDENTITY", "ADDRESS", "CONTACT", "OCCUPATION / NOTES"
     )]]
     for person in people:
-        name_markup = _text(person.display_name)
+        role_markup = _text(", ".join(person.roles))
         details = participant_details.get(person.id)
         if details and participant_is_deceased(details):
-            name_markup += (
+            role_markup += (
                 f'<br/><font color="{DECEASED_RED}"><b>DECEASED</b></font>'
             )
         phones = "; ".join(value for value in (
@@ -1434,8 +1434,8 @@ def _people_section(
             if value
         ]
         data.append([
-            Paragraph(name_markup, styles["Cell"]),
-            Paragraph(_text(", ".join(person.roles)), styles["Cell"]),
+            Paragraph(_text(person.display_name), styles["Cell"]),
+            Paragraph(role_markup, styles["Cell"]),
             Paragraph("<br/>".join(identity_lines) or "-", styles["Cell"]),
             Paragraph(_text(_person_address(person)), styles["Cell"]),
             Paragraph(_text(phones), styles["Cell"]),

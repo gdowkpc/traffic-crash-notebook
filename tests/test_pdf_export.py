@@ -507,7 +507,7 @@ class PdfExportTest(unittest.TestCase):
                 people_page_text,
                 r"M / White\s+DOB: 01/02/1985",
             )
-            self.assertIn("Morgan Lee\nDECEASED", people_page_text)
+            self.assertIn("Driver\nDECEASED", people_page_text)
             self.assertNotIn("01/02/1985 / M / White", people_page_text)
             self.assertIn("123 Example Street, Portland, OR 97201", normalized_text)
             self.assertIn("2024 Toyota Camry", text)
