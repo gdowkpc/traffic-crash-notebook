@@ -147,6 +147,10 @@ class RepositoryTest(unittest.TestCase):
             vehicle_number="V-1",
             insurance_company="Example Mutual",
             insurance_policy_number="POL-24680",
+            insurance_claim_number="CLM-86420",
+            insurance_adjuster_name="Casey Adjuster",
+            insurance_adjuster_phone="503-555-0160",
+            insurance_adjuster_email="casey.adjuster@example.com",
             body_style="Four-door SUV",
             property_damage="None",
             towed=True,
@@ -166,6 +170,13 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(loaded.insurance, "Example Mutual")
         self.assertEqual(loaded.insurance_company, "Example Mutual")
         self.assertEqual(loaded.insurance_policy_number, "POL-24680")
+        self.assertEqual(loaded.insurance_claim_number, "CLM-86420")
+        self.assertEqual(loaded.insurance_adjuster_name, "Casey Adjuster")
+        self.assertEqual(loaded.insurance_adjuster_phone, "503-555-0160")
+        self.assertEqual(
+            loaded.insurance_adjuster_email,
+            "casey.adjuster@example.com",
+        )
         self.assertEqual(loaded.body_style, "Four-door SUV")
         self.assertEqual(loaded.property_damage, "None")
         self.assertTrue(loaded.towed)
@@ -443,7 +454,7 @@ class RepositoryTest(unittest.TestCase):
                 SCHEMA_VERSION,
             )
 
-    def test_schema_17_vru_data_survives_schema_25_migrations(self):
+    def test_schema_17_vru_data_survives_schema_26_migrations(self):
         analysis = self.repository.save_vru_analysis(VRUAnalysis(
             id="",
             case_id=self.case.id,
@@ -515,7 +526,7 @@ class RepositoryTest(unittest.TestCase):
                 SCHEMA_VERSION,
             )
 
-    def test_schema_12_data_survives_schema_25_exchange_report_migration(self):
+    def test_schema_12_data_survives_schema_26_exchange_report_migration(self):
         vehicle = self.repository.save_vehicle(Vehicle(
             id="",
             case_id=self.case.id,
@@ -642,7 +653,7 @@ class RepositoryTest(unittest.TestCase):
             self.repository.get_hit_run_person_lead(person_lead.id).vehicle_lead_id
         )
 
-    def test_schema_11_data_survives_schema_25_migration(self):
+    def test_schema_11_data_survives_schema_26_migration(self):
         vehicle = self.repository.save_vehicle(Vehicle(
             id="",
             case_id=self.case.id,
@@ -768,7 +779,55 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(reopened.get_road_conditions(self.case.id).temperature, "60 F")
         self.assertEqual(reopened.get_witness_details("missing").interviewed, "Unknown")
 
-    def test_schema_10_vehicle_data_survives_schema_25_migration(self):
+    def test_schema_25_vehicle_receives_insurance_claim_fields(self):
+        vehicle = self.repository.save_vehicle(Vehicle(
+            id="",
+            case_id=self.case.id,
+            vehicle_number="V-25",
+            insurance_company="Existing Insurance",
+            insurance_policy_number="EXISTING-POLICY",
+            notes="Preserve the existing vehicle",
+        ))
+        with closing(sqlite3.connect(self.database)) as connection:
+            for column in (
+                "insurance_claim_number",
+                "insurance_adjuster_name",
+                "insurance_adjuster_phone",
+                "insurance_adjuster_email",
+            ):
+                connection.execute(f"ALTER TABLE vehicles DROP COLUMN {column}")
+            connection.execute("PRAGMA user_version = 25")
+
+        migrated = CaseRepository(self.database)
+        loaded = migrated.get_vehicle(vehicle.id)
+        self.assertEqual(loaded.insurance_company, "Existing Insurance")
+        self.assertEqual(loaded.insurance_policy_number, "EXISTING-POLICY")
+        self.assertEqual(loaded.notes, "Preserve the existing vehicle")
+        self.assertEqual(loaded.insurance_claim_number, "")
+        self.assertEqual(loaded.insurance_adjuster_name, "")
+        self.assertEqual(loaded.insurance_adjuster_phone, "")
+        self.assertEqual(loaded.insurance_adjuster_email, "")
+
+        loaded.insurance_claim_number = "MIGRATED-CLAIM"
+        loaded.insurance_adjuster_name = "Morgan Adjuster"
+        loaded.insurance_adjuster_phone = "503-555-0188"
+        loaded.insurance_adjuster_email = "morgan.adjuster@example.com"
+        migrated.save_vehicle(loaded)
+        reloaded = migrated.get_vehicle(vehicle.id)
+        self.assertEqual(reloaded.insurance_claim_number, "MIGRATED-CLAIM")
+        self.assertEqual(reloaded.insurance_adjuster_name, "Morgan Adjuster")
+        self.assertEqual(reloaded.insurance_adjuster_phone, "503-555-0188")
+        self.assertEqual(
+            reloaded.insurance_adjuster_email,
+            "morgan.adjuster@example.com",
+        )
+        with closing(sqlite3.connect(self.database)) as connection:
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                SCHEMA_VERSION,
+            )
+
+    def test_schema_10_vehicle_data_survives_schema_26_migration(self):
         legacy_database = Path(self.temp.name) / "legacy-vehicle.sqlite3"
         with closing(sqlite3.connect(legacy_database)) as connection:
             connection.executescript("""
@@ -837,7 +896,7 @@ class RepositoryTest(unittest.TestCase):
                 SCHEMA_VERSION,
             )
 
-    def test_schema_3_person_data_survives_schema_25_column_migration(self):
+    def test_schema_3_person_data_survives_schema_26_column_migration(self):
         legacy_database = Path(self.temp.name) / "legacy.sqlite3"
         with closing(sqlite3.connect(legacy_database)) as connection:
             connection.executescript("""

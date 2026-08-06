@@ -319,6 +319,21 @@ class VehicleDialog(RecordDialog):
         self.insurance_policy_number = _line(
             self.vehicle.insurance_policy_number
         )
+        self.insurance_claim_number = _line(
+            self.vehicle.insurance_claim_number,
+            "Insurance claim number",
+        )
+        self.insurance_adjuster_name = _line(
+            self.vehicle.insurance_adjuster_name
+        )
+        self.insurance_adjuster_phone = _line(
+            self.vehicle.insurance_adjuster_phone,
+            "503-555-0123",
+        )
+        self.insurance_adjuster_email = _line(
+            self.vehicle.insurance_adjuster_email,
+            "adjuster@example.com",
+        )
         self.towed = QCheckBox("Yes")
         self.towed.setChecked(
             bool(self.vehicle.towed or self.vehicle.tow_information)
@@ -353,6 +368,10 @@ class VehicleDialog(RecordDialog):
         form.addRow("Owner", self.owner)
         form.addRow("Insurance company", self.insurance_company)
         form.addRow("Insurance policy number", self.insurance_policy_number)
+        form.addRow("Insurance claim number", self.insurance_claim_number)
+        form.addRow("Adjuster's name", self.insurance_adjuster_name)
+        form.addRow("Adjuster's phone", self.insurance_adjuster_phone)
+        form.addRow("Adjuster's email", self.insurance_adjuster_email)
         form.addRow("Towed", self.towed)
         form.addRow("Towed to", self.towed_to)
         form.addRow("CDR / EDR notes", self.edr_status)
@@ -403,6 +422,8 @@ class VehicleDialog(RecordDialog):
     def result_record(self) -> Vehicle:
         for attribute in ("vehicle_number", "year", "make", "model", "body_style", "color", "vin", "plate",
                           "plate_state", "insurance_company", "insurance_policy_number",
+                          "insurance_claim_number", "insurance_adjuster_name",
+                          "insurance_adjuster_phone", "insurance_adjuster_email",
                           "edr_status", "release_information"):
             setattr(self.vehicle, attribute, getattr(self, attribute).text().strip())
         self.vehicle.towed = self.towed.isChecked()

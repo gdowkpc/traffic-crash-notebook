@@ -1030,7 +1030,7 @@ class MainWindow(QMainWindow):
                 "Vehicle Workflow",
                 "Towing",
                 "Release",
-                "Insurance",
+                "Insurance / Claim",
                 "Damage / Notes",
             ],
             self.add_vehicle, self.edit_vehicle, self.delete_vehicle,
@@ -1046,7 +1046,7 @@ class MainWindow(QMainWindow):
         self.vehicles_table.setColumnWidth(4, 230)
         self.vehicles_table.setColumnWidth(5, 220)
         self.vehicles_table.setColumnWidth(6, 250)
-        self.vehicles_table.setColumnWidth(7, 180)
+        self.vehicles_table.setColumnWidth(7, 280)
         return tab
 
     def _build_packet_preview_dialog(self) -> QDialog:
@@ -2048,9 +2048,27 @@ class MainWindow(QMainWindow):
                 for attribute, label in VEHICLE_WORKFLOW_FIELDS
                 if getattr(v, attribute)
             )
-            insurance = " / ".join(value for value in (
-                v.insurance_company or v.insurance,
-                v.insurance_policy_number,
+            insurance = "\n".join(value for value in (
+                " / ".join(value for value in (
+                    v.insurance_company or v.insurance,
+                    v.insurance_policy_number,
+                ) if value),
+                (
+                    f"Claim: {v.insurance_claim_number}"
+                    if v.insurance_claim_number else ""
+                ),
+                (
+                    f"Adjuster: {v.insurance_adjuster_name}"
+                    if v.insurance_adjuster_name else ""
+                ),
+                (
+                    f"Adjuster phone: {v.insurance_adjuster_phone}"
+                    if v.insurance_adjuster_phone else ""
+                ),
+                (
+                    f"Adjuster email: {v.insurance_adjuster_email}"
+                    if v.insurance_adjuster_email else ""
+                ),
             ) if value)
             release = " - ".join(value for value in (
                 "Released" if v.released else "",

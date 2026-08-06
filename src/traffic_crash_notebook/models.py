@@ -373,6 +373,10 @@ class Vehicle:
     insurance: str = ""
     insurance_company: str = ""
     insurance_policy_number: str = ""
+    insurance_claim_number: str = ""
+    insurance_adjuster_name: str = ""
+    insurance_adjuster_phone: str = ""
+    insurance_adjuster_email: str = ""
     property_damage: str = ""
     towed: bool = False
     tow_information: str = ""

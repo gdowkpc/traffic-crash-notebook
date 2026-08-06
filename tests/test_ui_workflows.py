@@ -196,6 +196,12 @@ class AddRecordWorkflowTest(unittest.TestCase):
             dialog.driver.setCurrentIndex(dialog.driver.findData(driver.id))
             dialog.insurance_company.setText("Example Mutual")
             dialog.insurance_policy_number.setText("POL-13579")
+            dialog.insurance_claim_number.setText("CLM-24680")
+            dialog.insurance_adjuster_name.setText("Riley Adjuster")
+            dialog.insurance_adjuster_phone.setText("503-555-0124")
+            dialog.insurance_adjuster_email.setText(
+                "riley.adjuster@example.com"
+            )
             self.assertFalse(dialog.towed.isChecked())
             self.assertFalse(dialog.towed_to.isEnabled())
             dialog.towed.setChecked(True)
@@ -218,6 +224,13 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(vehicles[0].driver_person_id, driver.id)
         self.assertEqual(vehicles[0].insurance_company, "Example Mutual")
         self.assertEqual(vehicles[0].insurance_policy_number, "POL-13579")
+        self.assertEqual(vehicles[0].insurance_claim_number, "CLM-24680")
+        self.assertEqual(vehicles[0].insurance_adjuster_name, "Riley Adjuster")
+        self.assertEqual(vehicles[0].insurance_adjuster_phone, "503-555-0124")
+        self.assertEqual(
+            vehicles[0].insurance_adjuster_email,
+            "riley.adjuster@example.com",
+        )
         self.assertEqual(vehicles[0].body_style, "Four-door sedan")
         self.assertEqual(vehicles[0].property_damage, "None")
         self.assertTrue(vehicles[0].towed)
@@ -238,6 +251,19 @@ class AddRecordWorkflowTest(unittest.TestCase):
             "Released to registered owner with receipt",
         )
         self.assertEqual(self.window.vehicles_table.rowCount(), 1)
+        self.assertEqual(
+            self.window.vehicles_table.horizontalHeaderItem(7).text(),
+            "Insurance / Claim",
+        )
+        insurance_summary = self.window.vehicles_table.item(0, 7).text()
+        self.assertIn("Example Mutual / POL-13579", insurance_summary)
+        self.assertIn("Claim: CLM-24680", insurance_summary)
+        self.assertIn("Adjuster: Riley Adjuster", insurance_summary)
+        self.assertIn("Adjuster phone: 503-555-0124", insurance_summary)
+        self.assertIn(
+            "Adjuster email: riley.adjuster@example.com",
+            insurance_summary,
+        )
         self.assertIn(
             "NHTSA Recalls Checked",
             self.window.vehicles_table.item(0, 4).text(),
@@ -254,10 +280,20 @@ class AddRecordWorkflowTest(unittest.TestCase):
             "Released - 08/05/2026 - Released to registered owner with receipt",
             self.window.vehicles_table.item(0, 6).text(),
         )
-        self.assertEqual(
-            self.window.vehicles_table.item(0, 7).text(),
-            "Example Mutual / POL-13579",
+        edit_dialog = VehicleDialog(
+            self.case.id,
+            [driver],
+            vehicles[0],
+            parent=self.window,
         )
+        self.assertEqual(edit_dialog.insurance_claim_number.text(), "CLM-24680")
+        self.assertEqual(edit_dialog.insurance_adjuster_name.text(), "Riley Adjuster")
+        self.assertEqual(edit_dialog.insurance_adjuster_phone.text(), "503-555-0124")
+        self.assertEqual(
+            edit_dialog.insurance_adjuster_email.text(),
+            "riley.adjuster@example.com",
+        )
+        edit_dialog.reject()
 
         saved_vehicle_id = vehicles[0].id
         self.window.loading = True

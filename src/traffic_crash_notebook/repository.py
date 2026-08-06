@@ -55,7 +55,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 25
+SCHEMA_VERSION = 26
 
 
 SCHEMA = """
@@ -132,6 +132,10 @@ CREATE TABLE IF NOT EXISTS vehicles (
     insurance TEXT NOT NULL DEFAULT '',
     insurance_company TEXT NOT NULL DEFAULT '',
     insurance_policy_number TEXT NOT NULL DEFAULT '',
+    insurance_claim_number TEXT NOT NULL DEFAULT '',
+    insurance_adjuster_name TEXT NOT NULL DEFAULT '',
+    insurance_adjuster_phone TEXT NOT NULL DEFAULT '',
+    insurance_adjuster_email TEXT NOT NULL DEFAULT '',
     property_damage TEXT NOT NULL DEFAULT '',
     towed INTEGER NOT NULL DEFAULT 0,
     tow_information TEXT NOT NULL DEFAULT '',
@@ -573,7 +577,7 @@ CREATE INDEX IF NOT EXISTS idx_hit_run_evidence_case
     ON hit_run_evidence_items(case_id, evidence_number, created_at);
 CREATE INDEX IF NOT EXISTS idx_hit_run_person_leads_case
     ON hit_run_person_leads(case_id, lead_number, created_at);
-PRAGMA user_version = 25;
+PRAGMA user_version = 26;
 """
 
 
@@ -599,10 +603,10 @@ class CaseRepository:
         with self._connect() as connection:
             previous_version = connection.execute("PRAGMA user_version").fetchone()[0]
             connection.executescript(SCHEMA)
-            self._migrate_schema_25(connection, previous_version)
+            self._migrate_schema_26(connection, previous_version)
 
     @staticmethod
-    def _migrate_schema_25(
+    def _migrate_schema_26(
         connection: sqlite3.Connection,
         previous_version: int,
     ) -> None:
@@ -618,6 +622,10 @@ class CaseRepository:
             "vehicles": {
                 "insurance_company": "TEXT NOT NULL DEFAULT ''",
                 "insurance_policy_number": "TEXT NOT NULL DEFAULT ''",
+                "insurance_claim_number": "TEXT NOT NULL DEFAULT ''",
+                "insurance_adjuster_name": "TEXT NOT NULL DEFAULT ''",
+                "insurance_adjuster_phone": "TEXT NOT NULL DEFAULT ''",
+                "insurance_adjuster_email": "TEXT NOT NULL DEFAULT ''",
                 "body_style": "TEXT NOT NULL DEFAULT ''",
                 "property_damage": "TEXT NOT NULL DEFAULT ''",
                 "towed": "INTEGER NOT NULL DEFAULT 0",
@@ -926,7 +934,7 @@ class CaseRepository:
                 )
                 """
             )
-        connection.execute("PRAGMA user_version = 25")
+        connection.execute("PRAGMA user_version = 26")
 
     def get_user_defaults(self) -> UserDefaults:
         with self._connect() as connection:
@@ -1111,15 +1119,21 @@ class CaseRepository:
                 """INSERT INTO vehicles
                 (id, case_id, vehicle_number, year, make, model, body_style, color, vin, plate, plate_state,
                  owner_person_id, driver_person_id, insurance, insurance_company,
-                 insurance_policy_number, property_damage, towed, tow_information, edr_status,
+                 insurance_policy_number, insurance_claim_number,
+                 insurance_adjuster_name, insurance_adjuster_phone,
+                 insurance_adjuster_email, property_damage, towed,
+                 tow_information, edr_status,
                  warrant_obtained,
                  vehicle_inspection_completed, nhtsa_recalls_checked, cdr_equipped, cdr_imaged,
                  cdr_report_uploaded,
                  released, release_date, release_information, damage_notes, notes, created_at, updated_at)
                 VALUES (:id, :case_id, :vehicle_number, :year, :make, :model, :body_style, :color, :vin,
                         :plate, :plate_state, :owner_person_id, :driver_person_id, :insurance,
-                        :insurance_company, :insurance_policy_number, :property_damage, :towed,
-                        :tow_information, :edr_status, :warrant_obtained,
+                        :insurance_company, :insurance_policy_number,
+                        :insurance_claim_number, :insurance_adjuster_name,
+                        :insurance_adjuster_phone, :insurance_adjuster_email,
+                        :property_damage, :towed, :tow_information, :edr_status,
+                        :warrant_obtained,
                         :vehicle_inspection_completed,
                         :nhtsa_recalls_checked, :cdr_equipped, :cdr_imaged, :cdr_report_uploaded,
                         :released, :release_date,
@@ -1132,6 +1146,10 @@ class CaseRepository:
                   owner_person_id=excluded.owner_person_id, driver_person_id=excluded.driver_person_id,
                   insurance=excluded.insurance, insurance_company=excluded.insurance_company,
                   insurance_policy_number=excluded.insurance_policy_number,
+                  insurance_claim_number=excluded.insurance_claim_number,
+                  insurance_adjuster_name=excluded.insurance_adjuster_name,
+                  insurance_adjuster_phone=excluded.insurance_adjuster_phone,
+                  insurance_adjuster_email=excluded.insurance_adjuster_email,
                   property_damage=excluded.property_damage,
                   towed=excluded.towed, tow_information=excluded.tow_information,
                   edr_status=excluded.edr_status,

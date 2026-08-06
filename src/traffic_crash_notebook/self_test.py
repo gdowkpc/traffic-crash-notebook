@@ -176,6 +176,10 @@ def run_self_test(output_directory: str | Path) -> Path:
         driver_person_id=person.id,
         insurance_company="Verification Insurance",
         insurance_policy_number="POLICY-123",
+        insurance_claim_number="CLAIM-456",
+        insurance_adjuster_name="Jordan Adjuster",
+        insurance_adjuster_phone="503-555-0145",
+        insurance_adjuster_email="jordan.adjuster@example.com",
         property_damage="None",
         towed=True,
         tow_information="Verification Tow Yard",
@@ -206,6 +210,11 @@ def run_self_test(output_directory: str | Path) -> Path:
     if (
         loaded_vehicle.insurance_company != "Verification Insurance"
         or loaded_vehicle.insurance_policy_number != "POLICY-123"
+        or loaded_vehicle.insurance_claim_number != "CLAIM-456"
+        or loaded_vehicle.insurance_adjuster_name != "Jordan Adjuster"
+        or loaded_vehicle.insurance_adjuster_phone != "503-555-0145"
+        or loaded_vehicle.insurance_adjuster_email
+        != "jordan.adjuster@example.com"
         or loaded_vehicle.tow_information != "Verification Tow Yard"
         or loaded_vehicle.release_date != "2026-08-05"
         or loaded_vehicle.release_information
@@ -456,6 +465,14 @@ def run_self_test(output_directory: str | Path) -> Path:
         "RELEASED",
         "08/05/2026",
         "Released to verification owner with receipt",
+        "CLAIM NUMBER",
+        "CLAIM-456",
+        "ADJUSTER NAME",
+        "Jordan Adjuster",
+        "ADJUSTER PHONE",
+        "503-555-0145",
+        "ADJUSTER EMAIL",
+        "jordan.adjuster@example.com",
         "LIGHT METER USED",
         "LIGHT BOARD USED",
         "PHYSICAL CONDITIONS",
@@ -524,7 +541,7 @@ def run_self_test(output_directory: str | Path) -> Path:
             f"Exchange-report PDF bytes: {exchange_pdf.stat().st_size}",
             "Person ZIP code persistence: PASS",
             "Participant extracted status persistence: PASS",
-            "Per-vehicle checklist, towing, release, and insurance persistence: PASS",
+            "Per-vehicle checklist, towing, release, insurance, and claim persistence: PASS",
             "Video-source address and Axon upload status persistence: PASS",
             "VRU light-meter and light-board persistence: PASS",
             "Hit-and-run overview, evidence, lead, and confirmed-record links: PASS",

@@ -34,7 +34,7 @@ agency endorsement is implied.
 - Record unlimited roadways with their own speed, posting, curve, characteristics, and traffic-control details, plus a compact weather form with station, reading time, and automatic display units, celestial lighting/twilight details, visibility, and scene-analysis conditions.
 - Maintain participant injury, transport, restraint, ejection/extraction, autopsy, next-of-kin, and medical/evidence notes.
 - Maintain driver trip, impairment, sleep, work, familiarity, history, and license information including endorsements.
-- Record vehicle weights, brakes, safety equipment, lighting, tire contribution, individual tire measurements, a per-vehicle NHTSA recall-check confirmation, towing status and destination, and release status, date, and details.
+- Record vehicle weights, brakes, safety equipment, lighting, tire contribution, individual tire measurements, a per-vehicle NHTSA recall-check confirmation, towing status and destination, release status/date/details, and insurance claim number plus adjuster name, phone, and email.
 - Record structured equipped/operable states, switch positions, body/glass/restraint observations, identity checks, and unlimited tire positions.
 - Complete the original packet's 44-item motorcycle inspection with ratings, measurements, comments, and inspection metadata.
 - Track the investigative checklist, crash-diagram completion, Axon sharing, dated peer/sergeant/DA submission milestones, unlimited charges/dispositions, crash-team response details, and unlimited video sources with location addresses and Axon upload status.

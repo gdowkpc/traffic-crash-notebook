@@ -1,5 +1,6 @@
 ## Traffic Crash Notebook 0.5.5 (Unreleased)
 
+- Adds vehicle-specific insurance claim number and adjuster name, phone, and email fields to vehicle entry, saved case data, the Vehicles list, and both packet modes, with an additive migration for existing databases.
 - Moves Packet Preview out of the data-entry tab row and into a prominent case-header button that opens a resizable preview, print, and PDF export window.
 - Places the Exchange Report at the end of the main case tab bar.
 - Identifies deceased people with a red DECEASED label in the packet People list Roles column, based on the saved death date or killed, fatal, or deceased status.

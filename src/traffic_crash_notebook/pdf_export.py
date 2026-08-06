@@ -1596,6 +1596,20 @@ def _vehicles_section(
         ]
         table = Table(details, colWidths=[1.25 * inch, 1.25 * inch, 2.15 * inch, 1.95 * inch])
         table.setStyle(_standard_table_style())
+        claim_table = Table(
+            [
+                [Paragraph("CLAIM NUMBER", styles["Label"]),
+                 Paragraph(_text(vehicle.insurance_claim_number), styles["Cell"]),
+                 Paragraph("ADJUSTER NAME", styles["Label"]),
+                 Paragraph(_text(vehicle.insurance_adjuster_name), styles["Cell"])],
+                [Paragraph("ADJUSTER PHONE", styles["Label"]),
+                 Paragraph(_text(vehicle.insurance_adjuster_phone), styles["Cell"]),
+                 Paragraph("ADJUSTER EMAIL", styles["Label"]),
+                 Paragraph(_text(vehicle.insurance_adjuster_email), styles["Cell"])],
+            ],
+            colWidths=[1.15 * inch, 2.15 * inch, 1.15 * inch, 2.15 * inch],
+        )
+        claim_table.setStyle(_standard_table_style())
         workflow_data = [
             [Paragraph(label.upper(), styles["Label"])
              for _attribute, label in VEHICLE_WORKFLOW_FIELDS],
@@ -1621,6 +1635,8 @@ def _vehicles_section(
         block: list[object] = [
             Paragraph(heading, styles["Subsection"]),
             table,
+            Paragraph("Insurance claim", styles["Label"]),
+            claim_table,
             Paragraph("Vehicle-specific checklist", styles["Label"]),
             workflow_table,
             Paragraph("Vehicle release", styles["Label"]),

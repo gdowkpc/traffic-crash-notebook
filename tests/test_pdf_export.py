@@ -298,6 +298,10 @@ class PdfExportTest(unittest.TestCase):
                 make="Toyota", model="Camry", driver_person_id=person.id,
                 insurance_company="Example Mutual",
                 insurance_policy_number="POL-24680",
+                insurance_claim_number="CLM-97531",
+                insurance_adjuster_name="Avery Adjuster",
+                insurance_adjuster_phone="503-555-0175",
+                insurance_adjuster_email="avery.adjuster@example.com",
                 towed=True,
                 tow_information="Central Evidence Tow Yard",
                 warrant_obtained=True,
@@ -531,6 +535,15 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("POLICY NUMBER", normalized_text)
             self.assertIn("Example Mutual", normalized_text)
             self.assertIn("POL-24680", normalized_text)
+            self.assertIn("Insurance claim", normalized_text)
+            self.assertIn("CLAIM NUMBER", normalized_text)
+            self.assertIn("CLM-97531", normalized_text)
+            self.assertIn("ADJUSTER NAME", normalized_text)
+            self.assertIn("Avery Adjuster", normalized_text)
+            self.assertIn("ADJUSTER PHONE", normalized_text)
+            self.assertIn("503-555-0175", normalized_text)
+            self.assertIn("ADJUSTER EMAIL", normalized_text)
+            self.assertIn("avery.adjuster@example.com", normalized_text)
             self.assertIn("Imaging completed without error", normalized_text)
             self.assertIn("Scene scan completed", text)
             self.assertIn("Investigative journal", text)
@@ -702,6 +715,13 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("TOWED / TO", normalized_compact_text)
             self.assertIn(
                 "Yes - Central Evidence Tow Yard",
+                normalized_compact_text,
+            )
+            self.assertIn("CLM-97531", normalized_compact_text)
+            self.assertIn("Avery Adjuster", normalized_compact_text)
+            self.assertIn("503-555-0175", normalized_compact_text)
+            self.assertIn(
+                "avery.adjuster@example.com",
                 normalized_compact_text,
             )
             self.assertNotIn("ROADWAY / TAG", normalized_compact_text)
