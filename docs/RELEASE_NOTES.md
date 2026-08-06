@@ -1,5 +1,6 @@
 ## Traffic Crash Notebook 0.5.5 (Unreleased)
 
+- Adds a direct Weather Underground History link above the Weather fields, opening the fixed historical-weather page in the investigator's default browser without including case data in the URL.
 - Adds vehicle-specific insurance claim number and adjuster name, phone, and email fields to vehicle entry, saved case data, the Vehicles list, and both packet modes, with an additive migration for existing databases.
 - Moves Packet Preview out of the data-entry tab row and into a prominent case-header button that opens a resizable preview, print, and PDF export window.
 - Places the Exchange Report at the end of the main case tab bar.

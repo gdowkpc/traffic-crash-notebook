@@ -1553,6 +1553,33 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(self.window.chronology_table.item(0, 0).text(), "02/13/2026")
         self.assertEqual(self.window.tasks_table.item(0, 3).text(), "03/14/2026")
 
+    def test_weather_subtab_links_to_wunderground_history(self):
+        weather_history_url = "https://www.wunderground.com/history"
+        weather_history_link = self.window.findChild(
+            QLabel,
+            "weather_history_link",
+        )
+        self.assertIsNotNone(weather_history_link)
+        self.assertIn(
+            f'href="{weather_history_url}"',
+            weather_history_link.text(),
+        )
+        self.assertIn(
+            "Open Weather Underground History",
+            weather_history_link.text(),
+        )
+        self.assertFalse(weather_history_link.openExternalLinks())
+        with patch(
+            "traffic_crash_notebook.ui.main_window.QDesktopServices.openUrl",
+            return_value=True,
+        ) as open_url:
+            weather_history_link.linkActivated.emit(weather_history_url)
+        open_url.assert_called_once()
+        self.assertEqual(
+            open_url.call_args.args[0].toString(),
+            weather_history_url,
+        )
+
     def test_weather_station_time_and_celestial_lighting_fields_persist(self):
         expected_values = {
             "temperature": "71",

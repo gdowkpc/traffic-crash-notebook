@@ -148,6 +148,9 @@ from .storage_setup import run_storage_setup
 from .update_support import UpdateCheckThread, UpdateDownloadThread
 
 
+WEATHER_HISTORY_URL = "https://www.wunderground.com/history"
+
+
 APP_STYLE = """
 QMainWindow, QWidget { background: #f4f6f8; color: #172733; }
 QToolBar { background: #18344a; spacing: 6px; border: none; padding: 5px; }
@@ -787,6 +790,27 @@ class MainWindow(QMainWindow):
         weather_layout = QVBoxLayout(weather)
         weather_layout.setContentsMargins(10, 10, 10, 10)
         weather_layout.setSpacing(6)
+        weather_source_row = QHBoxLayout()
+        weather_source_row.addWidget(QLabel("Historical weather source:"))
+        self.weather_history_link = QLabel(
+            f'<a href="{WEATHER_HISTORY_URL}">'
+            "Open Weather Underground History</a>"
+        )
+        self.weather_history_link.setObjectName("weather_history_link")
+        self.weather_history_link.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextBrowserInteraction
+        )
+        self.weather_history_link.setOpenExternalLinks(False)
+        self.weather_history_link.setToolTip(
+            "Opens the fixed Weather Underground history page in the default browser; "
+            "no case information is included in the link."
+        )
+        self.weather_history_link.linkActivated.connect(
+            self.open_weather_history
+        )
+        weather_source_row.addWidget(self.weather_history_link)
+        weather_source_row.addStretch(1)
+        weather_layout.addLayout(weather_source_row)
         self.weather_fields_grid = QGridLayout()
         self.weather_fields_grid.setObjectName("weather_fields_grid")
         self.weather_fields_grid.setHorizontalSpacing(10)
@@ -3507,6 +3531,16 @@ class MainWindow(QMainWindow):
             return
         QDesktopServices.openUrl(
             QUrl.fromLocalFile(str(self.repository.database_path.parent))
+        )
+
+    def open_weather_history(self, *_args) -> None:
+        if QDesktopServices.openUrl(QUrl(WEATHER_HISTORY_URL)):
+            return
+        QMessageBox.warning(
+            self,
+            "Unable to open weather history",
+            "Traffic Crash Notebook could not open the default browser. "
+            f"Open this address manually:\n\n{WEATHER_HISTORY_URL}",
         )
 
     def _storage_subdirectory(self, name: str) -> Path | None:

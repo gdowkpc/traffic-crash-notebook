@@ -31,7 +31,7 @@ agency endorsement is implied.
 - Preview, print through the standard Windows printer dialog, and export a comprehensive Full Working Packet with a dedicated routing cover page and ruled handwriting areas or a Compact Packet that suppresses unused material; a separate Quick Review export remains available.
 - Print case identity on every page with final "Page X of Y" numbering and a top-edge punch-safe layout for two-hole attorney folders.
 - Create a consistent SQLite database backup while the application is running.
-- Record unlimited roadways with their own speed, posting, curve, characteristics, and traffic-control details, plus a compact weather form with station, reading time, and automatic display units, celestial lighting/twilight details, visibility, and scene-analysis conditions.
+- Record unlimited roadways with their own speed, posting, curve, characteristics, and traffic-control details, plus a compact weather form with a direct Weather Underground History link, station, reading time, automatic display units, celestial lighting/twilight details, visibility, and scene-analysis conditions.
 - Maintain participant injury, transport, restraint, ejection/extraction, autopsy, next-of-kin, and medical/evidence notes.
 - Maintain driver trip, impairment, sleep, work, familiarity, history, and license information including endorsements.
 - Record vehicle weights, brakes, safety equipment, lighting, tire contribution, individual tire measurements, a per-vehicle NHTSA recall-check confirmation, towing status and destination, release status/date/details, and insurance claim number plus adjuster name, phone, and email.
