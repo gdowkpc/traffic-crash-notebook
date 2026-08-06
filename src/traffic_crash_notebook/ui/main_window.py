@@ -134,6 +134,8 @@ from .dialogs import (
     MotorcycleInspectionDialog,
     ParticipantDetailsDialog,
     PersonDialog,
+    PropertyReceiptDialog,
+    PropertyReceiptItemDialog,
     RoadwayDialog,
     SurfaceObservationDialog,
     TaskDialog,
@@ -519,8 +521,9 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self._build_vehicles_tab(), "Vehicles")
         self.tabs.addTab(self._build_hit_run_tab(), "Hit & Run")
         self.tabs.addTab(self._build_vru_tab(), "VRU Analysis")
+        self.tabs.addTab(self._build_evidence_tab(), "Evidence")
+        self.tabs.addTab(self._build_tasks_tab(), "Tasks")
         self.tabs.addTab(self._build_chronology_tab(), "Journal")
-        self.tabs.addTab(self._build_tasks_tab(), "Tasks / Evidence")
         self.exchange_report_tab_index = self.tabs.addTab(
             self._build_exchange_report_tab(),
             "Exchange Report",
@@ -1370,9 +1373,125 @@ class MainWindow(QMainWindow):
         self.chronology_table.setColumnWidth(3, 260)
         return tab
 
+    def _build_evidence_tab(self) -> QWidget:
+        tab = QWidget()
+        layout = QVBoxLayout(tab)
+        guidance = QLabel(
+            "Create a property receipt, record how and where it was lodged, then "
+            "add each evidence or property item under that receipt."
+        )
+        guidance.setObjectName("evidence_guidance")
+        guidance.setWordWrap(True)
+        layout.addWidget(guidance)
+
+        receipts_group = QGroupBox("Property receipts")
+        receipts_layout = QVBoxLayout(receipts_group)
+        receipt_buttons = QHBoxLayout()
+        receipt_buttons.addWidget(
+            _button("Add Property Receipt", self.add_property_receipt)
+        )
+        receipt_buttons.addWidget(
+            _button(
+                "Edit Property Receipt",
+                self.edit_property_receipt,
+                secondary=True,
+            )
+        )
+        receipt_buttons.addWidget(
+            _button(
+                "Remove Property Receipt",
+                self.delete_property_receipt,
+                secondary=True,
+            )
+        )
+        receipt_buttons.addStretch(1)
+        receipts_layout.addLayout(receipt_buttons)
+        self.property_receipts_table = QTableWidget(0, 5)
+        self.property_receipts_table.setObjectName("property_receipts_table")
+        self.property_receipts_table.setHorizontalHeaderLabels(
+            ["Receipt #", "Property Owner", "Lodged Under", "Lodged At", "Date"]
+        )
+        self.property_receipts_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.property_receipts_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.property_receipts_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.property_receipts_table.verticalHeader().setVisible(False)
+        self.property_receipts_table.horizontalHeader().setStretchLastSection(True)
+        self.property_receipts_table.setColumnWidth(0, 140)
+        self.property_receipts_table.setColumnWidth(1, 190)
+        self.property_receipts_table.setColumnWidth(2, 130)
+        self.property_receipts_table.setColumnWidth(3, 210)
+        self.property_receipts_table.doubleClicked.connect(
+            self.edit_property_receipt
+        )
+        self.property_receipts_table.currentCellChanged.connect(
+            self.refresh_property_receipt_items
+        )
+        receipts_layout.addWidget(self.property_receipts_table, 1)
+        layout.addWidget(receipts_group, 1)
+
+        self.property_receipt_items_group = QGroupBox(
+            "Items on selected property receipt"
+        )
+        items_layout = QVBoxLayout(self.property_receipt_items_group)
+        item_buttons = QHBoxLayout()
+        self.add_property_receipt_item_button = _button(
+            "Add Item",
+            self.add_property_receipt_item,
+        )
+        self.edit_property_receipt_item_button = _button(
+            "Edit Item",
+            self.edit_property_receipt_item,
+            secondary=True,
+        )
+        self.delete_property_receipt_item_button = _button(
+            "Remove Item",
+            self.delete_property_receipt_item,
+            secondary=True,
+        )
+        for button in (
+            self.add_property_receipt_item_button,
+            self.edit_property_receipt_item_button,
+            self.delete_property_receipt_item_button,
+        ):
+            button.setEnabled(False)
+            item_buttons.addWidget(button)
+        item_buttons.addStretch(1)
+        items_layout.addLayout(item_buttons)
+        self.property_receipt_items_table = QTableWidget(0, 2)
+        self.property_receipt_items_table.setObjectName(
+            "property_receipt_items_table"
+        )
+        self.property_receipt_items_table.setHorizontalHeaderLabels(
+            ["Item #", "Description"]
+        )
+        self.property_receipt_items_table.setSelectionBehavior(
+            QAbstractItemView.SelectionBehavior.SelectRows
+        )
+        self.property_receipt_items_table.setSelectionMode(
+            QAbstractItemView.SelectionMode.SingleSelection
+        )
+        self.property_receipt_items_table.setEditTriggers(
+            QAbstractItemView.EditTrigger.NoEditTriggers
+        )
+        self.property_receipt_items_table.verticalHeader().setVisible(False)
+        self.property_receipt_items_table.horizontalHeader().setStretchLastSection(True)
+        self.property_receipt_items_table.setColumnWidth(0, 85)
+        self.property_receipt_items_table.doubleClicked.connect(
+            self.edit_property_receipt_item
+        )
+        items_layout.addWidget(self.property_receipt_items_table, 1)
+        layout.addWidget(self.property_receipt_items_group, 1)
+        return tab
+
     def _build_tasks_tab(self):
         tab, self.tasks_table = self._table_tab(
-            ["Status", "Category", "Task / Evidence", "Due", "Notes"],
+            ["Status", "Category", "Task", "Due", "Notes"],
             self.add_task, self.edit_task, self.delete_task,
         )
         self.tasks_table.setColumnWidth(0, 100)
@@ -1729,6 +1848,7 @@ class MainWindow(QMainWindow):
         self.refresh_hit_run_person_leads()
         self.refresh_contacts()
         self.refresh_vru_analyses()
+        self.refresh_property_receipts()
         self.refresh_chronology()
         self.refresh_tasks()
         self._update_header()
@@ -3078,6 +3198,167 @@ class MainWindow(QMainWindow):
         if analysis_id and self._confirm_remove("Remove this VRU analysis?"):
             self.repository.delete_vru_analysis(analysis_id)
             self.refresh_vru_analyses()
+
+    def refresh_property_receipts(
+        self,
+        selected_receipt_id: str | None = None,
+    ) -> None:
+        if not self.current_case:
+            return
+        selected_receipt_id = (
+            selected_receipt_id
+            or self._selected_id(self.property_receipts_table)
+        )
+        receipts = self.repository.list_property_receipts(self.current_case.id)
+        self._populate_table(
+            self.property_receipts_table,
+            [
+                (
+                    receipt.id,
+                    [
+                        receipt.receipt_number,
+                        receipt.property_owner,
+                        receipt.lodging_type,
+                        receipt.lodged_location,
+                        format_date_for_display(receipt.lodged_date),
+                    ],
+                )
+                for receipt in receipts
+            ],
+        )
+        target_row = 0 if receipts else -1
+        if selected_receipt_id:
+            for row in range(self.property_receipts_table.rowCount()):
+                item = self.property_receipts_table.item(row, 0)
+                if (
+                    item
+                    and item.data(Qt.ItemDataRole.UserRole)
+                    == selected_receipt_id
+                ):
+                    target_row = row
+                    break
+        if target_row >= 0:
+            self.property_receipts_table.setCurrentCell(target_row, 0)
+        else:
+            self.property_receipts_table.clearSelection()
+            self.refresh_property_receipt_items()
+
+    def refresh_property_receipt_items(self, *_args) -> None:
+        receipt_id = self._selected_id(self.property_receipts_table)
+        has_receipt = bool(receipt_id)
+        for button in (
+            self.add_property_receipt_item_button,
+            self.edit_property_receipt_item_button,
+            self.delete_property_receipt_item_button,
+        ):
+            button.setEnabled(has_receipt)
+        if not receipt_id:
+            self.property_receipt_items_group.setTitle(
+                "Items on selected property receipt"
+            )
+            self._populate_table(self.property_receipt_items_table, [])
+            return
+        receipt = self.repository.get_property_receipt(receipt_id)
+        receipt_label = receipt.receipt_number if receipt else "selected receipt"
+        self.property_receipt_items_group.setTitle(
+            f"Items on property receipt {receipt_label}"
+        )
+        self._populate_table(
+            self.property_receipt_items_table,
+            [
+                (item.id, [str(item.item_number), item.description])
+                for item in self.repository.list_property_receipt_items(receipt_id)
+            ],
+        )
+
+    def add_property_receipt(self) -> None:
+        if not self.current_case:
+            return
+        dialog = PropertyReceiptDialog(self.current_case.id, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            receipt = self.repository.save_property_receipt(
+                dialog.result_record()
+            )
+            self.refresh_property_receipts(receipt.id)
+            self.refresh_case_packet_preview()
+
+    def edit_property_receipt(self, *_args) -> None:
+        receipt_id = self._selected_id(self.property_receipts_table)
+        if not receipt_id:
+            return
+        receipt = self.repository.get_property_receipt(receipt_id)
+        if not receipt:
+            return
+        dialog = PropertyReceiptDialog(receipt.case_id, receipt, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            saved = self.repository.save_property_receipt(dialog.result_record())
+            self.refresh_property_receipts(saved.id)
+            self.refresh_case_packet_preview()
+
+    def delete_property_receipt(self) -> None:
+        receipt_id = self._selected_id(self.property_receipts_table)
+        if receipt_id and self._confirm_remove(
+            "Remove this property receipt and all of its items?"
+        ):
+            self.repository.delete_property_receipt(receipt_id)
+            self.refresh_property_receipts()
+            self.refresh_case_packet_preview()
+
+    def add_property_receipt_item(self) -> None:
+        receipt_id = self._selected_id(self.property_receipts_table)
+        if not receipt_id:
+            return
+        next_number = self.repository.next_property_receipt_item_number(
+            receipt_id
+        )
+        dialog = PropertyReceiptItemDialog(
+            receipt_id,
+            next_number,
+            parent=self,
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            try:
+                self.repository.save_property_receipt_item(
+                    dialog.result_record()
+                )
+            except ValueError as error:
+                QMessageBox.warning(self, "Property item not saved", str(error))
+                return
+            self.refresh_property_receipt_items()
+            self.refresh_case_packet_preview()
+
+    def edit_property_receipt_item(self, *_args) -> None:
+        item_id = self._selected_id(self.property_receipt_items_table)
+        if not item_id:
+            return
+        item = self.repository.get_property_receipt_item(item_id)
+        if not item:
+            return
+        dialog = PropertyReceiptItemDialog(
+            item.receipt_id,
+            item.item_number,
+            item,
+            self,
+        )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            try:
+                self.repository.save_property_receipt_item(
+                    dialog.result_record()
+                )
+            except ValueError as error:
+                QMessageBox.warning(self, "Property item not saved", str(error))
+                return
+            self.refresh_property_receipt_items()
+            self.refresh_case_packet_preview()
+
+    def delete_property_receipt_item(self) -> None:
+        item_id = self._selected_id(self.property_receipt_items_table)
+        if item_id and self._confirm_remove(
+            "Remove this item from the property receipt?"
+        ):
+            self.repository.delete_property_receipt_item(item_id)
+            self.refresh_property_receipt_items()
+            self.refresh_case_packet_preview()
 
     def refresh_chronology(self) -> None:
         if not self.current_case:

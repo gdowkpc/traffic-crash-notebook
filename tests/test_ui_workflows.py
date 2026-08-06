@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QDialog,
     QDialogButtonBox,
+    QFormLayout,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -39,6 +40,7 @@ from traffic_crash_notebook.models import (
     MotorcycleInspection,
     ParticipantDetails,
     Person,
+    PropertyReceipt,
     Vehicle,
     WitnessDetails,
 )
@@ -55,6 +57,8 @@ from traffic_crash_notebook.ui.dialogs import (
     MotorcycleInspectionDialog,
     ParticipantDetailsDialog,
     PersonDialog,
+    PropertyReceiptDialog,
+    PropertyReceiptItemDialog,
     RoadwayDialog,
     SurfaceObservationDialog,
     TaskDialog,
@@ -159,6 +163,20 @@ class AddRecordWorkflowTest(unittest.TestCase):
 
     def test_add_person_persists_and_refreshes_table(self):
         def configure(dialog: PersonDialog) -> None:
+            form = dialog.root.itemAt(0).layout()
+            self.assertIsInstance(form, QFormLayout)
+            ordered_fields = (
+                dialog.address,
+                dialog.city,
+                dialog.state,
+                dialog.zip_code,
+                dialog.cell_phone,
+                dialog.home_phone,
+                dialog.work_phone,
+                dialog.email,
+            )
+            rows = [form.getWidgetPosition(field)[0] for field in ordered_fields]
+            self.assertEqual(rows, list(range(rows[0], rows[0] + len(rows))))
             dialog.first_name.setText("Alex")
             dialog.last_name.setText("Tester")
             dialog.dob.setText("08/05/1985")
@@ -482,6 +500,114 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(self.repository.list_chronology(self.case.id), [])
         self.assertEqual(self.window.chronology_table.rowCount(), 0)
         self.assertIn("0 journal entries", self.window.counts_label.text())
+
+    def test_evidence_tasks_and_journal_are_separate_ordered_tabs(self):
+        tab_labels = [
+            self.window.tabs.tabText(index)
+            for index in range(self.window.tabs.count())
+        ]
+        evidence_index = tab_labels.index("Evidence")
+        self.assertEqual(
+            tab_labels[evidence_index:evidence_index + 3],
+            ["Evidence", "Tasks", "Journal"],
+        )
+        self.assertNotIn("Tasks / Evidence", tab_labels)
+        self.assertEqual(
+            self.window.tasks_table.horizontalHeaderItem(2).text(),
+            "Task",
+        )
+
+        evidence_tab = self.window.tabs.widget(evidence_index)
+        guidance = evidence_tab.findChild(QLabel, "evidence_guidance")
+        self.assertIsNotNone(guidance)
+        self.assertIn("property receipt", guidance.text().lower())
+        button_labels = {
+            button.text() for button in evidence_tab.findChildren(QPushButton)
+        }
+        self.assertTrue({
+            "Add Property Receipt",
+            "Edit Property Receipt",
+            "Remove Property Receipt",
+            "Add Item",
+            "Edit Item",
+            "Remove Item",
+        }.issubset(button_labels))
+        self.assertFalse(self.window.add_property_receipt_item_button.isEnabled())
+
+        def configure_receipt(dialog: PropertyReceiptDialog) -> None:
+            self.assertEqual(
+                [
+                    dialog.lodging_type.itemText(index)
+                    for index in range(dialog.lodging_type.count())
+                ],
+                [
+                    "Evidence",
+                    "Found Property",
+                    "Prison Property",
+                    "Safe Keeping",
+                ],
+            )
+            dialog.receipt_number.setText("PR-13579")
+            dialog.property_owner.setText("Jordan Property Owner")
+            dialog.lodging_type.setCurrentText("Safe Keeping")
+            dialog.lodged_location.setText("Central Property Room")
+            dialog.lodged_date.setText("08/06/2026")
+
+        self._complete_modal_dialog(
+            self.window.add_property_receipt,
+            PropertyReceiptDialog,
+            configure_receipt,
+        )
+        receipts = self.repository.list_property_receipts(self.case.id)
+        self.assertEqual(len(receipts), 1)
+        receipt = receipts[0]
+        self.assertEqual(receipt.receipt_number, "PR-13579")
+        self.assertEqual(receipt.property_owner, "Jordan Property Owner")
+        self.assertEqual(receipt.lodging_type, "Safe Keeping")
+        self.assertEqual(receipt.lodged_location, "Central Property Room")
+        self.assertEqual(receipt.lodged_date, "2026-08-06")
+        self.assertEqual(self.window.property_receipts_table.rowCount(), 1)
+        self.assertEqual(
+            self.window.property_receipts_table.item(0, 4).text(),
+            "08/06/2026",
+        )
+        self.assertTrue(self.window.add_property_receipt_item_button.isEnabled())
+
+        def add_item(expected_number: int, description: str) -> None:
+            def configure_item(dialog: PropertyReceiptItemDialog) -> None:
+                self.assertEqual(dialog.item_number.value(), expected_number)
+                dialog.description.setPlainText(description)
+
+            self._complete_modal_dialog(
+                self.window.add_property_receipt_item,
+                PropertyReceiptItemDialog,
+                configure_item,
+            )
+
+        add_item(1, "Black passenger-side mirror housing")
+        add_item(2, "Blue paint transfer sample")
+        items = self.repository.list_property_receipt_items(receipt.id)
+        self.assertEqual(
+            [(item.item_number, item.description) for item in items],
+            [
+                (1, "Black passenger-side mirror housing"),
+                (2, "Blue paint transfer sample"),
+            ],
+        )
+        self.assertEqual(self.window.property_receipt_items_table.rowCount(), 2)
+
+        self.window.property_receipts_table.setCurrentCell(0, 0)
+        with patch.object(self.window, "_confirm_remove", return_value=True) as confirm:
+            self.window.delete_property_receipt()
+        confirm.assert_called_once_with(
+            "Remove this property receipt and all of its items?"
+        )
+        self.assertEqual(self.repository.list_property_receipts(self.case.id), [])
+        self.assertEqual(
+            self.repository.list_property_receipt_items(receipt.id),
+            [],
+        )
+        self.assertFalse(self.window.add_property_receipt_item_button.isEnabled())
 
     def test_case_packet_workspace_previews_prints_and_exports_both_packet_types(self):
         tab_labels = [
@@ -1490,6 +1616,22 @@ class AddRecordWorkflowTest(unittest.TestCase):
                 completed_date="2026-03-05",
             ),
         )
+        property_receipt_dialog = PropertyReceiptDialog(
+            self.case.id,
+            PropertyReceipt(
+                id=new_id(),
+                case_id=self.case.id,
+                lodged_date="2026-03-06",
+            ),
+        )
+        driver_profile_dialog = DriverProfileDialog(
+            person,
+            DriverProfile(
+                person_id=person.id,
+                license_issued_date="2024-03-07",
+                license_expiration_date="2032-03-08",
+            ),
+        )
         motorcycle_dialog = MotorcycleInspectionDialog(
             vehicle,
             MotorcycleInspection(vehicle_id=vehicle.id, inspection_date="2026-04-05"),
@@ -1509,6 +1651,9 @@ class AddRecordWorkflowTest(unittest.TestCase):
             (chronology_dialog.event_date, "02/03/2026"),
             (task_dialog.due_date, "03/04/2026"),
             (task_dialog.completed_date, "03/05/2026"),
+            (property_receipt_dialog.lodged_date, "03/06/2026"),
+            (driver_profile_dialog.license_issued_date, "03/07/2024"),
+            (driver_profile_dialog.license_expiration_date, "03/08/2032"),
             (motorcycle_dialog.inspection_date, "04/05/2026"),
             (participant_dialog.date_of_death, "05/06/2026"),
             (witness_dialog.interview_date, "06/07/2026"),
@@ -1521,6 +1666,9 @@ class AddRecordWorkflowTest(unittest.TestCase):
         chronology_dialog.event_date.setText("02/13/2026")
         task_dialog.due_date.setText("03/14/2026")
         task_dialog.completed_date.setText("03/15/2026")
+        property_receipt_dialog.lodged_date.setText("03/16/2026")
+        driver_profile_dialog.license_issued_date.setText("03/17/2024")
+        driver_profile_dialog.license_expiration_date.setText("03/18/2032")
         motorcycle_dialog.inspection_date.setText("04/16/2026")
         participant_dialog.date_of_death.setText("05/17/2026")
         witness_dialog.interview_date.setText("06/18/2026")
@@ -1531,6 +1679,19 @@ class AddRecordWorkflowTest(unittest.TestCase):
         task_record = task_dialog.result_record()
         self.assertEqual(task_record.due_date, "2026-03-14")
         self.assertEqual(task_record.completed_date, "2026-03-15")
+        self.assertEqual(
+            property_receipt_dialog.result_record().lodged_date,
+            "2026-03-16",
+        )
+        driver_profile_record = driver_profile_dialog.result_record()
+        self.assertEqual(
+            driver_profile_record.license_issued_date,
+            "2024-03-17",
+        )
+        self.assertEqual(
+            driver_profile_record.license_expiration_date,
+            "2032-03-18",
+        )
         self.assertEqual(
             motorcycle_dialog.result_record().inspection_date,
             "2026-04-16",
@@ -2051,11 +2212,52 @@ class AddRecordWorkflowTest(unittest.TestCase):
         )
 
         def configure_driver(dialog: DriverProfileDialog) -> None:
+            tabs = dialog.findChild(QTabWidget)
+            self.assertEqual(tabs.tabText(0), "License")
+            license_form = tabs.widget(0).layout()
+            license_fields = (
+                dialog.license_number,
+                dialog.license_state,
+                dialog.license_class,
+                dialog.license_status,
+                dialog.license_issued_date,
+                dialog.license_expiration_date,
+                dialog.endorsements,
+                dialog.license_restrictions,
+                dialog.license_restriction_explanation,
+                dialog.driving_history,
+            )
+            self.assertEqual(
+                [license_form.labelForField(field).text() for field in license_fields],
+                [
+                    "License Number",
+                    "License State",
+                    "Class",
+                    "Status",
+                    "Issued",
+                    "Expiration",
+                    "Endorsements",
+                    "Restrictions",
+                    "Restrictions Explained",
+                    "Driving History",
+                ],
+            )
+            self.assertFalse(hasattr(dialog, "license_restricted"))
+            self.assertFalse(hasattr(dialog, "driver_notes"))
             dialog.physical_condition_boxes["Vision"].setChecked(True)
             dialog.testing_method_boxes["SFST"].setChecked(True)
-            dialog.license_restricted.setCurrentText("Yes")
+            dialog.license_number.setText("DL-24680")
+            dialog.license_state.setText("OR")
+            dialog.license_class.setText("C")
+            dialog.license_status.setText("Valid")
+            dialog.license_issued_date.setText("07/01/2024")
+            dialog.license_expiration_date.setText("07/01/2032")
+            dialog.license_restrictions.setText("Restriction B")
             dialog.license_restriction_explanation.setText("Corrective lenses")
             dialog.endorsements.setText("Passenger; Tank")
+            dialog.driving_history.setPlainText(
+                "No preventable collisions documented."
+            )
 
         self._complete_modal_dialog(
             self.window.edit_driver_profile,
@@ -2147,7 +2349,22 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertIn("Laceration", details.injury_codes)
         profile = self.repository.get_driver_profile(person.id)
         self.assertEqual(profile.license_restricted, "Yes")
+        self.assertEqual(profile.license_number, "DL-24680")
+        self.assertEqual(profile.license_state, "OR")
+        self.assertEqual(profile.license_class, "C")
+        self.assertEqual(profile.license_status, "Valid")
+        self.assertEqual(profile.license_issued_date, "2024-07-01")
+        self.assertEqual(profile.license_expiration_date, "2032-07-01")
+        self.assertEqual(profile.license_restrictions, "Restriction B")
+        self.assertEqual(
+            profile.license_restriction_explanation,
+            "Corrective lenses",
+        )
         self.assertEqual(profile.endorsements, "Passenger; Tank")
+        self.assertEqual(
+            profile.notes,
+            "No preventable collisions documented.",
+        )
         self.assertIn("SFST", profile.testing_methods)
         contact = self.repository.list_contacts(self.case.id)[0]
         self.assertEqual(contact.work_phone, "503-555-0103")

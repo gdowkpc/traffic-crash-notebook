@@ -30,6 +30,13 @@ CASE_STATUSES = (
 
 TASK_STATUSES = ("Open", "Waiting", "Completed", "Not Needed")
 
+PROPERTY_LODGING_TYPES = (
+    "Evidence",
+    "Found Property",
+    "Prison Property",
+    "Safe Keeping",
+)
+
 HIT_RUN_INVESTIGATION_STATUSES = (
     "Active",
     "Vehicle Lead Developed",
@@ -565,6 +572,29 @@ class CaseTask:
 
 
 @dataclass(slots=True)
+class PropertyReceipt:
+    id: str
+    case_id: str
+    receipt_number: str = ""
+    property_owner: str = ""
+    lodging_type: str = "Evidence"
+    lodged_location: str = ""
+    lodged_date: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass(slots=True)
+class PropertyReceiptItem:
+    id: str
+    receipt_id: str
+    item_number: int = 1
+    description: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+
+@dataclass(slots=True)
 class InvestigativeChecklist:
     case_id: str
     completed_items: list[str] = field(default_factory=list)
@@ -776,14 +806,16 @@ class DriverProfile:
     years_driving: str = ""
     previous_collisions: str = ""
     previous_traffic_homicide: str = ""
-    license_restrictions: str = ""
-    license_restricted: str = "Unknown"
-    license_restriction_explanation: str = ""
     license_number: str = ""
     license_state: str = ""
     license_class: str = ""
-    endorsements: str = ""
     license_status: str = ""
+    license_issued_date: str = ""
+    license_expiration_date: str = ""
+    endorsements: str = ""
+    license_restrictions: str = ""
+    license_restriction_explanation: str = ""
+    license_restricted: str = "Unknown"
     notes: str = ""
     updated_at: str = ""
 

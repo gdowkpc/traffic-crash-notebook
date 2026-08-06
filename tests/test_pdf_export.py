@@ -23,6 +23,8 @@ from traffic_crash_notebook.models import (
     MotorcycleInspectionItem,
     ParticipantDetails,
     Person,
+    PropertyReceipt,
+    PropertyReceiptItem,
     RoadConditions,
     CrashDetails,
     RoadwayRecord,
@@ -159,6 +161,136 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("GENERAL HANDWRITTEN CONTINUATION", compact_text)
             self.assertNotIn("Hit & Run Investigation", working_text)
             self.assertNotIn("Hit & Run Investigation", compact_text)
+
+    def test_packet_prints_property_receipts_items_before_tasks_and_journal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = CaseRepository(root / "evidence.sqlite3")
+            case = repository.create_case("26-EVIDENCE", "Evidence Test")
+            receipt = repository.save_property_receipt(PropertyReceipt(
+                id="",
+                case_id=case.id,
+                receipt_number="PR-86420",
+                property_owner="Morgan Evidence Owner",
+                lodging_type="Found Property",
+                lodged_location="North Precinct Property Room",
+                lodged_date="2026-08-06",
+            ))
+            repository.save_property_receipt_item(PropertyReceiptItem(
+                id="",
+                receipt_id=receipt.id,
+                item_number=1,
+                description="Passenger-side mirror housing with blue paint transfer",
+            ))
+            repository.save_property_receipt_item(PropertyReceiptItem(
+                id="",
+                receipt_id=receipt.id,
+                item_number=2,
+                description="Clear lens fragment",
+            ))
+            repository.save_task(CaseTask(
+                id="",
+                case_id=case.id,
+                description="Submit evidence for comparison",
+            ))
+            repository.save_chronology(ChronologyEntry(
+                id="",
+                case_id=case.id,
+                event_date="2026-08-07",
+                summary="Evidence lodged",
+            ))
+
+            reader = PdfReader(
+                export_case_compact_pdf(
+                    repository,
+                    case.id,
+                    root / "evidence-packet.pdf",
+                )
+            )
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+            normalized_text = " ".join(text.split())
+            for expected in (
+                "Property receipt PR-86420",
+                "Morgan Evidence Owner",
+                "Found Property",
+                "North Precinct Property Room",
+                "08/06/2026",
+                "Passenger-side mirror housing with blue paint transfer",
+                "Clear lens fragment",
+                "Submit evidence for comparison",
+                "Evidence lodged",
+            ):
+                self.assertIn(expected, normalized_text)
+            self.assertLess(
+                normalized_text.index("Property receipt PR-86420"),
+                normalized_text.index("Submit evidence for comparison"),
+            )
+            self.assertLess(
+                normalized_text.index("Submit evidence for comparison"),
+                normalized_text.index("Evidence lodged"),
+            )
+
+    def test_non_driver_packet_suppresses_driver_only_condition_and_sleep_rows(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = CaseRepository(root / "non-driver.sqlite3")
+            case = repository.create_case("26-NON-DRIVER", "Packet Test")
+            pedestrian = repository.save_person(Person(
+                id="",
+                case_id=case.id,
+                first_name="Taylor",
+                last_name="Pedestrian",
+                roles=["Pedestrian"],
+            ))
+            repository.save_participant_details(ParticipantDetails(
+                person_id=pedestrian.id,
+                occupant_position="Pedestrian",
+                injury_status="Injured",
+            ))
+            repository.save_driver_profile(DriverProfile(
+                person_id=pedestrian.id,
+                license_number="NONDRIVER-DL",
+                license_state="OR",
+                license_class="C",
+                license_status="Valid",
+                license_issued_date="2023-02-03",
+                license_expiration_date="2031-02-03",
+                physical_condition_types="NONDRIVER PHYSICAL VALUE",
+                permanent_conditions="NONDRIVER MEDICAL VALUE",
+                hours_asleep="NONDRIVER SLEEP VALUE",
+                hours_awake="NONDRIVER AWAKE VALUE",
+                hours_worked="8 hours",
+                type_of_work="Office work",
+                notes="Non-driver license history note.",
+            ))
+
+            reader = PdfReader(export_case_compact_pdf(
+                repository,
+                case.id,
+                root / "non-driver-packet.pdf",
+            ))
+            text = "\n".join(page.extract_text() or "" for page in reader.pages)
+            normalized_text = " ".join(text.split())
+            participant_block = normalized_text.split(
+                "Participant and driver details",
+                1,
+            )[1]
+            self.assertIn("Participant background", participant_block)
+            self.assertNotIn("Driver background", participant_block)
+            self.assertIn("LICENSE NUMBER NONDRIVER-DL", participant_block)
+            self.assertIn("ISSUED 02/03/2023", participant_block)
+            self.assertIn("EXPIRATION 02/03/2031", participant_block)
+            self.assertIn("WORK 8 hours; Office work", participant_block)
+            self.assertIn(
+                "DRIVING HISTORY Non-driver license history note.",
+                participant_block,
+            )
+            self.assertNotIn("PHYSICAL CONDITIONS", participant_block)
+            self.assertNotIn("SLEEP / AWAKE", participant_block)
+            self.assertNotIn("NONDRIVER PHYSICAL VALUE", participant_block)
+            self.assertNotIn("NONDRIVER MEDICAL VALUE", participant_block)
+            self.assertNotIn("NONDRIVER SLEEP VALUE", participant_block)
+            self.assertNotIn("NONDRIVER AWAKE VALUE", participant_block)
 
     def test_hit_run_section_is_conditional_complete_and_has_working_space(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -405,14 +537,26 @@ class PdfExportTest(unittest.TestCase):
             ))
             repository.save_driver_profile(DriverProfile(
                 person_id=person.id, trip_from="Home", trip_to="Work",
-                hours_asleep="7 hours", license_status="Valid",
+                hours_asleep="7 hours", hours_awake="10 hours",
+                license_number="DL-24680", license_state="OR",
+                license_class="C", license_status="Valid",
+                license_issued_date="2024-07-01",
+                license_expiration_date="2032-07-01",
                 physical_condition_types="Vision", testing_methods="SFST",
-                license_restricted="Yes", license_restriction_explanation="Corrective lenses",
+                license_restricted="Yes", license_restrictions="Restriction B",
+                license_restriction_explanation="Corrective lenses",
                 endorsements="Passenger; Tank",
+                notes="No preventable collisions documented.",
             ))
             repository.save_witness_details(WitnessDetails(
                 person_id=person.id, interviewed="Yes", interview_date="2026-08-05",
                 statement_summary="The signal was visible from the north sidewalk.",
+                significance=(
+                    "The witness observed the entire signal cycle and described "
+                    "the involved vehicle's approach, impact, and final position "
+                    "from an unobstructed location."
+                ),
+                follow_up="WITNESS FOLLOW-UP OMITTED FROM PACKET",
             ))
             repository.save_contact(ContactRelationship(
                 id="", case_id=case.id, contact_type="Family / Contact",
@@ -650,6 +794,21 @@ class PdfExportTest(unittest.TestCase):
                 participant_block.index("TRANSPORT"),
             )
             self.assertIn("ENDORSEMENTS Passenger; Tank", participant_block)
+            self.assertIn("LICENSE NUMBER DL-24680", participant_block)
+            self.assertIn("LICENSE STATE OR", participant_block)
+            self.assertIn("CLASS C", participant_block)
+            self.assertIn("STATUS Valid", participant_block)
+            self.assertIn("ISSUED 07/01/2024", participant_block)
+            self.assertIn("EXPIRATION 07/01/2032", participant_block)
+            self.assertIn("RESTRICTIONS Restriction B", participant_block)
+            self.assertIn(
+                "RESTRICTIONS EXPLAINED Corrective lenses",
+                participant_block,
+            )
+            self.assertIn(
+                "DRIVING HISTORY No preventable collisions documented.",
+                participant_block,
+            )
             self.assertIn("PHYSICAL CONDITIONS Vision", participant_block)
             self.assertLess(
                 participant_block.index("IMPAIRMENT"),
@@ -671,6 +830,15 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("12,345", text)
             self.assertIn("225/45R18", text)
             self.assertIn("Witness interviews and contacts", text)
+            witness_block = text[
+                text.index("Witness interviews and contacts"):
+                text.index("Vulnerable road user analysis")
+            ]
+            self.assertIn("SIGNIFICANCE", witness_block)
+            self.assertIn("observed the entire signal cycle", witness_block)
+            self.assertNotIn("OCCUPATION", witness_block)
+            self.assertNotIn("FOLLOW-UP", witness_block)
+            self.assertNotIn("WITNESS FOLLOW-UP OMITTED FROM PACKET", witness_block)
             self.assertIn("PERSON", normalized_text)
             self.assertIn("The signal was visible", text)
             self.assertNotIn("LEGACY PERSON PRIMARY PHONE", text)

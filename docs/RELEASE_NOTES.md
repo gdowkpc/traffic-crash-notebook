@@ -1,5 +1,10 @@
-## Traffic Crash Notebook 0.5.5 (Unreleased)
+## Traffic Crash Notebook 0.5.5
 
+- Separates Evidence, Tasks, and Journal into dedicated workspaces and adds unlimited property receipts with owners, lodging classifications, lodging locations/dates, and automatically numbered evidence-item descriptions.
+- Moves home-address entry above phone fields in the Add/Edit Person workflow for a more natural tab order.
+- Makes License the first Driver Background tab, adds issued and expiration dates, simplifies restrictions entry, and renames Additional Notes to Driving History while preserving existing data.
+- Changes non-driver packet output to Participant Background and suppresses driver-only Physical Conditions and Sleep/Awake rows.
+- Removes Occupation and Follow-up from the packet's Witness Interviews area, removes the separate witness/contact follow-up write-in block, and gives Significance the full available row width for paragraph-length entries.
 - Adds a direct Weather Underground History link above the Weather fields, opening the fixed historical-weather page in the investigator's default browser without including case data in the URL.
 - Adds vehicle-specific insurance claim number and adjuster name, phone, and email fields to vehicle entry, saved case data, the Vehicles list, and both packet modes, with an additive migration for existing databases.
 - Moves Packet Preview out of the data-entry tab row and into a prominent case-header button that opens a resizable preview, print, and PDF export window.

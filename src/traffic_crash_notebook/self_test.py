@@ -19,6 +19,8 @@ from .models import (
     MotorcycleInspectionItem,
     ParticipantDetails,
     Person,
+    PropertyReceipt,
+    PropertyReceiptItem,
     RoadConditions,
     RoadwayRecord,
     SurfaceObservation,
@@ -300,12 +302,26 @@ def run_self_test(output_directory: str | Path) -> Path:
         raise RuntimeError("The participant extracted status could not be saved and reloaded.")
     repository.save_driver_profile(DriverProfile(
         person_id=person.id, physical_condition_types="Vision",
-        testing_methods="SFST", license_restricted="No",
+        testing_methods="SFST",
         license_number="SELFTEST-DL", license_state="OR",
+        license_class="C", license_status="Valid",
+        license_issued_date="2024-07-01",
+        license_expiration_date="2032-07-01",
         endorsements="Passenger; Tank",
+        license_restrictions="Restriction B",
+        license_restriction_explanation="Corrective lenses",
+        notes="Verification driving history.",
     ))
-    if repository.get_driver_profile(person.id).endorsements != "Passenger; Tank":
-        raise RuntimeError("The driver-license endorsements could not be saved and reloaded.")
+    loaded_driver_profile = repository.get_driver_profile(person.id)
+    if (
+        loaded_driver_profile.endorsements != "Passenger; Tank"
+        or loaded_driver_profile.license_issued_date != "2024-07-01"
+        or loaded_driver_profile.license_expiration_date != "2032-07-01"
+        or loaded_driver_profile.notes != "Verification driving history."
+    ):
+        raise RuntimeError(
+            "The driver-license dates, endorsements, and history could not be saved and reloaded."
+        )
     pedestrian = repository.save_person(Person(
         id=new_id(), case_id=case.id, first_name="Portable", last_name="Pedestrian",
         address="200 Verification Walk", city="Portland", state="OR",
@@ -315,6 +331,14 @@ def run_self_test(output_directory: str | Path) -> Path:
         id=new_id(), case_id=case.id, first_name="Portable", last_name="Bicyclist",
         address="300 Verification Ride", city="Portland", state="OR",
         zip_code="97203", cell_phone="503-555-0300", roles=["Bicyclist"],
+    ))
+    repository.save_driver_profile(DriverProfile(
+        person_id=pedestrian.id,
+        license_number="PEDESTRIAN-DL",
+        physical_condition_types="NONDRIVER PHYSICAL SELF TEST",
+        permanent_conditions="NONDRIVER MEDICAL SELF TEST",
+        hours_asleep="NONDRIVER SLEEP SELF TEST",
+        hours_awake="NONDRIVER AWAKE SELF TEST",
     ))
     vru_analysis = repository.save_vru_analysis(VRUAnalysis(
         id="", case_id=case.id, person_id=pedestrian.id, vehicle_id=vehicle.id,
@@ -403,6 +427,28 @@ def run_self_test(output_directory: str | Path) -> Path:
     ):
         raise RuntimeError("Exchange-report vehicle fields persistence failed.")
 
+    property_receipt = repository.save_property_receipt(PropertyReceipt(
+        id="",
+        case_id=case.id,
+        receipt_number="SELF-TEST-PR-1",
+        property_owner="Portable Verification Owner",
+        lodging_type="Evidence",
+        lodged_location="Verification Property Room",
+        lodged_date="2026-08-05",
+    ))
+    repository.save_property_receipt_item(PropertyReceiptItem(
+        id="",
+        receipt_id=property_receipt.id,
+        item_number=1,
+        description="Fictional property item used for portable verification.",
+    ))
+    if (
+        len(repository.list_property_receipts(case.id)) != 1
+        or len(repository.list_property_receipt_items(property_receipt.id)) != 1
+        or repository.next_property_receipt_item_number(property_receipt.id) != 2
+    ):
+        raise RuntimeError("Property receipt and item persistence failed.")
+
     storage_directory = validate_storage_directory(
         output / f"portable_self_test_storage_{case.id}"
     )
@@ -424,6 +470,15 @@ def run_self_test(output_directory: str | Path) -> Path:
     migrated_case = migrated_repository.get_case(case.id)
     if not migrated_case or migrated_case.case_number != "SELF-TEST":
         raise RuntimeError("Storage migration did not preserve the self-test case.")
+    if (
+        len(migrated_repository.list_property_receipts(case.id)) != 1
+        or len(
+            migrated_repository.list_property_receipt_items(property_receipt.id)
+        ) != 1
+    ):
+        raise RuntimeError(
+            "Storage migration did not preserve property receipt evidence."
+        )
 
     export_case_pdf(repository, case.id, pdf)
     export_case_compact_pdf(repository, case.id, compact_pdf)
@@ -479,10 +534,36 @@ def run_self_test(output_directory: str | Path) -> Path:
         "Vision",
         "ENDORSEMENTS",
         "Passenger; Tank",
+        "ISSUED",
+        "07/01/2024",
+        "EXPIRATION",
+        "07/01/2032",
+        "RESTRICTIONS",
+        "Restriction B",
+        "RESTRICTIONS EXPLAINED",
+        "Corrective lenses",
+        "DRIVING HISTORY",
+        "Verification driving history.",
+        "Participant background",
+        "Property receipt SELF-TEST-PR-1",
+        "Portable Verification Owner",
+        "Verification Property Room",
+        "Fictional property item used for portable verification.",
     ):
         if required_text not in normalized_packet_text:
             raise RuntimeError(
                 f"The self-test packet omitted required data: {required_text}"
+            )
+    for suppressed_text in (
+        "NONDRIVER PHYSICAL SELF TEST",
+        "NONDRIVER MEDICAL SELF TEST",
+        "NONDRIVER SLEEP SELF TEST",
+        "NONDRIVER AWAKE SELF TEST",
+    ):
+        if suppressed_text in normalized_packet_text:
+            raise RuntimeError(
+                "The self-test packet printed driver-only background data for "
+                f"a non-driver: {suppressed_text}"
             )
     exchange_pdf_bytes = exchange_pdf.read_bytes()
     if not exchange_pdf_bytes.startswith(b"%PDF-") or not exchange_pdf_bytes.rstrip().endswith(b"%%EOF"):
@@ -541,10 +622,13 @@ def run_self_test(output_directory: str | Path) -> Path:
             f"Exchange-report PDF bytes: {exchange_pdf.stat().st_size}",
             "Person ZIP code persistence: PASS",
             "Participant extracted status persistence: PASS",
+            "Driver-license dates, ordering data, and driving history persistence: PASS",
+            "Role-aware non-driver packet background suppression: PASS",
             "Per-vehicle checklist, towing, release, insurance, and claim persistence: PASS",
             "Video-source address and Axon upload status persistence: PASS",
             "VRU light-meter and light-board persistence: PASS",
             "Hit-and-run overview, evidence, lead, and confirmed-record links: PASS",
+            "Property receipt hierarchy and numbered item persistence: PASS",
             "Assigned-officer DPSST and assignment persistence: PASS",
             "Data-folder user defaults and new-case prefill: PASS",
             "Driver, pedestrian, and bicyclist exchange-report inclusion: PASS",

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
+    QSpinBox,
     QTabWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -41,6 +42,7 @@ from ..models import (
     PARTICIPANT_EVIDENCE_OPTIONS,
     PERSON_ROLES,
     PHYSICAL_CONDITION_OPTIONS,
+    PROPERTY_LODGING_TYPES,
     TASK_STATUSES,
     VRU_PROJECTION_OPTIONS,
     CaseTask,
@@ -55,6 +57,8 @@ from ..models import (
     MotorcycleInspectionItem,
     ParticipantDetails,
     Person,
+    PropertyReceipt,
+    PropertyReceiptItem,
     RoadwayRecord,
     SurfaceObservation,
     TireInspection,
@@ -223,14 +227,14 @@ class PersonDialog(RecordDialog):
         self.dob = _date_line(self.person.dob)
         self.sex = _line(self.person.sex)
         self.race = _line(self.person.race)
-        self.cell_phone = _line(self.person.cell_phone)
-        self.home_phone = _line(self.person.home_phone)
-        self.work_phone = _line(self.person.work_phone)
-        self.email = _line(self.person.email)
         self.address = SpellCheckedLineEdit(self.person.address)
         self.city = _line(self.person.city)
         self.state = _line(self.person.state)
         self.zip_code = _line(self.person.zip_code)
+        self.cell_phone = _line(self.person.cell_phone)
+        self.home_phone = _line(self.person.home_phone)
+        self.work_phone = _line(self.person.work_phone)
+        self.email = _line(self.person.email)
         self.occupation = _line(self.person.occupation)
         self.business_address = SpellCheckedTextEdit(self.person.business_address)
         self.business_address.setMaximumHeight(70)
@@ -240,14 +244,14 @@ class PersonDialog(RecordDialog):
         form.addRow("Date of birth", self.dob)
         form.addRow("Sex", self.sex)
         form.addRow("Race", self.race)
-        form.addRow("Cell phone", self.cell_phone)
-        form.addRow("Home phone", self.home_phone)
-        form.addRow("Work phone", self.work_phone)
-        form.addRow("Email", self.email)
         form.addRow("Street address", self.address)
         form.addRow("City", self.city)
         form.addRow("State", self.state)
         form.addRow("ZIP code", self.zip_code)
+        form.addRow("Cell phone", self.cell_phone)
+        form.addRow("Home phone", self.home_phone)
+        form.addRow("Work phone", self.work_phone)
+        form.addRow("Email", self.email)
         form.addRow("Occupation", self.occupation)
         form.addRow("Business address", self.business_address)
         self.root.addLayout(form)
@@ -529,6 +533,112 @@ class TaskDialog(RecordDialog):
         self.task.completed_date = normalize_date_for_storage(self.completed_date.text())
         self.task.notes = self.notes.toPlainText().strip()
         return self.task
+
+
+class PropertyReceiptDialog(RecordDialog):
+    def __init__(
+        self,
+        case_id: str,
+        receipt: PropertyReceipt | None = None,
+        parent=None,
+    ):
+        super().__init__(
+            "Edit Property Receipt" if receipt else "Add Property Receipt",
+            parent,
+        )
+        self.receipt = receipt or PropertyReceipt(id="", case_id=case_id)
+        self.resize(620, 360)
+        form = QFormLayout()
+        self.receipt_number = _line(
+            self.receipt.receipt_number,
+            "Property receipt number",
+        )
+        self.property_owner = SpellCheckedLineEdit(self.receipt.property_owner)
+        self.property_owner.setPlaceholderText("Person, business, agency, or other owner")
+        self.lodging_type = _combo(
+            PROPERTY_LODGING_TYPES,
+            self.receipt.lodging_type,
+        )
+        self.lodged_location = SpellCheckedLineEdit(self.receipt.lodged_location)
+        self.lodged_location.setPlaceholderText(
+            "Property room, evidence facility, locker, or other location"
+        )
+        self.lodged_date = _date_line(self.receipt.lodged_date)
+        form.addRow("Property receipt number", self.receipt_number)
+        form.addRow("Property owner", self.property_owner)
+        form.addRow("Lodged under", self.lodging_type)
+        form.addRow("Lodged location", self.lodged_location)
+        form.addRow("Date lodged", self.lodged_date)
+        self.root.addLayout(form)
+        self.finish_layout()
+
+    def _validate_and_accept(self) -> None:
+        if not self.receipt_number.text().strip():
+            QMessageBox.warning(
+                self,
+                "Property receipt number required",
+                "Enter the property receipt number.",
+            )
+            return
+        super()._validate_and_accept()
+
+    def result_record(self) -> PropertyReceipt:
+        self.receipt.receipt_number = self.receipt_number.text().strip()
+        self.receipt.property_owner = self.property_owner.text().strip()
+        self.receipt.lodging_type = self.lodging_type.currentText().strip()
+        self.receipt.lodged_location = self.lodged_location.text().strip()
+        self.receipt.lodged_date = normalize_date_for_storage(
+            self.lodged_date.text()
+        )
+        return self.receipt
+
+
+class PropertyReceiptItemDialog(RecordDialog):
+    def __init__(
+        self,
+        receipt_id: str,
+        item_number: int,
+        item: PropertyReceiptItem | None = None,
+        parent=None,
+    ):
+        super().__init__(
+            "Edit Property Receipt Item" if item else "Add Property Receipt Item",
+            parent,
+        )
+        self.item = item or PropertyReceiptItem(
+            id="",
+            receipt_id=receipt_id,
+            item_number=item_number,
+        )
+        self.resize(620, 360)
+        form = QFormLayout()
+        self.item_number = QSpinBox()
+        self.item_number.setRange(1, 9999)
+        self.item_number.setValue(self.item.item_number)
+        form.addRow("Item number", self.item_number)
+        self.root.addLayout(form)
+        self.description = SpellCheckedTextEdit(self.item.description)
+        self.description.setPlaceholderText(
+            "Describe the evidence or property associated with this item number"
+        )
+        self.root.addWidget(QLabel("Item description"))
+        self.root.addWidget(self.description, 1)
+        self.finish_layout()
+
+    def _validate_and_accept(self) -> None:
+        if not self.description.toPlainText().strip():
+            QMessageBox.warning(
+                self,
+                "Item description required",
+                "Enter a description for this property receipt item.",
+            )
+            return
+        super()._validate_and_accept()
+
+    def result_record(self) -> PropertyReceiptItem:
+        self.item.item_number = self.item_number.value()
+        self.item.description = self.description.toPlainText().strip()
+        return self.item
 
 
 class ChargeDispositionDialog(RecordDialog):
@@ -970,6 +1080,36 @@ class DriverProfileDialog(RecordDialog):
         self.resize(780, 710)
         tabs = QTabWidget()
 
+        license_tab = QWidget()
+        license_form = QFormLayout(license_tab)
+        self.license_number = _line(profile.license_number)
+        self.license_state = _line(profile.license_state)
+        self.license_class = _line(profile.license_class)
+        self.license_status = _line(profile.license_status)
+        self.license_issued_date = _date_line(profile.license_issued_date)
+        self.license_expiration_date = _date_line(profile.license_expiration_date)
+        self.endorsements = _line(profile.endorsements)
+        self.license_restrictions = _line(profile.license_restrictions)
+        self.license_restriction_explanation = SpellCheckedLineEdit(
+            profile.license_restriction_explanation
+        )
+        self.driving_history = SpellCheckedTextEdit(profile.notes)
+        self.driving_history.setMaximumHeight(150)
+        license_form.addRow("License Number", self.license_number)
+        license_form.addRow("License State", self.license_state)
+        license_form.addRow("Class", self.license_class)
+        license_form.addRow("Status", self.license_status)
+        license_form.addRow("Issued", self.license_issued_date)
+        license_form.addRow("Expiration", self.license_expiration_date)
+        license_form.addRow("Endorsements", self.endorsements)
+        license_form.addRow("Restrictions", self.license_restrictions)
+        license_form.addRow(
+            "Restrictions Explained",
+            self.license_restriction_explanation,
+        )
+        license_form.addRow("Driving History", self.driving_history)
+        tabs.addTab(license_tab, "License")
+
         trip_tab = QWidget()
         trip_form = QFormLayout(trip_tab)
         self.trip_from = _line(profile.trip_from)
@@ -1040,23 +1180,6 @@ class DriverProfileDialog(RecordDialog):
         history_form.addRow("Prior traffic homicide convictions", self.previous_traffic_homicide)
         tabs.addTab(history_tab, "Sleep / Work / History")
 
-        license_tab = QWidget()
-        license_form = QFormLayout(license_tab)
-        self.license_restricted = _combo(YES_NO_UNKNOWN, profile.license_restricted)
-        self.license_restriction_explanation = _line(profile.license_restriction_explanation)
-        license_form.addRow("License restricted", self.license_restricted)
-        license_form.addRow("Restriction explanation", self.license_restriction_explanation)
-        for attribute, label in (
-            ("license_restrictions", "Restrictions"), ("license_number", "License number"),
-            ("license_state", "State"), ("license_class", "Class"),
-            ("endorsements", "Endorsements"),
-            ("license_status", "Status"),
-        ):
-            setattr(self, attribute, _line(getattr(profile, attribute)))
-            license_form.addRow(label, getattr(self, attribute))
-        self.driver_notes = SpellCheckedTextEdit(profile.notes)
-        license_form.addRow("Additional notes", self.driver_notes)
-        tabs.addTab(license_tab, "License / Notes")
         self.root.addWidget(tabs, 1)
         self.finish_layout()
 
@@ -1073,15 +1196,29 @@ class DriverProfileDialog(RecordDialog):
         for attribute in line_fields:
             setattr(self.profile, attribute, getattr(self, attribute).text().strip())
         for attribute in (
-            "impairment_status", "familiar_with_road", "familiar_with_vehicle", "license_restricted"
+            "impairment_status", "familiar_with_road", "familiar_with_vehicle"
         ):
             setattr(self.profile, attribute, getattr(self, attribute).currentText())
+        self.profile.license_issued_date = normalize_date_for_storage(
+            self.license_issued_date.text()
+        )
+        self.profile.license_expiration_date = normalize_date_for_storage(
+            self.license_expiration_date.text()
+        )
+        self.profile.license_restricted = (
+            "Yes"
+            if (
+                self.profile.license_restrictions
+                or self.profile.license_restriction_explanation
+            )
+            else "Unknown"
+        )
         self.profile.permanent_conditions = self.permanent_conditions.toPlainText().strip()
         self.profile.temporary_conditions = self.temporary_conditions.toPlainText().strip()
         self.profile.physical_condition_types = _selection_text(self.physical_condition_boxes)
         self.profile.testing_methods = _selection_text(self.testing_method_boxes)
         self.profile.impairment_notes = self.impairment_notes.toPlainText().strip()
-        self.profile.notes = self.driver_notes.toPlainText().strip()
+        self.profile.notes = self.driving_history.toPlainText().strip()
         return self.profile
 
 

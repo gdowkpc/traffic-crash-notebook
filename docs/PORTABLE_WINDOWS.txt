@@ -24,7 +24,7 @@ subfolders. The small pointer to that folder is stored under:
   %LOCALAPPDATA%\TrafficCrashNotebook\storage_config.json
 
 Replacing the portable application folder therefore does not replace the case
-database. Version 0.5.4 upgrades older databases automatically when they are
+database. Version 0.5.5 upgrades older databases automatically when they are
 opened; existing cases are retained, while the retired Key Questions field is
 removed. Use the Back Up button regularly and store backups in an approved
 location.

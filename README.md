@@ -13,7 +13,7 @@ grant permission to reuse the source or bundled assets. Agency names, forms, mar
 and other third-party material remain the property of their respective owners; no
 agency endorsement is implied.
 
-## Included in version 0.5.4
+## Included in version 0.5.5
 
 - Create and reopen unlimited cases.
 - Read the selected case clearly with high-contrast text whether the case selector has keyboard focus or not.
@@ -25,7 +25,8 @@ agency endorsement is implied.
 - Create unlimited vehicles and link existing people as drivers or owners.
 - Preview, print through the standard Windows printer dialog, and export a Traffic Crash Exchange Report from existing case records without duplicate data entry. It preserves linked and unambiguous legacy drivers; includes every saved passenger, witness, pedestrian, and bicyclist; maps DPSST and Assignment into the footer; creates continuation pages as needed; and appends a searchable text information/responsibilities page last.
 - Maintain an automatically sorted investigative Journal for dated actions, decisions, requests, findings, and follow-up.
-- Track open, waiting, completed, and unnecessary tasks or evidence requests.
+- Maintain a separate Evidence workspace with unlimited property receipts, property owners, lodging classifications and locations, lodging dates, and automatically numbered descriptive items under each receipt.
+- Track open, waiting, completed, and unnecessary investigative tasks in a dedicated Tasks workspace.
 - Automatically save overview changes.
 - Underline misspelled words in narrative and notes fields using a bundled offline English dictionary, with right-click corrections and a personal dictionary.
 - Preview, print through the standard Windows printer dialog, and export a comprehensive Full Working Packet with a dedicated routing cover page and ruled handwriting areas or a Compact Packet that suppresses unused material; a separate Quick Review export remains available.
@@ -33,7 +34,7 @@ agency endorsement is implied.
 - Create a consistent SQLite database backup while the application is running.
 - Record unlimited roadways with their own speed, posting, curve, characteristics, and traffic-control details, plus a compact weather form with a direct Weather Underground History link, station, reading time, automatic display units, celestial lighting/twilight details, visibility, and scene-analysis conditions.
 - Maintain participant injury, transport, restraint, ejection/extraction, autopsy, next-of-kin, and medical/evidence notes.
-- Maintain driver trip, impairment, sleep, work, familiarity, history, and license information including endorsements.
+- Maintain driver trip, impairment, sleep, work, familiarity, driving history, and license information including number, state, class, status, issued/expiration dates, endorsements, and restrictions; packet output suppresses driver-only physical-condition and sleep/awake data for non-drivers.
 - Record vehicle weights, brakes, safety equipment, lighting, tire contribution, individual tire measurements, a per-vehicle NHTSA recall-check confirmation, towing status and destination, release status/date/details, and insurance claim number plus adjuster name, phone, and email.
 - Record structured equipped/operable states, switch positions, body/glass/restraint observations, identity checks, and unlimited tire positions.
 - Complete the original packet's 44-item motorcycle inspection with ratings, measurements, comments, and inspection metadata.
@@ -69,7 +70,7 @@ builds the executable, runs the finished executable's portable self-test, and
 creates:
 
 ```text
-release\TrafficCrashNotebook-0.5.4-Windows-Portable.zip
+release\TrafficCrashNotebook-0.5.5-Windows-Portable.zip
 ```
 
 The included GitHub Actions workflow performs the same build on a hosted Windows
