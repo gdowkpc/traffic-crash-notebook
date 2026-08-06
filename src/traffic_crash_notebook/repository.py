@@ -54,7 +54,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 19
 
 
 SCHEMA = """
@@ -140,6 +140,9 @@ CREATE TABLE IF NOT EXISTS vehicles (
     cdr_equipped INTEGER NOT NULL DEFAULT 0,
     cdr_imaged INTEGER NOT NULL DEFAULT 0,
     cdr_report_uploaded INTEGER NOT NULL DEFAULT 0,
+    released INTEGER NOT NULL DEFAULT 0,
+    release_date TEXT NOT NULL DEFAULT '',
+    release_information TEXT NOT NULL DEFAULT '',
     damage_notes TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
@@ -431,6 +434,7 @@ CREATE TABLE IF NOT EXISTS vru_analyses (
     vehicle_approach_speed TEXT NOT NULL DEFAULT '', vehicle_direction TEXT NOT NULL DEFAULT '',
     vru_approach_speed TEXT NOT NULL DEFAULT '', vru_direction TEXT NOT NULL DEFAULT '',
     person_throw_distance TEXT NOT NULL DEFAULT '', bicycle_throw_distance TEXT NOT NULL DEFAULT '',
+    light_meter_used INTEGER NOT NULL DEFAULT 0, light_board_used INTEGER NOT NULL DEFAULT 0,
     night_test_parameters TEXT NOT NULL DEFAULT '', detection_distance TEXT NOT NULL DEFAULT '',
     distance_adjustment TEXT NOT NULL DEFAULT '', result_67_percent TEXT NOT NULL DEFAULT '',
     result_15_percentile TEXT NOT NULL DEFAULT '', prt_base TEXT NOT NULL DEFAULT '0.50',
@@ -564,7 +568,7 @@ CREATE INDEX IF NOT EXISTS idx_hit_run_evidence_case
     ON hit_run_evidence_items(case_id, evidence_number, created_at);
 CREATE INDEX IF NOT EXISTS idx_hit_run_person_leads_case
     ON hit_run_person_leads(case_id, lead_number, created_at);
-PRAGMA user_version = 16;
+PRAGMA user_version = 19;
 """
 
 
@@ -590,10 +594,10 @@ class CaseRepository:
         with self._connect() as connection:
             previous_version = connection.execute("PRAGMA user_version").fetchone()[0]
             connection.executescript(SCHEMA)
-            self._migrate_schema_16(connection, previous_version)
+            self._migrate_schema_19(connection, previous_version)
 
     @staticmethod
-    def _migrate_schema_16(
+    def _migrate_schema_19(
         connection: sqlite3.Connection,
         previous_version: int,
     ) -> None:
@@ -616,6 +620,9 @@ class CaseRepository:
                 "cdr_equipped": "INTEGER NOT NULL DEFAULT 0",
                 "cdr_imaged": "INTEGER NOT NULL DEFAULT 0",
                 "cdr_report_uploaded": "INTEGER NOT NULL DEFAULT 0",
+                "released": "INTEGER NOT NULL DEFAULT 0",
+                "release_date": "TEXT NOT NULL DEFAULT ''",
+                "release_information": "TEXT NOT NULL DEFAULT ''",
             },
             "people": {
                 "cell_phone": "TEXT NOT NULL DEFAULT ''",
@@ -662,6 +669,8 @@ class CaseRepository:
             "vru_analyses": {
                 "projection_classifications": "TEXT NOT NULL DEFAULT ''",
                 "prt_factors": "TEXT NOT NULL DEFAULT ''",
+                "light_meter_used": "INTEGER NOT NULL DEFAULT 0",
+                "light_board_used": "INTEGER NOT NULL DEFAULT 0",
             },
             "investigative_checklists": {
                 "peer_review_date": "TEXT NOT NULL DEFAULT ''",
@@ -782,6 +791,68 @@ class CaseRepository:
                     """,
                     values,
                 )
+        if previous_version < 19:
+            legacy_surfaces = connection.execute(
+                """
+                SELECT
+                    rc.case_id,
+                    COALESCE(
+                        NULLIF(TRIM(cd.road_name), ''),
+                        NULLIF(TRIM(c.location), ''),
+                        'Primary roadway surface'
+                    ) AS location,
+                    rc.surface_composition AS composition,
+                    rc.surface_condition AS condition,
+                    rc.friction_value
+                FROM road_conditions rc
+                JOIN cases c ON c.id = rc.case_id
+                LEFT JOIN crash_details cd ON cd.case_id = rc.case_id
+                WHERE (
+                    TRIM(rc.surface_composition) <> ''
+                    OR TRIM(rc.surface_condition) <> ''
+                    OR TRIM(rc.friction_value) <> ''
+                )
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM surface_observations surface
+                    WHERE surface.case_id = rc.case_id
+                      AND TRIM(surface.composition) = TRIM(rc.surface_composition)
+                      AND TRIM(surface.condition) = TRIM(rc.surface_condition)
+                      AND TRIM(surface.friction_value) = TRIM(rc.friction_value)
+                )
+                ORDER BY rc.case_id
+                """
+            ).fetchall()
+            migrated_at = utc_now()
+            for legacy in legacy_surfaces:
+                values = dict(legacy)
+                values.update(
+                    id=new_id(),
+                    notes="",
+                    created_at=migrated_at,
+                    updated_at=migrated_at,
+                )
+                connection.execute(
+                    """
+                    INSERT INTO surface_observations (
+                        id, case_id, location, composition, condition,
+                        friction_value, notes, created_at, updated_at
+                    ) VALUES (
+                        :id, :case_id, :location, :composition, :condition,
+                        :friction_value, :notes, :created_at, :updated_at
+                    )
+                    """,
+                    values,
+                )
+            connection.execute(
+                """
+                UPDATE road_conditions
+                SET surface_composition = '', surface_condition = '', friction_value = ''
+                WHERE TRIM(surface_composition) <> ''
+                   OR TRIM(surface_condition) <> ''
+                   OR TRIM(friction_value) <> ''
+                """
+            )
         if previous_version < 11:
             connection.execute(
                 """
@@ -814,7 +885,7 @@ class CaseRepository:
                 )
                 """
             )
-        connection.execute("PRAGMA user_version = 16")
+        connection.execute("PRAGMA user_version = 19")
 
     def get_user_defaults(self) -> UserDefaults:
         with self._connect() as connection:
@@ -1000,13 +1071,13 @@ class CaseRepository:
                  owner_person_id, driver_person_id, insurance, insurance_company,
                  insurance_policy_number, property_damage, tow_information, edr_status, warrant_obtained,
                  vehicle_inspection_completed, cdr_equipped, cdr_imaged, cdr_report_uploaded,
-                 damage_notes, notes, created_at, updated_at)
+                 released, release_date, release_information, damage_notes, notes, created_at, updated_at)
                 VALUES (:id, :case_id, :vehicle_number, :year, :make, :model, :body_style, :color, :vin,
                         :plate, :plate_state, :owner_person_id, :driver_person_id, :insurance,
                         :insurance_company, :insurance_policy_number, :property_damage, :tow_information,
                         :edr_status, :warrant_obtained, :vehicle_inspection_completed,
-                        :cdr_equipped, :cdr_imaged, :cdr_report_uploaded, :damage_notes,
-                        :notes, :created_at, :updated_at)
+                        :cdr_equipped, :cdr_imaged, :cdr_report_uploaded, :released, :release_date,
+                        :release_information, :damage_notes, :notes, :created_at, :updated_at)
                 ON CONFLICT(id) DO UPDATE SET
                   vehicle_number=excluded.vehicle_number, year=excluded.year, make=excluded.make,
                   model=excluded.model, body_style=excluded.body_style,
@@ -1021,6 +1092,8 @@ class CaseRepository:
                   vehicle_inspection_completed=excluded.vehicle_inspection_completed,
                   cdr_equipped=excluded.cdr_equipped, cdr_imaged=excluded.cdr_imaged,
                   cdr_report_uploaded=excluded.cdr_report_uploaded,
+                  released=excluded.released, release_date=excluded.release_date,
+                  release_information=excluded.release_information,
                   damage_notes=excluded.damage_notes,
                   notes=excluded.notes, updated_at=excluded.updated_at""",
                 asdict(vehicle),
@@ -1386,6 +1459,16 @@ class CaseRepository:
         return self._save_one_to_one("witness_details", record, "person_id")
 
     def save_contact(self, record: ContactRelationship) -> ContactRelationship:
+        if not record.subject_person_id:
+            raise ValueError("Each contact must be assigned to a person.")
+        with self._connect() as connection:
+            person = connection.execute(
+                "SELECT case_id FROM people WHERE id=?",
+                (record.subject_person_id,),
+            ).fetchone()
+        if not person or person["case_id"] != record.case_id:
+            raise ValueError("The contact person association must belong to this case.")
+        record.vehicle_id = None
         return self._save_simple("contact_relationships", record)
 
     def list_contacts(self, case_id: str) -> list[ContactRelationship]:
@@ -1401,10 +1484,18 @@ class CaseRepository:
         return self._save_simple("vru_analyses", record)
 
     def list_vru_analyses(self, case_id: str) -> list[VRUAnalysis]:
-        return self._list_simple("vru_analyses", VRUAnalysis, case_id, "created_at")
+        records = self._list_simple("vru_analyses", VRUAnalysis, case_id, "created_at")
+        for record in records:
+            record.light_meter_used = bool(record.light_meter_used)
+            record.light_board_used = bool(record.light_board_used)
+        return records
 
     def get_vru_analysis(self, record_id: str) -> Optional[VRUAnalysis]:
-        return self._get_simple("vru_analyses", VRUAnalysis, record_id)
+        record = self._get_simple("vru_analyses", VRUAnalysis, record_id)
+        if record:
+            record.light_meter_used = bool(record.light_meter_used)
+            record.light_board_used = bool(record.light_board_used)
+        return record
 
     def delete_vru_analysis(self, record_id: str) -> None:
         self._delete_simple("vru_analyses", record_id)

@@ -69,7 +69,6 @@ INVESTIGATIVE_CHECKLIST_GROUPS = (
     )),
     ("Vehicle(s)", (
         "Insurance - Exchange Report",
-        "Release",
     )),
     ("Reporting", (
         "Weather Obtained",
@@ -99,6 +98,7 @@ VEHICLE_WORKFLOW_FIELDS = (
     ("cdr_equipped", "CDR Equipped"),
     ("cdr_imaged", "CDR Imaged"),
     ("cdr_report_uploaded", "CDR Report Uploaded"),
+    ("released", "Released"),
 )
 
 SCENE_EVIDENCE_METHODS = (
@@ -185,15 +185,6 @@ VRU_PROJECTION_OPTIONS = (
     "Front Fender Vault",
     "Roof Vault",
     "Drag",
-)
-
-PRT_FACTOR_OPTIONS = (
-    "Target Expected",
-    "Target Unexpected",
-    "Daytime",
-    "Nighttime",
-    "Offset",
-    "Additional Complexity",
 )
 
 MOTORCYCLE_INSPECTION_ITEMS = (
@@ -331,6 +322,9 @@ class Vehicle:
     cdr_equipped: bool = False
     cdr_imaged: bool = False
     cdr_report_uploaded: bool = False
+    released: bool = False
+    release_date: str = ""
+    release_information: str = ""
     damage_notes: str = ""
     notes: str = ""
     created_at: str = ""
@@ -858,6 +852,9 @@ class VRUAnalysis:
     vru_direction: str = ""
     person_throw_distance: str = ""
     bicycle_throw_distance: str = ""
+    light_meter_used: bool = False
+    light_board_used: bool = False
+    # Retained in storage so legacy case data is not discarded when edited.
     night_test_parameters: str = ""
     detection_distance: str = ""
     distance_adjustment: str = ""

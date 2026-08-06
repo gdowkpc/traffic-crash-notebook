@@ -8,18 +8,28 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QTemporaryDir, Qt, QTimer, QUrl
+from PySide6.QtCore import (
+    QBuffer,
+    QByteArray,
+    QIODevice,
+    QTemporaryDir,
+    Qt,
+    QTimer,
+    QUrl,
+)
 from PySide6.QtGui import (
     QAction,
     QColor,
     QDesktopServices,
-    QFont,
     QIntValidator,
+    QPageLayout,
+    QPageSize,
     QPalette,
     QPixmap,
 )
 from PySide6.QtPdf import QPdfDocument
 from PySide6.QtPdfWidgets import QPdfView
+from PySide6.QtPrintSupport import QAbstractPrintDialog, QPrintDialog, QPrinter
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -81,6 +91,7 @@ from ..models import (
     ROAD_AREA_OPTIONS,
     SCENE_EVIDENCE_METHODS,
     SURVEILLANCE_VIDEO_EVIDENCE,
+    ContactRelationship,
     CrashCase,
     CrashDetails,
     HitRunEvidenceItem,
@@ -96,6 +107,7 @@ from ..models import (
     format_crash_location,
 )
 from ..pdf_export import export_case_compact_pdf, export_case_pdf, export_case_summary_pdf
+from ..pdf_printing import print_pdf_document, selected_pdf_page_indexes
 from ..repository import SCHEMA_VERSION, CaseRepository
 from ..resources import tiu_logo_path
 from ..updates import (
@@ -105,6 +117,7 @@ from ..updates import (
     should_check_for_updates,
     successful_check_timestamp,
 )
+from .app_identity import configure_application
 from .dialogs import (
     ChronologyDialog,
     ChargeDispositionDialog,
@@ -308,9 +321,11 @@ class MainWindow(QMainWindow):
         )
         if not self.exchange_preview_directory.isValid():
             raise RuntimeError("Unable to create the exchange-report preview folder.")
+        self.exchange_preview_generation = 0
+        self.exchange_stale_preview_paths: set[Path] = set()
         self.exchange_preview_path = Path(
             self.exchange_preview_directory.path()
-        ) / "Traffic_Crash_Exchange_Report_Preview.pdf"
+        ) / "Traffic_Crash_Exchange_Report_Preview_000000.pdf"
         self.loading = False
         self.storage_error_active = False
         self.update_check_thread: UpdateCheckThread | None = None
@@ -467,9 +482,8 @@ class MainWindow(QMainWindow):
             "Exchange Report",
         )
         self.tabs.addTab(self._build_hit_run_tab(), "Hit & Run")
-        self.tabs.addTab(self._build_contacts_tab(), "Contacts")
         self.tabs.addTab(self._build_vru_tab(), "VRU Analysis")
-        self.tabs.addTab(self._build_chronology_tab(), "Chronology")
+        self.tabs.addTab(self._build_chronology_tab(), "Journal")
         self.tabs.addTab(self._build_tasks_tab(), "Tasks / Evidence")
         self.tabs.currentChanged.connect(self._case_tab_changed)
         layout.addWidget(self.tabs, 1)
@@ -706,7 +720,9 @@ class MainWindow(QMainWindow):
     def _build_conditions_tab(self) -> QWidget:
         container = QWidget()
         outer = QVBoxLayout(container)
-        tabs = QTabWidget()
+        self.conditions_tabs = QTabWidget()
+        self.conditions_tabs.setObjectName("road_weather_subtabs")
+        tabs = self.conditions_tabs
         self.condition_widgets: dict[str, QWidget] = {}
         self.area_type_boxes: dict[str, QCheckBox] = {}
 
@@ -743,15 +759,34 @@ class MainWindow(QMainWindow):
             ("precipitation", "Precipitation", ""),
             ("weather_station", "Weather station", "Station name or identifier"),
             ("weather_time", "Time of reading", "HH:MM; include time zone if known"),
-            ("surface_composition", "Surface composition", "Asphalt, concrete..."),
-            ("surface_condition", "Surface condition", "Dry, wet, icy..."),
-            ("friction_value", "Friction value", "Measured or selected f value"),
         ):
             weather_form.addRow(label, line(name, placeholder))
         other_weather = memo("other_weather", "Weather source and other relevant observations")
         other_weather.setMaximumHeight(120)
         weather_form.addRow("Other weather information", other_weather)
-        tabs.addTab(_scrollable(weather), "Weather / Surface")
+        tabs.addTab(_scrollable(weather), "Weather")
+
+        surfaces_tab, self.surface_observations_table = self._table_tab(
+            ["Roadway / Location", "Composition", "Condition", "Friction / Drag Factor", "Notes"],
+            self.add_surface_observation,
+            self.edit_surface_observation,
+            self.delete_surface_observation,
+            item_name="Surface",
+        )
+        surfaces_tab.setObjectName("surface_observations_tab")
+        self.surface_observations_table.setObjectName("surface_observations_table")
+        surface_guidance = QLabel(
+            "Add a separate surface record for each roadway, lane, shoulder, or test location. "
+            "Double-click a row to edit it."
+        )
+        surface_guidance.setWordWrap(True)
+        surface_guidance.setStyleSheet("color: #5d6870;")
+        surfaces_tab.layout().insertWidget(0, surface_guidance)
+        self.surface_observations_table.setColumnWidth(0, 190)
+        self.surface_observations_table.setColumnWidth(1, 150)
+        self.surface_observations_table.setColumnWidth(2, 130)
+        self.surface_observations_table.setColumnWidth(3, 145)
+        tabs.addTab(surfaces_tab, "Surface")
 
         lighting = QWidget()
         lighting_form = QFormLayout(lighting)
@@ -793,17 +828,6 @@ class MainWindow(QMainWindow):
         lighting_form.addRow(area_group)
         tabs.addTab(_scrollable(lighting), "Lighting / Visibility")
 
-        surfaces_tab, self.surface_observations_table = self._table_tab(
-            ["Location", "Composition", "Condition", "Friction", "Notes"],
-            self.add_surface_observation,
-            self.edit_surface_observation,
-            self.delete_surface_observation,
-        )
-        self.surface_observations_table.setColumnWidth(0, 180)
-        self.surface_observations_table.setColumnWidth(1, 150)
-        self.surface_observations_table.setColumnWidth(2, 130)
-        tabs.addTab(surfaces_tab, "Multiple Surfaces")
-
         roadways_tab, self.roadways_table = self._table_tab(
             [
                 "Roadway / Tag",
@@ -836,13 +860,22 @@ class MainWindow(QMainWindow):
         outer.addWidget(tabs, 1)
         return container
 
-    def _table_tab(self, columns: list[str], add_callback, edit_callback, delete_callback):
+    def _table_tab(
+        self,
+        columns: list[str],
+        add_callback,
+        edit_callback,
+        delete_callback,
+        *,
+        item_name: str = "",
+    ):
         tab = QWidget()
         layout = QVBoxLayout(tab)
         button_row = QHBoxLayout()
-        button_row.addWidget(_button("Add", add_callback))
-        button_row.addWidget(_button("Edit", edit_callback, secondary=True))
-        button_row.addWidget(_button("Remove", delete_callback, secondary=True))
+        label_suffix = f" {item_name}" if item_name else ""
+        button_row.addWidget(_button(f"Add{label_suffix}", add_callback))
+        button_row.addWidget(_button(f"Edit{label_suffix}", edit_callback, secondary=True))
+        button_row.addWidget(_button(f"Remove{label_suffix}", delete_callback, secondary=True))
         button_row.addStretch(1)
         layout.addLayout(button_row)
         table = QTableWidget(0, len(columns))
@@ -857,7 +890,11 @@ class MainWindow(QMainWindow):
         return tab, table
 
     def _build_people_tab(self):
-        tab, self.people_table = self._table_tab(
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        self.people_tabs = QTabWidget()
+
+        people_tab, self.people_table = self._table_tab(
             ["Name", "Role(s)", "DOB", "Cell", "Notes"],
             self.add_person, self.edit_person, self.delete_person,
         )
@@ -866,24 +903,34 @@ class MainWindow(QMainWindow):
         detail_row.addWidget(_button("Driver Background", self.edit_driver_profile, secondary=True))
         detail_row.addWidget(_button("Witness Interview", self.edit_witness_details, secondary=True))
         detail_row.addStretch(1)
-        tab.layout().insertLayout(1, detail_row)
+        people_tab.layout().insertLayout(1, detail_row)
         self.people_table.setColumnWidth(0, 190)
         self.people_table.setColumnWidth(1, 200)
-        return tab
+        self.people_tabs.addTab(people_tab, "People")
+        self.people_tabs.addTab(self._build_contacts_tab(), "Contacts")
+        layout.addWidget(self.people_tabs)
+        return container
 
     def _build_contacts_tab(self):
         tab, self.contacts_table = self._table_tab(
-            ["Type", "Contact", "For / Associated With", "Cell", "Home", "Work", "Organization", "Notes"],
+            ["Person", "Type", "Contact", "Cell", "Home", "Work", "Organization", "Notes"],
             self.add_contact, self.edit_contact, self.delete_contact,
         )
-        self.contacts_table.setColumnWidth(0, 125)
-        self.contacts_table.setColumnWidth(1, 180)
-        self.contacts_table.setColumnWidth(2, 200)
+        guidance = QLabel(
+            "Each contact belongs to one person. Select a person on the People subtab "
+            "before adding a contact to prefill that association."
+        )
+        guidance.setWordWrap(True)
+        guidance.setStyleSheet("color: #5d6870;")
+        tab.layout().insertWidget(0, guidance)
+        self.contacts_table.setColumnWidth(0, 190)
+        self.contacts_table.setColumnWidth(1, 125)
+        self.contacts_table.setColumnWidth(2, 180)
         return tab
 
     def _build_vru_tab(self):
         tab, self.vru_table = self._table_tab(
-            ["Pedestrian / Bicyclist", "Vehicle", "Position / Movement", "Visibility", "PRT", "Notes"],
+            ["Pedestrian / Bicyclist", "Vehicle", "Position / Movement", "Night Visibility Equipment", "Notes"],
             self.add_vru_analysis, self.edit_vru_analysis, self.delete_vru_analysis,
         )
         self.vru_table.setColumnWidth(0, 190)
@@ -899,6 +946,7 @@ class MainWindow(QMainWindow):
                 "Driver",
                 "Plate",
                 "Vehicle Workflow",
+                "Release",
                 "Insurance",
                 "Damage / Notes",
             ],
@@ -913,7 +961,8 @@ class MainWindow(QMainWindow):
         self.vehicles_table.setColumnWidth(1, 220)
         self.vehicles_table.setColumnWidth(2, 180)
         self.vehicles_table.setColumnWidth(4, 230)
-        self.vehicles_table.setColumnWidth(5, 180)
+        self.vehicles_table.setColumnWidth(5, 250)
+        self.vehicles_table.setColumnWidth(6, 180)
         return tab
 
     def _build_exchange_report_tab(self) -> QWidget:
@@ -925,9 +974,10 @@ class MainWindow(QMainWindow):
         guidance = QLabel(
             "This is a read-only preview generated from the existing Overview, People, "
             "Driver Background, Participant / Medical, and Vehicle records. Make changes "
-            "in those case areas, then refresh this preview. The PDF prints only the "
-            "records that exist and always places the information / responsibilities "
-            "page last."
+            "in those case areas, then refresh this preview. Every saved Passenger and "
+            "Witness is included as an involved-person block, with additional pages added "
+            "as needed. The PDF prints only records that exist and always places the "
+            "information / responsibilities page last."
         )
         guidance.setWordWrap(True)
         guidance.setStyleSheet("color: #5d6870;")
@@ -935,6 +985,15 @@ class MainWindow(QMainWindow):
 
         actions = QHBoxLayout()
         actions.addWidget(_button("Refresh Preview", self.preview_exchange_report))
+        print_button = _button(
+            "Print Exchange Report...",
+            self.print_exchange_report,
+            secondary=True,
+        )
+        print_button.setToolTip(
+            "Print the current exchange report using the standard Windows printer dialog"
+        )
+        actions.addWidget(print_button)
         actions.addWidget(
             _button(
                 "Export Preview to PDF",
@@ -957,6 +1016,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.exchange_preview_status)
 
         self.exchange_pdf_document = QPdfDocument(self)
+        self.exchange_pdf_buffer: QBuffer | None = None
         self.exchange_pdf_view = QPdfView(container)
         self.exchange_pdf_view.setDocument(self.exchange_pdf_document)
         self.exchange_pdf_view.setPageMode(QPdfView.PageMode.MultiPage)
@@ -1109,9 +1169,19 @@ class MainWindow(QMainWindow):
 
     def _build_chronology_tab(self):
         tab, self.chronology_table = self._table_tab(
-            ["Date", "Time", "Category", "Event", "Details"],
+            ["Date", "Time", "Category", "Summary", "Details"],
             self.add_chronology, self.edit_chronology, self.delete_chronology,
+            item_name="Journal Entry",
         )
+        tab.setObjectName("journal_tab")
+        guidance = QLabel(
+            "Use the Journal to document dated investigative actions, decisions, "
+            "requests, findings, and follow-up. Double-click an entry to edit it."
+        )
+        guidance.setObjectName("journal_guidance")
+        guidance.setWordWrap(True)
+        tab.layout().insertWidget(0, guidance)
+        self.chronology_table.setObjectName("journal_table")
         self.chronology_table.setColumnWidth(0, 100)
         self.chronology_table.setColumnWidth(1, 70)
         self.chronology_table.setColumnWidth(2, 120)
@@ -1429,9 +1499,13 @@ class MainWindow(QMainWindow):
         ) if value)
         self.case_subtitle.setText(details or "Personal investigative working notes")
         counts = self.repository.case_counts(case.id)
+        journal_count_label = (
+            "journal entry" if counts["chronology"] == 1 else "journal entries"
+        )
         self.counts_label.setText(
             f"{counts['people']} people   {counts['vehicles']} vehicles   "
-            f"{counts['chronology']} events   {counts['open_tasks']} open tasks"
+            f"{counts['chronology']} {journal_count_label}   "
+            f"{counts['open_tasks']} open tasks"
         )
 
     def refresh_case_tables(self) -> None:
@@ -1791,6 +1865,11 @@ class MainWindow(QMainWindow):
                 v.insurance_company or v.insurance,
                 v.insurance_policy_number,
             ) if value)
+            release = " - ".join(value for value in (
+                "Released" if v.released else "",
+                format_date_for_display(v.release_date),
+                v.release_information,
+            ) if value)
             if v.edr_status:
                 notes = " - ".join(value for value in (
                     notes,
@@ -1802,6 +1881,7 @@ class MainWindow(QMainWindow):
                 driver,
                 plate,
                 workflow,
+                release,
                 insurance,
                 notes,
             ]))
@@ -1939,31 +2019,70 @@ class MainWindow(QMainWindow):
     def _generate_exchange_preview(self) -> None:
         if not self.current_case:
             return
+        self.exchange_preview_generation += 1
+        next_preview_path = Path(
+            self.exchange_preview_directory.path()
+        ) / (
+            "Traffic_Crash_Exchange_Report_Preview_"
+            f"{self.exchange_preview_generation:06d}.pdf"
+        )
+        next_document = QPdfDocument(self)
+        next_buffer = QBuffer(next_document)
         try:
-            self.exchange_pdf_document.close()
-            if self.exchange_preview_path.exists():
-                self.exchange_preview_path.unlink()
             export_exchange_report_pdf(
                 self.repository,
                 self.current_case.id,
-                self.exchange_preview_path,
+                next_preview_path,
             )
-            load_error = self.exchange_pdf_document.load(
-                str(self.exchange_preview_path)
-            )
+            next_buffer.setData(QByteArray(next_preview_path.read_bytes()))
+            if not next_buffer.open(QIODevice.OpenModeFlag.ReadOnly):
+                raise RuntimeError("The preview PDF could not be opened in memory.")
+            next_document.load(next_buffer)
+            load_error = next_document.error()
             if load_error != QPdfDocument.Error.None_:
                 raise RuntimeError(
                     f"The preview PDF could not be loaded ({load_error.name})."
                 )
+            if next_document.pageCount() < 1:
+                raise RuntimeError("The preview PDF did not contain any pages.")
         except Exception as error:
+            next_buffer.close()
+            next_document.close()
+            next_document.deleteLater()
+            self.exchange_stale_preview_paths.add(next_preview_path)
+            QTimer.singleShot(250, self._cleanup_stale_exchange_previews)
             self.exchange_preview_status.setText(f"Preview failed: {error}")
             self.exchange_preview_status.setStyleSheet("color: #a32a2a;")
             return
+
+        previous_document = self.exchange_pdf_document
+        previous_preview_path = self.exchange_preview_path
+        self.exchange_pdf_view.setDocument(next_document)
+        self.exchange_pdf_document = next_document
+        self.exchange_pdf_buffer = next_buffer
+        self.exchange_preview_path = next_preview_path
+        previous_document.close()
+        previous_document.deleteLater()
+        if previous_preview_path.is_file():
+            self.exchange_stale_preview_paths.add(previous_preview_path)
+            QTimer.singleShot(250, self._cleanup_stale_exchange_previews)
         self.exchange_preview_status.setText(
             f"Preview ready - {self.exchange_pdf_document.pageCount()} page(s), "
             "including the information / responsibilities page."
         )
         self.exchange_preview_status.setStyleSheet("color: #2f6f3e;")
+
+    def _cleanup_stale_exchange_previews(self) -> None:
+        for preview_path in tuple(self.exchange_stale_preview_paths):
+            if preview_path == self.exchange_preview_path:
+                continue
+            try:
+                preview_path.unlink(missing_ok=True)
+            except OSError:
+                # Windows may keep a page-render handle alive briefly after the
+                # viewer switches documents. A later refresh or timer will retry.
+                continue
+            self.exchange_stale_preview_paths.discard(preview_path)
 
     @staticmethod
     def _next_number(prefix: str, existing_values: list[str]) -> str:
@@ -2418,14 +2537,14 @@ class MainWindow(QMainWindow):
         rows = []
         for contact in self.repository.list_contacts(self.current_case.id):
             contact_name = people[contact.contact_person_id].display_name if contact.contact_person_id in people else contact.contact_name
-            associated = []
+            subject = "Needs person assignment"
             if contact.subject_person_id in people:
-                associated.append(people[contact.subject_person_id].display_name)
-            if contact.vehicle_id in vehicles:
+                subject = people[contact.subject_person_id].display_name
+            elif contact.vehicle_id in vehicles:
                 vehicle = vehicles[contact.vehicle_id]
-                associated.append(f"{vehicle.vehicle_number} {vehicle.description}")
+                subject += f" (legacy vehicle: {vehicle.vehicle_number} {vehicle.description})"
             rows.append((contact.id, [
-                contact.contact_type, contact_name, "; ".join(associated),
+                subject, contact.contact_type, contact_name,
                 contact.cell_phone, contact.home_phone, contact.work_phone,
                 contact.organization, contact.notes,
             ]))
@@ -2434,9 +2553,25 @@ class MainWindow(QMainWindow):
     def add_contact(self) -> None:
         if not self.current_case:
             return
+        people = self.repository.list_people(self.current_case.id)
+        if not people:
+            QMessageBox.warning(
+                self,
+                "Person required",
+                "Add the person before adding a related contact.",
+            )
+            return
+        selected_person_id = self._selected_id(self.people_table)
+        contact = ContactRelationship(
+            id="",
+            case_id=self.current_case.id,
+            subject_person_id=selected_person_id,
+        )
         dialog = ContactRelationshipDialog(
-            self.current_case.id, self.repository.list_people(self.current_case.id),
-            self.repository.list_vehicles(self.current_case.id), parent=self,
+            self.current_case.id,
+            people,
+            contact,
+            self,
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.repository.save_contact(dialog.result_record())
@@ -2450,8 +2585,10 @@ class MainWindow(QMainWindow):
         if not contact:
             return
         dialog = ContactRelationshipDialog(
-            self.current_case.id, self.repository.list_people(self.current_case.id),
-            self.repository.list_vehicles(self.current_case.id), contact, self,
+            self.current_case.id,
+            self.repository.list_people(self.current_case.id),
+            contact,
+            self,
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             self.repository.save_contact(dialog.result_record())
@@ -2473,8 +2610,15 @@ class MainWindow(QMainWindow):
             vehicle = vehicles[analysis.vehicle_id] if analysis.vehicle_id in vehicles else None
             vehicle_name = f"{vehicle.vehicle_number} {vehicle.description}" if vehicle else ""
             motion = " / ".join(value for value in (analysis.roadway_position, analysis.movement_at_impact) if value)
-            visibility = " / ".join(value for value in (analysis.detection_distance, analysis.result_67_percent) if value)
-            rows.append((analysis.id, [person, vehicle_name, motion, visibility, analysis.prt_total, analysis.notes]))
+            visibility_equipment = ", ".join(
+                label
+                for used, label in (
+                    (analysis.light_meter_used, "Light meter"),
+                    (analysis.light_board_used, "Light board"),
+                )
+                if used
+            )
+            rows.append((analysis.id, [person, vehicle_name, motion, visibility_equipment, analysis.notes]))
         self._populate_table(self.vru_table, rows)
 
     def add_vru_analysis(self) -> None:
@@ -2544,7 +2688,7 @@ class MainWindow(QMainWindow):
 
     def delete_chronology(self) -> None:
         entry_id = self._selected_id(self.chronology_table)
-        if entry_id and self._confirm_remove("Remove this chronology entry?"):
+        if entry_id and self._confirm_remove("Remove this journal entry?"):
             self.repository.delete_chronology(entry_id)
             self.refresh_case_tables()
 
@@ -2691,6 +2835,86 @@ class MainWindow(QMainWindow):
             5000,
         )
         QDesktopServices.openUrl(QUrl.fromLocalFile(destination))
+
+    def _create_exchange_printer(self) -> QPrinter:
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        case_number = self.current_case.case_number if self.current_case else ""
+        printer.setDocName(
+            f"{case_number or 'Traffic_Crash'}_Exchange_Report"
+        )
+        printer.setCreator(f"Traffic Crash Notebook {__version__}")
+        printer.setPageSize(QPageSize(QPageSize.PageSizeId.Letter))
+        printer.setPageOrientation(QPageLayout.Orientation.Portrait)
+        return printer
+
+    def print_exchange_report(self) -> None:
+        if not self.current_case or not self.save_overview():
+            return
+        self.refresh_exchange_report(force_preview=True)
+        page_count = self.exchange_pdf_document.pageCount()
+        if (
+            page_count < 1
+            or not self.exchange_preview_path.is_file()
+            or self.exchange_preview_status.text().startswith("Preview failed")
+        ):
+            QMessageBox.critical(
+                self,
+                "Exchange report print failed",
+                "The current exchange-report preview could not be generated. "
+                "Review the preview message and try again.",
+            )
+            return
+
+        printer = self._create_exchange_printer()
+        dialog = QPrintDialog(printer, self)
+        dialog.setWindowTitle("Print Traffic Crash Exchange Report")
+        dialog.setMinMax(1, page_count)
+        dialog.setFromTo(1, page_count)
+        for option in (
+            QAbstractPrintDialog.PrintDialogOption.PrintPageRange,
+            QAbstractPrintDialog.PrintDialogOption.PrintCurrentPage,
+            QAbstractPrintDialog.PrintDialogOption.PrintShowPageSize,
+        ):
+            dialog.setOption(option, True)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        if not printer.isValid():
+            QMessageBox.warning(
+                self,
+                "No printer available",
+                "Windows did not report an available printer. Add or reconnect a "
+                "printer, then try again.",
+            )
+            return
+
+        current_page = self.exchange_pdf_view.pageNavigator().currentPage()
+        page_indexes = selected_pdf_page_indexes(
+            printer,
+            page_count,
+            current_page=current_page,
+        )
+        try:
+            printed_pages = print_pdf_document(
+                self.exchange_pdf_document,
+                printer,
+                page_indexes,
+            )
+        except Exception as error:
+            QMessageBox.critical(
+                self,
+                "Exchange report print failed",
+                f"The exchange report could not be printed.\n\n{error}",
+            )
+            return
+        destination = (
+            printer.outputFileName()
+            or printer.printerName()
+            or "the selected printer"
+        )
+        self.statusBar().showMessage(
+            f"Sent {printed_pages} exchange-report page(s) to {destination}.",
+            5000,
+        )
 
     def export_summary_pdf(self) -> None:
         if not self.current_case:
@@ -3071,10 +3295,7 @@ class MainWindow(QMainWindow):
 
 def run(repository: CaseRepository) -> int:
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setApplicationName("Traffic Crash Notebook")
-    app.setApplicationVersion(__version__)
-    app.setOrganizationName("TrafficCrashNotebook")
-    app.setFont(QFont("Segoe UI", 9))
+    configure_application(app)
     window = MainWindow(repository)
     window.show()
     return app.exec()

@@ -12,7 +12,6 @@ SRC = PROJECT_ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from traffic_crash_notebook import __version__
 from traffic_crash_notebook.repository import CaseRepository
 
 
@@ -48,8 +47,8 @@ def main() -> int:
         os.environ["TCN_DATA_DIR"] = str(Path(sys.argv[index + 1]).resolve())
         del sys.argv[index:index + 2]
     try:
-        from PySide6.QtGui import QFont
         from PySide6.QtWidgets import QApplication, QMessageBox
+        from traffic_crash_notebook.ui.app_identity import configure_application
         from traffic_crash_notebook.ui.main_window import run
         from traffic_crash_notebook.ui.storage_setup import ensure_startup_storage
     except ModuleNotFoundError as exc:
@@ -58,10 +57,7 @@ def main() -> int:
             return 2
         raise
     app = QApplication.instance() or QApplication(sys.argv)
-    app.setApplicationName("Traffic Crash Notebook")
-    app.setApplicationVersion(__version__)
-    app.setOrganizationName("TrafficCrashNotebook")
-    app.setFont(QFont("Segoe UI", 9))
+    configure_application(app)
     try:
         storage = ensure_startup_storage()
     except Exception as exc:

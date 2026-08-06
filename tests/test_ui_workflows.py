@@ -12,7 +12,8 @@ os.environ.setdefault("TCN_DISABLE_UPDATE_CHECK", "1")
 
 from pypdf import PdfReader
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QPalette
+from PySide6.QtGui import QPageSize, QPalette
+from PySide6.QtPrintSupport import QPrinter
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QApplication,
@@ -40,7 +41,7 @@ from traffic_crash_notebook.models import (
     Vehicle,
     WitnessDetails,
 )
-from traffic_crash_notebook.repository import CaseRepository, new_id
+from traffic_crash_notebook.repository import SCHEMA_VERSION, CaseRepository, new_id
 from traffic_crash_notebook.updates import PortableRelease, UpdateManifest
 from traffic_crash_notebook.ui.dialogs import (
     ChargeDispositionDialog,
@@ -183,6 +184,10 @@ class AddRecordWorkflowTest(unittest.TestCase):
             dialog.driver.setCurrentIndex(dialog.driver.findData(driver.id))
             dialog.insurance_company.setText("Example Mutual")
             dialog.insurance_policy_number.setText("POL-13579")
+            dialog.release_date.setText("08/05/2026")
+            dialog.release_information.setPlainText(
+                "Released to registered owner with receipt"
+            )
             dialog.property_damage.setPlainText("None")
             for checkbox in dialog.vehicle_workflow_boxes.values():
                 checkbox.setChecked(True)
@@ -203,15 +208,102 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertTrue(vehicles[0].cdr_equipped)
         self.assertTrue(vehicles[0].cdr_imaged)
         self.assertTrue(vehicles[0].cdr_report_uploaded)
+        self.assertTrue(vehicles[0].released)
+        self.assertEqual(vehicles[0].release_date, "2026-08-05")
+        self.assertEqual(
+            vehicles[0].release_information,
+            "Released to registered owner with receipt",
+        )
         self.assertEqual(self.window.vehicles_table.rowCount(), 1)
         self.assertIn(
             "CDR Report Uploaded",
             self.window.vehicles_table.item(0, 4).text(),
         )
-        self.assertEqual(
+        self.assertIn(
+            "Released - 08/05/2026 - Released to registered owner with receipt",
             self.window.vehicles_table.item(0, 5).text(),
+        )
+        self.assertEqual(
+            self.window.vehicles_table.item(0, 6).text(),
             "Example Mutual / POL-13579",
         )
+
+    def test_journal_supports_guided_add_edit_remove_workflow(self):
+        tab_labels = [
+            self.window.tabs.tabText(index)
+            for index in range(self.window.tabs.count())
+        ]
+        self.assertIn("Journal", tab_labels)
+        self.assertNotIn("Chronology", tab_labels)
+        journal_tab = self.window.tabs.widget(tab_labels.index("Journal"))
+        self.assertEqual(journal_tab.objectName(), "journal_tab")
+        self.assertEqual(self.window.chronology_table.objectName(), "journal_table")
+
+        guidance = journal_tab.findChild(QLabel, "journal_guidance")
+        self.assertIsNotNone(guidance)
+        self.assertIn("investigative actions", guidance.text())
+        button_labels = {
+            button.text() for button in journal_tab.findChildren(QPushButton)
+        }
+        self.assertTrue({
+            "Add Journal Entry",
+            "Edit Journal Entry",
+            "Remove Journal Entry",
+        }.issubset(button_labels))
+
+        def configure_add(dialog: ChronologyDialog) -> None:
+            self.assertEqual(dialog.windowTitle(), "Add Journal Entry")
+            self.assertIn("investigative action", dialog.summary.placeholderText())
+            self.assertIn("journal details", dialog.details.placeholderText())
+            dialog.event_date.setText("08/05/2026")
+            dialog.event_time.setText("13:20")
+            dialog.category.setCurrentText("Evidence")
+            dialog.summary.setText("Surveillance video obtained")
+            dialog.details.setPlainText(
+                "Original video was uploaded to the approved evidence system."
+            )
+
+        self._complete_modal_dialog(
+            self.window.add_chronology,
+            ChronologyDialog,
+            configure_add,
+        )
+
+        entries = self.repository.list_chronology(self.case.id)
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0].event_date, "2026-08-05")
+        self.assertEqual(entries[0].category, "Evidence")
+        self.assertEqual(self.window.chronology_table.rowCount(), 1)
+        self.assertEqual(
+            self.window.chronology_table.item(0, 3).text(),
+            "Surveillance video obtained",
+        )
+        self.assertIn("1 journal entry", self.window.counts_label.text())
+
+        self.window.chronology_table.setCurrentCell(0, 0)
+
+        def configure_edit(dialog: ChronologyDialog) -> None:
+            self.assertEqual(dialog.windowTitle(), "Edit Journal Entry")
+            self.assertEqual(dialog.summary.text(), "Surveillance video obtained")
+            dialog.summary.setText("Surveillance video reviewed")
+            dialog.details.setPlainText("Timing points documented for follow-up.")
+
+        self._complete_modal_dialog(
+            self.window.edit_chronology,
+            ChronologyDialog,
+            configure_edit,
+        )
+        edited = self.repository.list_chronology(self.case.id)[0]
+        self.assertEqual(edited.summary, "Surveillance video reviewed")
+        self.assertEqual(edited.details, "Timing points documented for follow-up.")
+
+        self.window.chronology_table.setCurrentCell(0, 0)
+        with patch.object(self.window, "_confirm_remove", return_value=True) as confirm:
+            self.window.delete_chronology()
+        confirm.assert_called_once_with("Remove this journal entry?")
+        self.assertEqual(self.repository.list_chronology(self.case.id), [])
+        self.assertEqual(self.window.chronology_table.rowCount(), 0)
+        self.assertIn("0 journal entries", self.window.counts_label.text())
 
     def test_exchange_report_workspace_is_read_only_and_previews_existing_data(self):
         tab_labels = [
@@ -309,7 +401,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
         }
         self.assertEqual(
             button_labels,
-            {"Refresh Preview", "Export Preview to PDF"},
+            {
+                "Refresh Preview",
+                "Print Exchange Report...",
+                "Export Preview to PDF",
+            },
         )
         self.assertTrue(self.window.exchange_preview_path.is_file())
         self.assertEqual(self.window.exchange_pdf_document.pageCount(), 2)
@@ -326,6 +422,60 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertIn("54321", preview_text)
         self.assertIn("Traffic Division", preview_text)
         self.assertIn(pedestrian.last_name, preview_text)
+
+        locked_preview_path = self.window.exchange_preview_path
+        original_unlink = Path.unlink
+
+        def refuse_locked_preview(path: Path, *args, **kwargs):
+            if path == locked_preview_path:
+                raise PermissionError(
+                    32,
+                    "The process cannot access the file because it is being used "
+                    "by another process",
+                    str(path),
+                )
+            return original_unlink(path, *args, **kwargs)
+
+        with patch.object(Path, "unlink", refuse_locked_preview):
+            self.window.preview_exchange_report()
+            refreshed_preview_path = self.window.exchange_preview_path
+            self.assertNotEqual(refreshed_preview_path, locked_preview_path)
+            self.assertTrue(refreshed_preview_path.is_file())
+            self.assertTrue(locked_preview_path.is_file())
+            self.assertIn(
+                "Preview ready",
+                self.window.exchange_preview_status.text(),
+            )
+            self.assertEqual(self.window.exchange_pdf_document.pageCount(), 2)
+            self.window._cleanup_stale_exchange_previews()
+            self.assertIn(
+                locked_preview_path,
+                self.window.exchange_stale_preview_paths,
+            )
+
+        self.app.processEvents()
+        self.window._cleanup_stale_exchange_previews()
+        self.assertFalse(locked_preview_path.exists())
+
+        printed_preview = Path(self.temp.name) / "exchange-preview-printed.pdf"
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+        printer.setOutputFileName(str(printed_preview))
+        printer.setPageSize(QPageSize(QPageSize.PageSizeId.Letter))
+        with (
+            patch.object(
+                self.window,
+                "_create_exchange_printer",
+                return_value=printer,
+            ),
+            patch(
+                "traffic_crash_notebook.ui.main_window.QPrintDialog.exec",
+                return_value=QDialog.DialogCode.Accepted,
+            ),
+        ):
+            self.window.print_exchange_report()
+        self.assertTrue(printed_preview.is_file())
+        self.assertEqual(len(PdfReader(printed_preview).pages), 2)
 
         exported_preview = Path(self.temp.name) / "exchange-preview-export.pdf"
         with (
@@ -357,7 +507,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertIn(f"Version: {__version__}", about)
         self.assertIn("Build ID:", about)
         self.assertIn("Build date:", about)
-        self.assertIn("Database schema: 16", about)
+        self.assertIn(f"Database schema: {SCHEMA_VERSION}", about)
         self.assertIn("Running from:", about)
         self.assertIn(
             f"Case data folder: {self.repository.database_path.parent}",
@@ -496,6 +646,99 @@ class AddRecordWorkflowTest(unittest.TestCase):
                 backup_default.parent,
                 self.repository.database_path.parent / "Backups",
             )
+
+    def test_surface_subtab_supports_multiple_add_edit_remove_records(self):
+        subtab_names = [
+            self.window.conditions_tabs.tabText(index)
+            for index in range(self.window.conditions_tabs.count())
+        ]
+        self.assertIn("Weather", subtab_names)
+        self.assertIn("Surface", subtab_names)
+        self.assertNotIn("Weather / Surface", subtab_names)
+        self.assertNotIn("Multiple Surfaces", subtab_names)
+        for retired_field in (
+            "surface_composition",
+            "surface_condition",
+            "friction_value",
+        ):
+            self.assertNotIn(retired_field, self.window.condition_widgets)
+
+        surface_index = subtab_names.index("Surface")
+        self.window.conditions_tabs.setCurrentIndex(surface_index)
+        surface_tab = self.window.conditions_tabs.currentWidget()
+        button_labels = {
+            button.text() for button in surface_tab.findChildren(QPushButton)
+        }
+        self.assertTrue({
+            "Add Surface",
+            "Edit Surface",
+            "Remove Surface",
+        }.issubset(button_labels))
+
+        def configure_lane(dialog: SurfaceObservationDialog) -> None:
+            self.assertEqual(dialog.windowTitle(), "Add Surface")
+            dialog.location.setText("Northbound lane")
+            dialog.composition.setText("Asphalt")
+            dialog.condition.setText("Wet")
+            dialog.friction_value.setText("0.48")
+            dialog.notes.setPlainText("Drag sled measurement")
+
+        self._complete_modal_dialog(
+            self.window.add_surface_observation,
+            SurfaceObservationDialog,
+            configure_lane,
+        )
+
+        def configure_crosswalk(dialog: SurfaceObservationDialog) -> None:
+            dialog.location.setText("East crosswalk marking")
+            dialog.composition.setText("Thermoplastic over asphalt")
+            dialog.condition.setText("Dry")
+
+        self._complete_modal_dialog(
+            self.window.add_surface_observation,
+            SurfaceObservationDialog,
+            configure_crosswalk,
+        )
+        self.assertEqual(self.window.surface_observations_table.rowCount(), 2)
+        self.assertEqual(len(self.repository.list_surface_observations(self.case.id)), 2)
+
+        lane_row = next(
+            row
+            for row in range(self.window.surface_observations_table.rowCount())
+            if self.window.surface_observations_table.item(row, 0).text()
+            == "Northbound lane"
+        )
+        self.window.surface_observations_table.setCurrentCell(lane_row, 0)
+
+        def edit_lane(dialog: SurfaceObservationDialog) -> None:
+            self.assertEqual(dialog.windowTitle(), "Edit Surface")
+            dialog.condition.setText("Damp after rain")
+
+        self._complete_modal_dialog(
+            self.window.edit_surface_observation,
+            SurfaceObservationDialog,
+            edit_lane,
+        )
+        edited = next(
+            surface
+            for surface in self.repository.list_surface_observations(self.case.id)
+            if surface.location == "Northbound lane"
+        )
+        self.assertEqual(edited.condition, "Damp after rain")
+
+        crosswalk_row = next(
+            row
+            for row in range(self.window.surface_observations_table.rowCount())
+            if self.window.surface_observations_table.item(row, 0).text()
+            == "East crosswalk marking"
+        )
+        self.window.surface_observations_table.setCurrentCell(crosswalk_row, 0)
+        with patch.object(self.window, "_confirm_remove", return_value=True):
+            self.window.delete_surface_observation()
+        remaining = self.repository.list_surface_observations(self.case.id)
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(remaining[0].location, "Northbound lane")
+        self.assertEqual(self.window.surface_observations_table.rowCount(), 1)
 
     def test_save_failure_reports_unavailable_storage_without_switching_database(self):
         original_database = self.repository.database_path
@@ -724,7 +967,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         ):
             self.assertNotIn(retired_vehicle_item, self.window.checklist_boxes)
         self.assertIn("Insurance - Exchange Report", self.window.checklist_boxes)
-        self.assertIn("Release", self.window.checklist_boxes)
+        self.assertNotIn("Release", self.window.checklist_boxes)
         self.assertIn("Crash Diagram Completed", self.window.checklist_boxes)
         self.assertIn("Axon Shared to DA", self.window.checklist_boxes)
         self.assertEqual(
@@ -992,6 +1235,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         contact = self.repository.save_contact(ContactRelationship(
             id="",
             case_id=self.case.id,
+            subject_person_id=person.id,
             contact_name="Legacy Contact",
             phone="LEGACY-CONTACT-PRIMARY",
             cell_phone="503-555-0102",
@@ -1001,7 +1245,6 @@ class AddRecordWorkflowTest(unittest.TestCase):
         contact_dialog = ContactRelationshipDialog(
             self.case.id,
             [person],
-            [],
             contact,
             self.window,
         )
@@ -1060,6 +1303,42 @@ class AddRecordWorkflowTest(unittest.TestCase):
         ]
         self.assertNotIn("Files", tab_names)
         self.assertFalse(hasattr(self.window, "files_table"))
+
+    def test_contacts_are_nested_under_people_and_require_a_person(self):
+        top_level_tabs = [
+            self.window.tabs.tabText(index)
+            for index in range(self.window.tabs.count())
+        ]
+        self.assertNotIn("Contacts", top_level_tabs)
+        self.assertIn("People", top_level_tabs)
+        self.assertEqual(
+            [
+                self.window.people_tabs.tabText(index)
+                for index in range(self.window.people_tabs.count())
+            ],
+            ["People", "Contacts"],
+        )
+
+        person = self.repository.save_person(Person(
+            id="",
+            case_id=self.case.id,
+            first_name="Contact",
+            last_name="Subject",
+        ))
+        dialog = ContactRelationshipDialog(
+            self.case.id,
+            [person],
+            parent=self.window,
+        )
+        self.assertFalse(hasattr(dialog, "vehicle"))
+        dialog.contact_name.setText("Related person")
+        with patch(
+            "traffic_crash_notebook.ui.dialogs.QMessageBox.warning"
+        ) as warning:
+            dialog._validate_and_accept()
+        warning.assert_called_once()
+        self.assertIn("person", warning.call_args.args[2].lower())
+        dialog.close()
 
     def test_diagrams_workspace_is_removed_but_completion_checkbox_remains(self):
         tab_names = [
@@ -1242,6 +1521,8 @@ class AddRecordWorkflowTest(unittest.TestCase):
         )
 
         def configure_contact(dialog: ContactRelationshipDialog) -> None:
+            self.assertEqual(dialog.subject_person.currentData(), person.id)
+            self.assertFalse(hasattr(dialog, "vehicle"))
             dialog.contact_name.setText("Morgan Example")
             dialog.cell_phone.setText("503-555-0101")
             dialog.home_phone.setText("503-555-0102")
@@ -1258,7 +1539,19 @@ class AddRecordWorkflowTest(unittest.TestCase):
         def configure_vru(dialog: VRUAnalysisDialog) -> None:
             dialog.person_id.setCurrentIndex(dialog.person_id.findData(person.id))
             dialog.projection_boxes["Roof Vault"].setChecked(True)
-            dialog.prt_factor_boxes["Target Unexpected"].setChecked(True)
+            dialog.light_meter_used.setChecked(True)
+            dialog.light_board_used.setChecked(True)
+            tabs = dialog.findChild(QTabWidget)
+            tab_names = [tabs.tabText(index) for index in range(tabs.count())]
+            self.assertIn("Night Visibility", tab_names)
+            self.assertIn("Notes", tab_names)
+            self.assertNotIn("Perception / Response", tab_names)
+            for retired_attribute in (
+                "night_test_parameters", "detection_distance", "distance_adjustment",
+                "result_67_percent", "result_15_percentile", "prt_base", "prt_total",
+                "prt_justification", "prt_factor_boxes",
+            ):
+                self.assertFalse(hasattr(dialog, retired_attribute))
 
         self._complete_modal_dialog(
             self.window.add_vru_analysis,
@@ -1316,7 +1609,9 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(contact.work_phone, "503-555-0103")
         analysis = self.repository.list_vru_analyses(self.case.id)[0]
         self.assertEqual(analysis.projection_classifications, "Roof Vault")
-        self.assertIn("Target Unexpected", analysis.prt_factors)
+        self.assertTrue(analysis.light_meter_used)
+        self.assertTrue(analysis.light_board_used)
+        self.assertEqual(self.window.vru_table.item(0, 3).text(), "Light meter, Light board")
         self.assertEqual(
             self.repository.list_surface_observations(self.case.id)[0].friction_value,
             "0.48",

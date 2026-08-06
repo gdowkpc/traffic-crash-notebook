@@ -162,6 +162,8 @@ class ExchangeReportPdfTest(unittest.TestCase):
             self.assertIn("V-7", text)
             self.assertIn("PLATE7", text)
             self.assertIn("POLICY-007", text)
+            self.assertIn("Exchange1, Person1", text)  # Passenger
+            self.assertIn("Exchange2, Person2", text)  # Witness
             self.assertIn("Exchange9, Person9", text)
             self.assertIn("Pedestrian, Pat", text)
             self.assertIn("PEDESTRIAN", text)

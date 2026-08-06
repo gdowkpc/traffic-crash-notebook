@@ -126,6 +126,9 @@ class RepositoryTest(unittest.TestCase):
             cdr_equipped=True,
             cdr_imaged=True,
             cdr_report_uploaded=True,
+            released=True,
+            release_date="2026-08-05",
+            release_information="Released to registered owner with receipt",
         ))
 
         loaded = self.repository.get_vehicle(vehicle.id)
@@ -139,10 +142,18 @@ class RepositoryTest(unittest.TestCase):
         self.assertTrue(loaded.cdr_equipped)
         self.assertTrue(loaded.cdr_imaged)
         self.assertTrue(loaded.cdr_report_uploaded)
+        self.assertTrue(loaded.released)
+        self.assertEqual(loaded.release_date, "2026-08-05")
+        self.assertEqual(
+            loaded.release_information,
+            "Released to registered owner with receipt",
+        )
 
         listed = self.repository.list_vehicles(self.case.id)[0]
         self.assertIsInstance(listed.cdr_equipped, bool)
         self.assertTrue(listed.cdr_report_uploaded)
+        self.assertIsInstance(listed.released, bool)
+        self.assertTrue(listed.released)
 
     def test_exchange_report_details_round_trip(self):
         details = self.repository.save_exchange_report_details(
@@ -178,9 +189,75 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(loaded.assigned_officer_dpsst, "")
         self.assertEqual(loaded.assignment, "Legacy Traffic Assignment")
         with closing(sqlite3.connect(self.database)) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 16)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 19)
 
-    def test_schema_12_data_survives_schema_16_exchange_report_migration(self):
+    def test_schema_17_vru_data_survives_schema_19_migrations(self):
+        analysis = self.repository.save_vru_analysis(VRUAnalysis(
+            id="",
+            case_id=self.case.id,
+            roadway_position="Legacy crosswalk",
+            night_test_parameters="Legacy night data",
+            prt_total="1.50",
+        ))
+        with self.repository._connect() as connection:
+            connection.execute("ALTER TABLE vru_analyses DROP COLUMN light_meter_used")
+            connection.execute("ALTER TABLE vru_analyses DROP COLUMN light_board_used")
+            connection.execute("PRAGMA user_version = 17")
+
+        migrated = CaseRepository(self.database)
+        loaded = migrated.get_vru_analysis(analysis.id)
+        self.assertEqual(loaded.roadway_position, "Legacy crosswalk")
+        self.assertEqual(loaded.night_test_parameters, "Legacy night data")
+        self.assertEqual(loaded.prt_total, "1.50")
+        self.assertIs(loaded.light_meter_used, False)
+        self.assertIs(loaded.light_board_used, False)
+        with closing(sqlite3.connect(self.database)) as connection:
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 19)
+
+    def test_schema_18_single_surface_values_migrate_to_schema_19_records(self):
+        crash_details = self.repository.get_crash_details(self.case.id)
+        crash_details.road_name = "Legacy Boulevard"
+        self.repository.save_crash_details(crash_details)
+        self.repository.save_road_conditions(RoadConditions(
+            case_id=self.case.id,
+            temperature="61 F",
+            surface_composition="Asphalt",
+            surface_condition="Wet",
+            friction_value="0.48",
+        ))
+        existing = self.repository.save_surface_observation(SurfaceObservation(
+            id="",
+            case_id=self.case.id,
+            location="South shoulder",
+            composition="Gravel",
+            condition="Dry",
+            notes="Preserve existing multi-surface record",
+        ))
+        with self.repository._connect() as connection:
+            connection.execute("PRAGMA user_version = 18")
+
+        migrated = CaseRepository(self.database)
+        surfaces = migrated.list_surface_observations(self.case.id)
+        self.assertEqual(len(surfaces), 2)
+        self.assertEqual(migrated.get_surface_observation(existing.id).notes, "Preserve existing multi-surface record")
+        legacy_surface = next(
+            surface for surface in surfaces if surface.composition == "Asphalt"
+        )
+        self.assertEqual(legacy_surface.location, "Legacy Boulevard")
+        self.assertEqual(legacy_surface.condition, "Wet")
+        self.assertEqual(legacy_surface.friction_value, "0.48")
+        migrated_conditions = migrated.get_road_conditions(self.case.id)
+        self.assertEqual(migrated_conditions.temperature, "61 F")
+        self.assertEqual(migrated_conditions.surface_composition, "")
+        self.assertEqual(migrated_conditions.surface_condition, "")
+        self.assertEqual(migrated_conditions.friction_value, "")
+
+        reopened = CaseRepository(self.database)
+        self.assertEqual(len(reopened.list_surface_observations(self.case.id)), 2)
+        with closing(sqlite3.connect(self.database)) as connection:
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 19)
+
+    def test_schema_12_data_survives_schema_19_exchange_report_migration(self):
         vehicle = self.repository.save_vehicle(Vehicle(
             id="",
             case_id=self.case.id,
@@ -212,7 +289,7 @@ class RepositoryTest(unittest.TestCase):
             "North",
         )
         with closing(sqlite3.connect(self.database)) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 16)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 19)
 
     def test_hit_run_records_round_trip_and_links_clear_safely(self):
         person = self.repository.save_person(Person(
@@ -304,7 +381,7 @@ class RepositoryTest(unittest.TestCase):
             self.repository.get_hit_run_person_lead(person_lead.id).vehicle_lead_id
         )
 
-    def test_schema_11_data_survives_schema_16_migration(self):
+    def test_schema_11_data_survives_schema_19_migration(self):
         vehicle = self.repository.save_vehicle(Vehicle(
             id="",
             case_id=self.case.id,
@@ -329,7 +406,7 @@ class RepositoryTest(unittest.TestCase):
         ))
         self.assertTrue(migrated.get_hit_run_overview(self.case.id).is_hit_and_run)
         with closing(sqlite3.connect(self.database)) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 16)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 19)
 
     def test_person_delete_clears_vehicle_links(self):
         person = Person(id=new_id(), case_id=self.case.id, first_name="Sam", roles=["Driver"])
@@ -357,7 +434,7 @@ class RepositoryTest(unittest.TestCase):
         self.repository.save_vehicle(vehicle)
 
         conditions = RoadConditions(
-            case_id=self.case.id, temperature="72 F", surface_condition="Dry",
+            case_id=self.case.id, temperature="72 F", weather_condition="Clear",
             weather_station="KPDX ASOS", weather_time="14:35 PDT",
             lighting_conditions="Daylight", speed_limit="35", chord="82.67",
             sunrise="05:59", sunset="20:31",
@@ -422,7 +499,7 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(reopened.get_road_conditions(self.case.id).temperature, "60 F")
         self.assertEqual(reopened.get_witness_details("missing").interviewed, "Unknown")
 
-    def test_schema_10_vehicle_data_survives_schema_16_migration(self):
+    def test_schema_10_vehicle_data_survives_schema_19_migration(self):
         legacy_database = Path(self.temp.name) / "legacy-vehicle.sqlite3"
         with closing(sqlite3.connect(legacy_database)) as connection:
             connection.executescript("""
@@ -472,6 +549,9 @@ class RepositoryTest(unittest.TestCase):
         self.assertFalse(vehicle.cdr_equipped)
         self.assertFalse(vehicle.cdr_imaged)
         self.assertFalse(vehicle.cdr_report_uploaded)
+        self.assertFalse(vehicle.released)
+        self.assertEqual(vehicle.release_date, "")
+        self.assertEqual(vehicle.release_information, "")
 
         vehicle.insurance_company = "Migrated Insurance Co."
         vehicle.insurance_policy_number = "MIGRATED-123"
@@ -482,9 +562,9 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(reloaded.insurance_policy_number, "MIGRATED-123")
         self.assertTrue(reloaded.cdr_imaged)
         with closing(sqlite3.connect(legacy_database)) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 16)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 19)
 
-    def test_schema_3_person_data_survives_schema_16_column_migration(self):
+    def test_schema_3_person_data_survives_schema_19_column_migration(self):
         legacy_database = Path(self.temp.name) / "legacy.sqlite3"
         with closing(sqlite3.connect(legacy_database)) as connection:
             connection.executescript("""
@@ -532,7 +612,7 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(migrated.get_person(person.id).cell_phone, "503-555-0101")
         self.assertEqual(migrated.get_person(person.id).zip_code, "97201-1234")
         with closing(sqlite3.connect(legacy_database)) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 16)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 19)
 
     def test_schema_9_participant_receives_extracted_without_data_loss(self):
         legacy_database = Path(self.temp.name) / "legacy-participant.sqlite3"
@@ -573,7 +653,7 @@ class RepositoryTest(unittest.TestCase):
                 ).fetchall()
             }
             self.assertIn("extracted", columns)
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 16)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 19)
 
     def test_schema_5_checklist_receives_review_date_columns_without_data_loss(self):
         legacy_database = Path(self.temp.name) / "legacy-checklist.sqlite3"
@@ -623,7 +703,7 @@ class RepositoryTest(unittest.TestCase):
             }
             self.assertIn("peer_review_date", columns)
             self.assertIn("sergeant_review_date", columns)
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 16)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 19)
 
     def test_schema_6_conditions_receive_celestial_and_station_columns_without_data_loss(self):
         legacy_database = Path(self.temp.name) / "legacy-conditions.sqlite3"
@@ -676,7 +756,7 @@ class RepositoryTest(unittest.TestCase):
                 for row in connection.execute("PRAGMA table_info(road_conditions)").fetchall()
             }
             self.assertTrue(set(new_columns).issubset(columns))
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 16)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 19)
 
     def test_schema_7_single_roadway_is_migrated_once_without_data_loss(self):
         legacy_database = Path(self.temp.name) / "legacy-roadway.sqlite3"
@@ -723,7 +803,7 @@ class RepositoryTest(unittest.TestCase):
             "45",
         )
         with closing(sqlite3.connect(legacy_database)) as connection:
-            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 16)
+            self.assertEqual(connection.execute("PRAGMA user_version").fetchone()[0], 19)
 
         reopened = CaseRepository(legacy_database)
         self.assertEqual(len(reopened.list_roadway_records(legacy_case.id)), 1)
@@ -778,11 +858,12 @@ class RepositoryTest(unittest.TestCase):
         ))
         contact = self.repository.save_contact(ContactRelationship(
             id="", case_id=self.case.id, contact_type="Family / Contact", contact_name="Casey",
-            subject_person_id=person.id, phone="503-555-0100",
+            subject_person_id=person.id, vehicle_id=vehicle.id, phone="503-555-0100",
         ))
         analysis = self.repository.save_vru_analysis(VRUAnalysis(
             id="", case_id=self.case.id, person_id=person.id, vehicle_id=vehicle.id,
-            roadway_position="Marked crosswalk", prt_total="1.50",
+            roadway_position="Marked crosswalk", light_meter_used=True,
+            light_board_used=True, prt_total="1.50",
         ))
         reference = self.repository.save_file_reference(FileReference(
             id="", case_id=self.case.id, category="Video", title="Intersection camera",
@@ -795,9 +876,21 @@ class RepositoryTest(unittest.TestCase):
 
         self.assertEqual(self.repository.get_witness_details(person.id).statement_summary, "Observed the signal phase.")
         self.assertEqual(self.repository.get_contact(contact.id).phone, "503-555-0100")
-        self.assertEqual(self.repository.get_vru_analysis(analysis.id).prt_total, "1.50")
+        self.assertIsNone(self.repository.get_contact(contact.id).vehicle_id)
+        loaded_analysis = self.repository.get_vru_analysis(analysis.id)
+        self.assertEqual(loaded_analysis.prt_total, "1.50")
+        self.assertIs(loaded_analysis.light_meter_used, True)
+        self.assertIs(loaded_analysis.light_board_used, True)
+        listed_analysis = self.repository.list_vru_analyses(self.case.id)[0]
+        self.assertIsInstance(listed_analysis.light_meter_used, bool)
+        self.assertTrue(listed_analysis.light_board_used)
         self.assertEqual(self.repository.get_file_reference(reference.id).title, "Intersection camera")
         self.assertEqual(self.repository.get_diagram(diagram.id).template_name, "body")
+
+        with self.assertRaisesRegex(ValueError, "assigned to a person"):
+            self.repository.save_contact(ContactRelationship(
+                id="", case_id=self.case.id, contact_name="Unassigned contact",
+            ))
 
     def test_packet_case_records_round_trip(self):
         checklist = self.repository.save_investigative_checklist(InvestigativeChecklist(
@@ -872,6 +965,7 @@ class RepositoryTest(unittest.TestCase):
         ))
         contact = self.repository.save_contact(ContactRelationship(
             id="", case_id=self.case.id, contact_name="Morgan Example",
+            subject_person_id=person.id,
             cell_phone="503-555-0110", home_phone="503-555-0111",
             work_phone="503-555-0112", city="Gresham", state="OR",
         ))

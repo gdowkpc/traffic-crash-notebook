@@ -26,6 +26,7 @@ class PortableScriptTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn('--manifest "$ProjectRoot\\assets\\windows\\TrafficCrashNotebook.manifest"', build)
+        self.assertIn('--icon "$ProjectRoot\\assets\\windows\\TrafficCrashNotebook.ico"', build)
         self.assertIn("verify_windows_executable_manifest.py", build)
         self.assertIn("generate_release_manifests.py", build)
         self.assertIn("verify_release_assets.py", build)

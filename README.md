@@ -13,7 +13,7 @@ grant permission to reuse the source or bundled assets. Agency names, forms, mar
 and other third-party material remain the property of their respective owners; no
 agency endorsement is implied.
 
-## Included in version 0.5.1
+## Included in version 0.5.3
 
 - Create and reopen unlimited cases.
 - Read the selected case clearly with high-contrast text whether the case selector has keyboard focus or not.
@@ -23,27 +23,27 @@ agency endorsement is implied.
 - Record the case overview, assigned officer, numeric DPSST, assignment, crash summary, unresolved questions, and general notes; display crash times with AM/PM.
 - Enter a person once and assign multiple roles such as driver, passenger, pedestrian, witness, or victim.
 - Create unlimited vehicles and link existing people as drivers or owners.
-- Preview and export a Traffic Crash Exchange Report from existing case records without duplicate data entry. It preserves linked and unambiguous legacy drivers, includes pedestrian and bicyclist participants, maps DPSST and Assignment into the footer, creates continuation pages as needed, and appends a searchable text information/responsibilities page last.
-- Maintain an automatically sorted investigative chronology.
+- Preview, print through the standard Windows printer dialog, and export a Traffic Crash Exchange Report from existing case records without duplicate data entry. It preserves linked and unambiguous legacy drivers; includes every saved passenger, witness, pedestrian, and bicyclist; maps DPSST and Assignment into the footer; creates continuation pages as needed; and appends a searchable text information/responsibilities page last.
+- Maintain an automatically sorted investigative Journal for dated actions, decisions, requests, findings, and follow-up.
 - Track open, waiting, completed, and unnecessary tasks or evidence requests.
 - Automatically save overview changes.
 - Underline misspelled words in narrative and notes fields using a bundled offline English dictionary, with right-click corrections and a personal dictionary.
-- Export a comprehensive Full Working Packet with ruled handwriting areas, a Compact Packet that suppresses unused material, and a concise Quick Review.
+- Export a comprehensive Full Working Packet with a dedicated routing cover page and ruled handwriting areas, a Compact Packet that suppresses unused material, and a concise Quick Review.
 - Print case identity on every page with final "Page X of Y" numbering and a top-edge punch-safe layout for two-hole attorney folders.
 - Create a consistent SQLite database backup while the application is running.
-- Record unlimited tagged roadways with their own speed, posting, curve, characteristics, and traffic-control details, plus weather-station and reading-time data, surface conditions, celestial lighting/twilight details, visibility, and scene-analysis conditions.
+- Record unlimited tagged roadways with their own speed, posting, curve, characteristics, and traffic-control details, plus weather-station and reading-time data, celestial lighting/twilight details, visibility, and scene-analysis conditions.
 - Maintain participant injury, transport, restraint, ejection/extraction, autopsy, next-of-kin, and medical/evidence notes.
 - Maintain driver trip, impairment, sleep, work, familiarity, history, and license information.
-- Record vehicle weights, brakes, safety equipment, lighting, tire contribution, and individual tire measurements.
+- Record vehicle weights, brakes, safety equipment, lighting, tire contribution, individual tire measurements, and per-vehicle release status, date, and details.
 - Record structured equipped/operable states, switch positions, body/glass/restraint observations, identity checks, and unlimited tire positions.
 - Complete the original packet's 44-item motorcycle inspection with ratings, measurements, comments, and inspection metadata.
 - Track the investigative checklist, crash-diagram completion, Axon sharing, dated peer/sergeant/DA submission milestones, unlimited charges/dispositions, crash-team response details, and unlimited video sources.
-- Record multiple roadway-surface observations and structured area, participant injury/evidence, driver condition/testing, VRU projection, and PRT selections.
+- Add, edit, and remove multiple roadway-surface records from a dedicated Surface subtab, with roadway/location, composition, condition, friction/drag factor, and notes.
 - Store separate cell, home, and work numbers plus city, state, occupation, and business address data for people and contacts, with ZIP codes on person addresses.
 - Display the Traffic Investigations Unit logo in the application and generated PDF.
 - Maintain structured witness interview summaries, credibility notes, significance, and follow-up.
-- Link unlimited family, next-of-kin, medical, attorney, insurance, employer, and other contacts to people or vehicles.
-- Organize pedestrian and bicyclist visibility workups, motion/throw information, night-testing results, and perception-response-time reasoning.
+- Link unlimited family, next-of-kin, medical, attorney, insurance, employer, and other contacts directly to one person.
+- Organize pedestrian and bicyclist visibility workups, motion/throw information, and whether a light meter or light board was used.
 - Verify a finished portable build without opening the GUI or touching the normal case database.
 
 ## Running from source
@@ -69,7 +69,7 @@ builds the executable, runs the finished executable's portable self-test, and
 creates:
 
 ```text
-release\TrafficCrashNotebook-0.5.1-Windows-Portable.zip
+release\TrafficCrashNotebook-0.5.3-Windows-Portable.zip
 ```
 
 The included GitHub Actions workflow performs the same build on a hosted Windows

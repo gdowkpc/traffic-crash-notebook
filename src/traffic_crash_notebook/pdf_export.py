@@ -221,10 +221,17 @@ def export_case_pdf(
         crash_details.intersection_road,
     ) or case.location
     story.extend(
-        _case_overview(case, counts, styles, packet_name.upper(), overview_location)
+        _packet_cover(
+            case,
+            counts,
+            checklist,
+            styles,
+            packet_name.upper(),
+            overview_location,
+        )
     )
     if working_copy:
-        story.extend(_write_in_area("Overview updates / initial notes", styles, lines=10))
+        story.extend(_write_in_area("Cover notes / routing updates", styles, lines=5))
     story.append(PageBreak())
     story.extend(_packet_case_section(
         case, checklist, charge_dispositions, crash_details, video_sources, counts, styles
@@ -335,7 +342,7 @@ def export_case_pdf(
         if working_copy or chronology:
             story.extend(_chronology_section(chronology, styles))
             if working_copy:
-                story.extend(_write_in_area("Chronology continuation", styles, lines=7))
+                story.extend(_write_in_area("Journal continuation", styles, lines=7))
         if working_copy or tasks:
             story.extend(_tasks_section(tasks, styles))
             if working_copy:
@@ -443,6 +450,14 @@ def export_case_summary_pdf(
 def _styles():
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(
+        name="CoverTitle", parent=styles["Title"], fontName="Helvetica-Bold",
+        fontSize=15, leading=18, textColor=NAVY, alignment=TA_LEFT, spaceAfter=3,
+    ))
+    styles.add(ParagraphStyle(
+        name="CoverCaseNumber", parent=styles["Title"], fontName="Helvetica-Bold",
+        fontSize=20, leading=23, textColor=NAVY, alignment=TA_LEFT, spaceAfter=4,
+    ))
+    styles.add(ParagraphStyle(
         name="CaseTitle", parent=styles["Title"], fontName="Helvetica-Bold",
         fontSize=22, leading=26, textColor=NAVY, alignment=TA_LEFT, spaceAfter=8,
     ))
@@ -485,7 +500,187 @@ def _styles():
         name="MetricLabel", parent=styles["Normal"], fontSize=7.5, leading=9,
         textColor=GRAY, alignment=TA_CENTER,
     ))
+    styles.add(ParagraphStyle(
+        name="CoverMetricLabel", parent=styles["Normal"], fontSize=6.4, leading=7.5,
+        textColor=GRAY, alignment=TA_CENTER,
+    ))
     return styles
+
+
+def _cover_detail_table(
+    labels: tuple[str, ...],
+    values: tuple[str, ...],
+    col_widths: list[float],
+    styles,
+) -> Table:
+    table = Table(
+        [
+            [Paragraph(label, styles["Label"]) for label in labels],
+            [Paragraph(_text(value), styles["BodySmall"]) for value in values],
+        ],
+        colWidths=col_widths,
+    )
+    table.setStyle(_standard_table_style())
+    return table
+
+
+def _cover_milestone(
+    checklist: InvestigativeChecklist,
+    item: str,
+    date_attribute: str,
+) -> str:
+    completion_date = getattr(checklist, date_attribute)
+    if completion_date:
+        return f"Complete - {format_date_for_display(completion_date)}"
+    if item in checklist.completed_items:
+        return "Complete"
+    return "Open"
+
+
+def _packet_cover(
+    case: CrashCase,
+    counts: dict[str, int],
+    checklist: InvestigativeChecklist,
+    styles,
+    print_mode: str,
+    location: str = "",
+) -> list[object]:
+    generated = datetime.now().astimezone().strftime("%m/%d/%Y at %I:%M %p")
+    title_content = [
+        Paragraph("TRAFFIC INVESTIGATIONS UNIT", styles["Label"]),
+        Paragraph("TRAFFIC CRASH INVESTIGATION PACKET", styles["CoverTitle"]),
+        Paragraph(
+            f"CASE {_text(case.case_number or 'Untitled Case')}",
+            styles["CoverCaseNumber"],
+        ),
+        Paragraph(_text(print_mode), styles["PrintMode"]),
+        Paragraph(
+            f"Traffic Crash Notebook v{__version__} - generated {_text(generated)}",
+            styles["CaseSubtitle"],
+        ),
+    ]
+    logo_path = tiu_logo_path()
+    if logo_path.exists():
+        logo = Image(str(logo_path), width=0.9 * inch, height=0.87 * inch)
+        title_table = Table(
+            [[logo, title_content]],
+            colWidths=[1.08 * inch, 5.52 * inch],
+        )
+        title_table.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 0),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ]))
+        story: list[object] = [title_table]
+    else:
+        story = title_content
+
+    story.extend([
+        _cover_detail_table(
+            ("CRASH DATE", "CRASH TIME", "CASE STATUS"),
+            (
+                format_date_for_display(case.crash_date),
+                format_time_for_display(case.crash_time),
+                case.status,
+            ),
+            [2.2 * inch, 2.2 * inch, 2.2 * inch],
+            styles,
+        ),
+        Spacer(1, 0.07 * inch),
+        _cover_detail_table(
+            ("ASSIGNED INVESTIGATOR", "DPSST", "ASSIGNMENT"),
+            (case.investigator, case.assigned_officer_dpsst, case.assignment),
+            [2.8 * inch, 1.0 * inch, 2.8 * inch],
+            styles,
+        ),
+        Spacer(1, 0.07 * inch),
+        _cover_detail_table(
+            ("CRASH LOCATION",),
+            (location or case.location,),
+            [6.6 * inch],
+            styles,
+        ),
+        Spacer(1, 0.14 * inch),
+    ])
+
+    metric_values = (
+        counts["people"],
+        counts["vehicles"],
+        counts["injured"],
+        counts["fatal"],
+        counts["vru"],
+        counts["chronology"],
+        counts["open_tasks"],
+    )
+    metric_labels = (
+        "PEOPLE",
+        "VEHICLES",
+        "INJURED",
+        "FATALITIES",
+        "VRU",
+        "JOURNAL ENTRIES",
+        "OPEN TASKS",
+    )
+    metrics = Table(
+        [
+            [Paragraph(str(value), styles["Metric"]) for value in metric_values],
+            [Paragraph(label, styles["CoverMetricLabel"]) for label in metric_labels],
+        ],
+        colWidths=[6.6 * inch / len(metric_values)] * len(metric_values),
+    )
+    metrics.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F6F8FA")),
+        ("BOX", (0, 0), (-1, -1), 0.5, LIGHT_GRAY),
+        ("INNERGRID", (0, 0), (-1, -1), 0.35, LIGHT_GRAY),
+        ("TOPPADDING", (0, 0), (-1, 0), 8),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 7),
+    ]))
+    story.extend([metrics, Paragraph("Review and DA routing", styles["Subsection"])])
+
+    routing = _cover_detail_table(
+        ("PEER REVIEW", "MCT SERGEANT REVIEW", "SUBMITTED TO DA"),
+        (
+            _cover_milestone(
+                checklist,
+                "Report Peer Reviewed",
+                "peer_review_date",
+            ),
+            _cover_milestone(
+                checklist,
+                "Report Sgt Reviewed",
+                "sergeant_review_date",
+            ),
+            _cover_milestone(
+                checklist,
+                "Submitted to DA",
+                "submitted_to_da_date",
+            ),
+        ),
+        [2.2 * inch, 2.2 * inch, 2.2 * inch],
+        styles,
+    )
+    da_routing = _cover_detail_table(
+        ("ASSIGNED DDA", "DA CASE NUMBER"),
+        (checklist.assigned_dda, checklist.da_case_number),
+        [3.3 * inch, 3.3 * inch],
+        styles,
+    )
+    story.extend([
+        routing,
+        Spacer(1, 0.07 * inch),
+        da_routing,
+    ])
+    story.extend(_narrative_block("Crash summary", case.summary, styles))
+    story.extend(
+        _narrative_block(
+            "Key questions / unresolved issues",
+            case.key_questions,
+            styles,
+        )
+    )
+    return story
 
 
 def _case_overview(
@@ -543,7 +738,7 @@ def _case_overview(
          Paragraph(str(counts["chronology"]), styles["Metric"]),
          Paragraph(str(counts["open_tasks"]), styles["Metric"])],
         [Paragraph("PEOPLE", styles["MetricLabel"]), Paragraph("VEHICLES", styles["MetricLabel"]),
-         Paragraph("CHRONOLOGY", styles["MetricLabel"]), Paragraph("OPEN / WAITING TASKS", styles["MetricLabel"])],
+         Paragraph("JOURNAL ENTRIES", styles["MetricLabel"]), Paragraph("OPEN / WAITING TASKS", styles["MetricLabel"])],
     ]
     metrics = Table(metric_data, colWidths=[1.65 * inch] * 4)
     metrics.setStyle(TableStyle([
@@ -1050,9 +1245,6 @@ def _conditions_section(
         [Paragraph("HUMIDITY / DEW POINT", styles["Label"]),
          Paragraph(_text(" / ".join(x for x in (conditions.humidity, conditions.dew_point) if x)), styles["Cell"]),
          Paragraph("PRESSURE", styles["Label"]), Paragraph(_text(conditions.pressure), styles["Cell"])],
-        [Paragraph("SURFACE", styles["Label"]),
-         Paragraph(_text(" - ".join(x for x in (conditions.surface_composition, conditions.surface_condition) if x)), styles["Cell"]),
-         Paragraph("FRICTION VALUE", styles["Label"]), Paragraph(_text(conditions.friction_value), styles["Cell"])],
         [Paragraph("AREA CLASSIFICATIONS", styles["Label"]),
          Paragraph(_text(conditions.area_classifications), styles["Cell"]),
          Paragraph("AREA TYPE", styles["Label"]),
@@ -1348,13 +1540,29 @@ def _vehicles_section(
             [Paragraph("Yes" if getattr(vehicle, attribute) else "No", styles["Cell"])
              for attribute, _label in VEHICLE_WORKFLOW_FIELDS],
         ]
-        workflow_table = Table(workflow_data, colWidths=[1.32 * inch] * 5)
+        workflow_table = Table(
+            workflow_data,
+            colWidths=[6.6 * inch / len(VEHICLE_WORKFLOW_FIELDS)]
+            * len(VEHICLE_WORKFLOW_FIELDS),
+        )
         workflow_table.setStyle(_standard_table_style())
+        release_table = Table(
+            [
+                [Paragraph("RELEASE DATE", styles["Label"]),
+                 Paragraph("RELEASE INFORMATION", styles["Label"])],
+                [Paragraph(_text(format_date_for_display(vehicle.release_date)), styles["Cell"]),
+                 Paragraph(_text(vehicle.release_information), styles["Cell"])],
+            ],
+            colWidths=[1.4 * inch, 5.2 * inch],
+        )
+        release_table.setStyle(_standard_table_style())
         block: list[object] = [
             Paragraph(heading, styles["Subsection"]),
             table,
             Paragraph("Vehicle-specific checklist", styles["Label"]),
             workflow_table,
+            Paragraph("Vehicle release", styles["Label"]),
+            release_table,
         ]
         if vehicle.edr_status:
             block.extend([
@@ -1573,17 +1781,20 @@ def _witness_contact_sections(
     if contacts:
         story.append(Paragraph("Contact relationships", styles["Subsection"]))
         data = [[Paragraph(item, styles["Label"]) for item in
-                 ("TYPE", "CONTACT", "FOR / VEHICLE", "PHONES / EMAIL", "ADDRESS / NOTES")]]
+                 ("PERSON", "TYPE", "CONTACT", "PHONES / EMAIL", "ADDRESS / NOTES")]]
         for contact in contacts:
             contact_name = _name(contact.contact_person_id, people) if contact.contact_person_id else contact.contact_name
-            association = "; ".join(x for x in (
-                _name(contact.subject_person_id, people) if contact.subject_person_id else "",
-                vehicle_names.get(contact.vehicle_id, ""),
-            ) if x)
+            subject = (
+                _name(contact.subject_person_id, people)
+                if contact.subject_person_id
+                else "Needs person assignment"
+            )
+            if not contact.subject_person_id and contact.vehicle_id in vehicle_names:
+                subject += f" (legacy vehicle: {vehicle_names[contact.vehicle_id]})"
             data.append([
+                Paragraph(_text(subject), styles["Cell"]),
                 Paragraph(_text(contact.contact_type), styles["Cell"]),
                 Paragraph(_text(" - ".join(x for x in (contact_name, contact.organization) if x)), styles["Cell"]),
-                Paragraph(_text(association), styles["Cell"]),
                 Paragraph(_text("; ".join(x for x in (
                     f"Cell {contact.cell_phone}" if contact.cell_phone else "",
                     f"Home {contact.home_phone}" if contact.home_phone else "",
@@ -1595,7 +1806,11 @@ def _witness_contact_sections(
                     contact.notes,
                 ) if x)), styles["Cell"]),
             ])
-        table = Table(data, colWidths=[0.85 * inch, 1.4 * inch, 1.35 * inch, 1.3 * inch, 1.7 * inch], repeatRows=1)
+        table = Table(
+            data,
+            colWidths=[1.25 * inch, 0.8 * inch, 1.35 * inch, 1.3 * inch, 1.9 * inch],
+            repeatRows=1,
+        )
         table.setStyle(_standard_table_style())
         story.append(table)
     return story
@@ -1629,17 +1844,10 @@ def _vru_section(
                  analysis.projection_classifications,
                  analysis.projection_profile,
              ) if x)), styles["Cell"])],
-            [Paragraph("NIGHT VISIBILITY", styles["Label"]),
-             Paragraph(_text("; ".join(x for x in (
-                 analysis.detection_distance, analysis.distance_adjustment,
-                 analysis.result_67_percent, analysis.result_15_percentile,
-             ) if x)), styles["Cell"]),
-             Paragraph("PERCEPTION / RESPONSE", styles["Label"]),
-             Paragraph(_text("; ".join(value for value in (
-                 f"Base {analysis.prt_base}" if analysis.prt_base else "",
-                 f"Total {analysis.prt_total}" if analysis.prt_total else "",
-                 analysis.prt_factors,
-             ) if value)), styles["Cell"])],
+            [Paragraph("LIGHT METER USED", styles["Label"]),
+             Paragraph("Yes" if analysis.light_meter_used else "No", styles["Cell"]),
+             Paragraph("LIGHT BOARD USED", styles["Label"]),
+             Paragraph("Yes" if analysis.light_board_used else "No", styles["Cell"])],
         ]
         table = Table(data, colWidths=[1.15 * inch, 2.15 * inch, 1.3 * inch, 2.0 * inch])
         table.setStyle(_standard_table_style())
@@ -1649,8 +1857,6 @@ def _vru_section(
             ("Driver thought process", analysis.driver_thought_process),
             ("Driver sleep information", analysis.driver_sleep_information),
             ("VRU impairment notes", analysis.vru_impairment_notes),
-            ("Night test parameters", analysis.night_test_parameters),
-            ("PRT justification", analysis.prt_justification),
             ("Analysis notes", analysis.notes),
         )
         for title, value in narratives:
@@ -1661,11 +1867,11 @@ def _vru_section(
 
 
 def _chronology_section(entries: list[ChronologyEntry], styles) -> list[object]:
-    story: list[object] = [Paragraph("Investigative chronology", styles["Section"])]
+    story: list[object] = [Paragraph("Investigative journal", styles["Section"])]
     if not entries:
-        story.append(Paragraph("No chronology entries.", styles["Empty"]))
+        story.append(Paragraph("No journal entries.", styles["Empty"]))
         return story
-    data = [[Paragraph(item, styles["Label"]) for item in ("DATE", "TIME", "CATEGORY", "EVENT")]]
+    data = [[Paragraph(item, styles["Label"]) for item in ("DATE", "TIME", "CATEGORY", "ENTRY")]]
     for entry in entries:
         event = entry.summary
         if entry.details:

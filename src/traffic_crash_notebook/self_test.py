@@ -26,6 +26,7 @@ from .models import (
     Vehicle,
     VehicleInspection,
     VideoSource,
+    VRUAnalysis,
     WitnessDetails,
 )
 from .pdf_export import export_case_compact_pdf, export_case_pdf, export_case_summary_pdf
@@ -38,6 +39,7 @@ from .paths import (
     validate_storage_directory,
 )
 from .repository import SCHEMA_VERSION, CaseRepository, new_id
+from .resources import app_icon_path
 from .spellcheck import SpellCheckService
 from .updates import is_update_available, parse_update_manifest
 
@@ -45,12 +47,20 @@ from .updates import is_update_available, parse_update_manifest
 def run_self_test(output_directory: str | Path) -> Path:
     """Exercise the bundled database, assets, and PDF engine without opening the GUI."""
     try:
+        from PySide6.QtGui import QImageReader
         from PySide6.QtPdf import QPdfDocument
         from PySide6.QtPdfWidgets import QPdfView
     except ImportError as error:
         raise RuntimeError("The embedded PDF preview components are unavailable.") from error
     if not QPdfDocument or not QPdfView:
         raise RuntimeError("The embedded PDF preview components did not load.")
+
+    icon_path = app_icon_path()
+    if not icon_path.is_file():
+        raise RuntimeError("The bundled TIU application icon is missing.")
+    icon_reader = QImageReader(str(icon_path))
+    if not icon_reader.canRead() or icon_reader.read().isNull():
+        raise RuntimeError("The bundled TIU application icon could not be loaded.")
 
     output = Path(output_directory).resolve()
     output.mkdir(parents=True, exist_ok=True)
@@ -165,6 +175,9 @@ def run_self_test(output_directory: str | Path) -> Path:
         cdr_equipped=True,
         cdr_imaged=True,
         cdr_report_uploaded=True,
+        released=True,
+        release_date="2026-08-05",
+        release_information="Released to verification owner with receipt",
     ))
     loaded_vehicle = repository.get_vehicle(vehicle.id)
     if not loaded_vehicle or not all((
@@ -173,13 +186,21 @@ def run_self_test(output_directory: str | Path) -> Path:
         loaded_vehicle.cdr_equipped,
         loaded_vehicle.cdr_imaged,
         loaded_vehicle.cdr_report_uploaded,
+        loaded_vehicle.released,
     )):
-        raise RuntimeError("The per-vehicle checklist could not be saved and reloaded.")
+        raise RuntimeError(
+            "The per-vehicle checklist and release status could not be saved and reloaded."
+        )
     if (
         loaded_vehicle.insurance_company != "Verification Insurance"
         or loaded_vehicle.insurance_policy_number != "POLICY-123"
+        or loaded_vehicle.release_date != "2026-08-05"
+        or loaded_vehicle.release_information
+        != "Released to verification owner with receipt"
     ):
-        raise RuntimeError("The vehicle insurance fields could not be saved and reloaded.")
+        raise RuntimeError(
+            "The vehicle insurance or release fields could not be saved and reloaded."
+        )
     repository.save_witness_details(WitnessDetails(
         person_id=person.id, interviewed="Yes",
         statement_summary="Portable-build verification record.",
@@ -211,7 +232,7 @@ def run_self_test(output_directory: str | Path) -> Path:
         id="", case_id=case.id, source="Verification camera", dims_status="Yes",
     ))
     repository.save_road_conditions(RoadConditions(
-        case_id=case.id, weather_condition="Clear", surface_condition="Dry",
+        case_id=case.id, weather_condition="Clear",
         weather_station="KPDX", weather_time="08:53 PDT",
         area_classifications="Business; Interstate",
         streetlight_notes="Verification note",
@@ -258,6 +279,17 @@ def run_self_test(output_directory: str | Path) -> Path:
         address="300 Verification Ride", city="Portland", state="OR",
         zip_code="97203", cell_phone="503-555-0300", roles=["Bicyclist"],
     ))
+    vru_analysis = repository.save_vru_analysis(VRUAnalysis(
+        id="", case_id=case.id, person_id=pedestrian.id, vehicle_id=vehicle.id,
+        roadway_position="Verification crosswalk", light_meter_used=True,
+        light_board_used=True,
+    ))
+    loaded_vru_analysis = repository.get_vru_analysis(vru_analysis.id)
+    if not loaded_vru_analysis or not all((
+        loaded_vru_analysis.light_meter_used,
+        loaded_vru_analysis.light_board_used,
+    )):
+        raise RuntimeError("The VRU night-visibility equipment fields could not be saved and reloaded.")
     repository.save_vehicle_inspection(VehicleInspection(
         vehicle_id=vehicle.id, headlights_equipped="Yes", headlights_operable="Yes",
         tire_contribution="No",
@@ -371,6 +403,29 @@ def run_self_test(output_directory: str | Path) -> Path:
         raise RuntimeError("The self-test quick-review PDF was not created correctly.")
     if not exchange_pdf.is_file() or exchange_pdf.stat().st_size < 3_000:
         raise RuntimeError("The self-test exchange-report PDF was not created correctly.")
+    packet_document = QPdfDocument()
+    packet_load_error = packet_document.load(str(pdf))
+    if packet_load_error != QPdfDocument.Error.None_:
+        raise RuntimeError(
+            f"The self-test packet could not be loaded ({packet_load_error.name})."
+        )
+    packet_text = "\n".join(
+        packet_document.getAllText(page_index).text()
+        for page_index in range(packet_document.pageCount())
+    )
+    packet_document.close()
+    normalized_packet_text = " ".join(packet_text.split())
+    for required_text in (
+        "RELEASED",
+        "08/05/2026",
+        "Released to verification owner with receipt",
+        "LIGHT METER USED",
+        "LIGHT BOARD USED",
+    ):
+        if required_text not in normalized_packet_text:
+            raise RuntimeError(
+                f"The self-test packet omitted required data: {required_text}"
+            )
     exchange_pdf_bytes = exchange_pdf.read_bytes()
     if not exchange_pdf_bytes.startswith(b"%PDF-") or not exchange_pdf_bytes.rstrip().endswith(b"%%EOF"):
         raise RuntimeError("The self-test exchange-report output is not a complete PDF file.")
@@ -428,17 +483,19 @@ def run_self_test(output_directory: str | Path) -> Path:
             f"Exchange-report PDF bytes: {exchange_pdf.stat().st_size}",
             "Person ZIP code persistence: PASS",
             "Participant extracted status persistence: PASS",
-            "Per-vehicle checklist and insurance persistence: PASS",
+            "Per-vehicle checklist, release, and insurance persistence: PASS",
+            "VRU light-meter and light-board persistence: PASS",
             "Hit-and-run overview, evidence, lead, and confirmed-record links: PASS",
             "Assigned-officer DPSST and assignment persistence: PASS",
             "Data-folder user defaults and new-case prefill: PASS",
             "Driver, pedestrian, and bicyclist exchange-report inclusion: PASS",
             "Dynamic exchange-report data, time formatting, and searchable information page: PASS",
             "Embedded PDF preview components: PASS",
+            "TIU application and taskbar icon: PASS",
             "Guided data-storage configuration and migration: PASS",
             "Verified release-manifest update checker: PASS",
             "Offline spell-check dictionary: PASS",
-            "The schema, full working packet PDF, compact packet PDF, quick review PDF, exchange-report PDF, offline spell-check dictionary, and packaged logo loaded successfully.",
+            "The schema, full working packet PDF, compact packet PDF, quick review PDF, exchange-report PDF, offline spell-check dictionary, report logo, and application icon loaded successfully.",
             "",
         )),
         encoding="utf-8",

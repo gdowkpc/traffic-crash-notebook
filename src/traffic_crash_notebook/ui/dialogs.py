@@ -40,7 +40,6 @@ from ..models import (
     PARTICIPANT_EVIDENCE_OPTIONS,
     PERSON_ROLES,
     PHYSICAL_CONDITION_OPTIONS,
-    PRT_FACTOR_OPTIONS,
     TASK_STATUSES,
     VRU_PROJECTION_OPTIONS,
     CaseTask,
@@ -281,6 +280,13 @@ class VehicleDialog(RecordDialog):
             self.vehicle.edr_status,
             "Optional explanatory or legacy CDR / EDR notes",
         )
+        self.release_date = _date_line(self.vehicle.release_date)
+        self.release_information = SpellCheckedLineEdit(
+            self.vehicle.release_information
+        )
+        self.release_information.setPlaceholderText(
+            "Released to, location, authorization, receipt, or other details"
+        )
         form.addRow("Vehicle number", self.vehicle_number)
         form.addRow("Year", self.year)
         form.addRow("Make", self.make)
@@ -296,6 +302,8 @@ class VehicleDialog(RecordDialog):
         form.addRow("Insurance policy number", self.insurance_policy_number)
         form.addRow("Tow information", self.tow_information)
         form.addRow("CDR / EDR notes", self.edr_status)
+        form.addRow("Release date", self.release_date)
+        form.addRow("Release information", self.release_information)
         self.root.addLayout(form)
 
         workflow_group = QGroupBox("Vehicle-specific checklist")
@@ -341,8 +349,11 @@ class VehicleDialog(RecordDialog):
     def result_record(self) -> Vehicle:
         for attribute in ("vehicle_number", "year", "make", "model", "body_style", "color", "vin", "plate",
                           "plate_state", "insurance_company", "insurance_policy_number",
-                          "tow_information", "edr_status"):
+                          "tow_information", "edr_status", "release_information"):
             setattr(self.vehicle, attribute, getattr(self, attribute).text().strip())
+        self.vehicle.release_date = normalize_date_for_storage(
+            self.release_date.text()
+        )
         self.vehicle.insurance = self.vehicle.insurance_company
         for attribute, _label in VEHICLE_WORKFLOW_FIELDS:
             setattr(
@@ -360,28 +371,37 @@ class VehicleDialog(RecordDialog):
 
 class ChronologyDialog(RecordDialog):
     def __init__(self, case_id: str, entry: ChronologyEntry | None = None, parent=None):
-        super().__init__("Edit Chronology Entry" if entry else "Add Chronology Entry", parent)
+        super().__init__("Edit Journal Entry" if entry else "Add Journal Entry", parent)
         self.entry = entry or ChronologyEntry(id="", case_id=case_id)
         self.resize(620, 420)
         form = QFormLayout()
         self.event_date = _date_line(self.entry.event_date)
         self.event_time = _line(self.entry.event_time, "HH:MM")
         self.category = _combo(CHRONOLOGY_CATEGORIES, self.entry.category, editable=True)
-        self.summary = _line(self.entry.summary, "Short event description")
+        self.summary = _line(
+            self.entry.summary,
+            "Brief investigative action, finding, or decision",
+        )
         form.addRow("Date", self.event_date)
         form.addRow("Time", self.event_time)
         form.addRow("Category", self.category)
         form.addRow("Summary", self.summary)
         self.root.addLayout(form)
         self.details = SpellCheckedTextEdit(self.entry.details)
-        self.details.setPlaceholderText("Full chronology details")
-        self.root.addWidget(QLabel("Details"))
+        self.details.setPlaceholderText(
+            "Full journal details, follow-up, requests, results, or rationale"
+        )
+        self.root.addWidget(QLabel("Entry details"))
         self.root.addWidget(self.details, 1)
         self.finish_layout()
 
     def _validate_and_accept(self) -> None:
         if not (self.summary.text().strip() or self.details.toPlainText().strip()):
-            QMessageBox.warning(self, "Event required", "Enter a summary or event details.")
+            QMessageBox.warning(
+                self,
+                "Journal entry required",
+                "Enter a summary or journal details.",
+            )
             return
         super()._validate_and_accept()
 
@@ -494,30 +514,40 @@ class VideoSourceDialog(RecordDialog):
 
 class SurfaceObservationDialog(RecordDialog):
     def __init__(self, case_id: str, record: SurfaceObservation | None = None, parent=None):
-        super().__init__("Edit Surface Observation" if record else "Add Surface Observation", parent)
+        super().__init__("Edit Surface" if record else "Add Surface", parent)
         self.record = record or SurfaceObservation(id="", case_id=case_id)
         self.resize(640, 450)
         form = QFormLayout()
-        self.location = _line(self.record.location, "Lane, shoulder, test location...")
+        self.location = _line(
+            self.record.location,
+            "Roadway, direction, lane, shoulder, or test location...",
+        )
         self.composition = _line(self.record.composition, "Asphalt, concrete, gravel...")
         self.condition = _line(self.record.condition, "Dry, wet, icy...")
-        self.friction_value = _line(self.record.friction_value)
-        form.addRow("Location / surface", self.location)
-        form.addRow("Composition", self.composition)
-        form.addRow("Condition", self.condition)
-        form.addRow("Friction value", self.friction_value)
+        self.friction_value = _line(
+            self.record.friction_value,
+            "Measured or selected value; include method if helpful",
+        )
+        form.addRow("Roadway / location", self.location)
+        form.addRow("Surface composition", self.composition)
+        form.addRow("Surface condition", self.condition)
+        form.addRow("Friction / drag factor", self.friction_value)
         self.root.addLayout(form)
         self.notes = SpellCheckedTextEdit(self.record.notes)
-        self.root.addWidget(QLabel("Notes"))
+        self.notes.setPlaceholderText(
+            "Test method, measurement source, lane treatment, contamination, grade, or other details"
+        )
+        self.root.addWidget(QLabel("Surface notes"))
         self.root.addWidget(self.notes, 1)
         self.finish_layout()
 
     def _validate_and_accept(self) -> None:
-        if not any(
-            widget.text().strip()
-            for widget in (self.location, self.composition, self.condition, self.friction_value)
-        ):
-            QMessageBox.warning(self, "Observation required", "Enter at least one surface value.")
+        if not self.location.text().strip():
+            QMessageBox.warning(
+                self,
+                "Surface location required",
+                "Enter the roadway, lane, shoulder, or test location for this surface.",
+            )
             return
         super()._validate_and_accept()
 
@@ -1722,15 +1752,18 @@ class ContactRelationshipDialog(RecordDialog):
     )
 
     def __init__(
-        self, case_id: str, people: list[Person], vehicles: list[Vehicle],
+        self, case_id: str, people: list[Person],
         contact: ContactRelationship | None = None, parent=None,
     ):
         super().__init__("Edit Contact" if contact else "Add Contact", parent)
         self.contact = contact or ContactRelationship(id="", case_id=case_id)
         form = QFormLayout()
         self.contact_type = _combo(self.CONTACT_TYPES, self.contact.contact_type, editable=True)
-        self.subject_person = _related_person_combo(people, self.contact.subject_person_id, "No subject person")
-        self.vehicle = _related_vehicle_combo(vehicles, self.contact.vehicle_id)
+        self.subject_person = _related_person_combo(
+            people,
+            self.contact.subject_person_id,
+            "Select the person this contact belongs to",
+        )
         self.contact_person = _related_person_combo(people, self.contact.contact_person_id, "Not a person already entered")
         self.contact_name = _line(self.contact.contact_name)
         self.organization = _line(self.contact.organization)
@@ -1743,7 +1776,6 @@ class ContactRelationshipDialog(RecordDialog):
         self.state = _line(self.contact.state)
         form.addRow("Contact type", self.contact_type)
         form.addRow("Contact for person", self.subject_person)
-        form.addRow("Associated vehicle", self.vehicle)
         form.addRow("Existing person as contact", self.contact_person)
         form.addRow("Contact name", self.contact_name)
         form.addRow("Organization", self.organization)
@@ -1761,6 +1793,13 @@ class ContactRelationshipDialog(RecordDialog):
         self.finish_layout()
 
     def _validate_and_accept(self) -> None:
+        if not self.subject_person.currentData():
+            QMessageBox.warning(
+                self,
+                "Person required",
+                "Select the person this contact belongs to.",
+            )
+            return
         if not (self.contact_name.text().strip() or self.contact_person.currentData()):
             QMessageBox.warning(self, "Contact required", "Enter a contact name or select an existing person.")
             return
@@ -1769,7 +1808,7 @@ class ContactRelationshipDialog(RecordDialog):
     def result_record(self) -> ContactRelationship:
         self.contact.contact_type = self.contact_type.currentText().strip()
         self.contact.subject_person_id = self.subject_person.currentData()
-        self.contact.vehicle_id = self.vehicle.currentData()
+        self.contact.vehicle_id = None
         self.contact.contact_person_id = self.contact_person.currentData()
         for attribute in (
             "contact_name", "organization", "cell_phone", "home_phone",
@@ -1843,33 +1882,20 @@ class VRUAnalysisDialog(RecordDialog):
 
         night = QWidget()
         night_form = QFormLayout(night)
-        for attribute, label in (
-            ("night_test_parameters", "Night test parameters"), ("detection_distance", "Detection distance"),
-            ("distance_adjustment", "Distance adjustment"), ("result_67_percent", "67% result"),
-            ("result_15_percentile", "15th-percentile result"),
-        ):
-            setattr(self, attribute, _line(getattr(self.analysis, attribute)))
-            night_form.addRow(label, getattr(self, attribute))
+        self.light_meter_used = QCheckBox("Light meter used")
+        self.light_meter_used.setChecked(bool(self.analysis.light_meter_used))
+        self.light_board_used = QCheckBox("Light board used")
+        self.light_board_used.setChecked(bool(self.analysis.light_board_used))
+        night_form.addRow(self.light_meter_used)
+        night_form.addRow(self.light_board_used)
         tabs.addTab(night, "Night Visibility")
 
-        prt = QWidget()
-        prt_form = QFormLayout(prt)
-        for attribute, label in (
-            ("prt_base", "Base PRT"), ("prt_expected", "Expected-event adjustment"),
-            ("prt_sun", "Sun / lighting adjustment"), ("prt_offset", "Offset adjustment"),
-            ("prt_adjustment", "Other adjustment"), ("prt_total", "Total PRT"),
-        ):
-            setattr(self, attribute, _line(getattr(self.analysis, attribute)))
-            prt_form.addRow(label, getattr(self, attribute))
-        self.prt_justification = SpellCheckedTextEdit(self.analysis.prt_justification)
+        notes_tab = QWidget()
+        notes_layout = QVBoxLayout(notes_tab)
         self.notes = SpellCheckedTextEdit(self.analysis.notes)
-        prt_group, self.prt_factor_boxes = _checkbox_group(
-            "PRT factors", PRT_FACTOR_OPTIONS, self.analysis.prt_factors, columns=3
-        )
-        prt_form.addRow(prt_group)
-        prt_form.addRow("PRT justification", self.prt_justification)
-        prt_form.addRow("Analysis notes", self.notes)
-        tabs.addTab(prt, "Perception / Response")
+        notes_layout.addWidget(QLabel("Analysis notes"))
+        notes_layout.addWidget(self.notes, 1)
+        tabs.addTab(notes_tab, "Notes")
         self.root.addWidget(tabs, 1)
         self.finish_layout()
 
@@ -1883,13 +1909,21 @@ class VRUAnalysisDialog(RecordDialog):
         self.analysis.person_id = self.person_id.currentData()
         self.analysis.vehicle_id = self.vehicle_id.currentData()
         combo_fields = ("driver_impairment", "vru_impairment")
+        bool_fields = ("light_meter_used", "light_board_used")
         memo_fields = (
             "sightlines", "driver_thought_process", "driver_sleep_information",
-            "vru_impairment_notes", "prt_justification", "notes",
+            "vru_impairment_notes", "notes",
         )
+        retired_fields = {
+            "night_test_parameters", "detection_distance", "distance_adjustment",
+            "result_67_percent", "result_15_percentile", "prt_base", "prt_expected",
+            "prt_sun", "prt_offset", "prt_adjustment", "prt_total",
+            "prt_justification", "prt_factors",
+        }
         omitted = {
             "id", "case_id", "person_id", "vehicle_id", "created_at", "updated_at",
-            "projection_classifications", "prt_factors", *combo_fields, *memo_fields,
+            "projection_classifications", *combo_fields, *bool_fields, *memo_fields,
+            *retired_fields,
         }
         for attribute in self.analysis.__dataclass_fields__:
             if attribute not in omitted:
@@ -1898,6 +1932,7 @@ class VRUAnalysisDialog(RecordDialog):
             setattr(self.analysis, attribute, getattr(self, attribute).currentText())
         for attribute in memo_fields:
             setattr(self.analysis, attribute, getattr(self, attribute).toPlainText().strip())
+        for attribute in bool_fields:
+            setattr(self.analysis, attribute, getattr(self, attribute).isChecked())
         self.analysis.projection_classifications = _selection_text(self.projection_boxes)
-        self.analysis.prt_factors = _selection_text(self.prt_factor_boxes)
         return self.analysis
