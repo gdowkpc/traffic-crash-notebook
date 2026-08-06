@@ -734,6 +734,14 @@ class ParticipantDetails:
     updated_at: str = ""
 
 
+def participant_is_deceased(details: ParticipantDetails) -> bool:
+    status = details.injury_status.strip().casefold()
+    return bool(
+        details.date_of_death.strip()
+        or any(marker in status for marker in ("kill", "fatal", "deceas"))
+    )
+
+
 @dataclass(slots=True)
 class DriverProfile:
     person_id: str

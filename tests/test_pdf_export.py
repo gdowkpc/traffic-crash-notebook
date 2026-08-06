@@ -34,6 +34,7 @@ from traffic_crash_notebook.models import (
     VRUAnalysis,
     WitnessDetails,
     format_weather_measurement,
+    participant_is_deceased,
     scene_evidence_for_output,
 )
 from traffic_crash_notebook.pdf_export import (
@@ -45,6 +46,19 @@ from traffic_crash_notebook.repository import CaseRepository, new_id
 
 
 class PdfExportTest(unittest.TestCase):
+    def test_deceased_status_accepts_death_date_or_supported_status_text(self):
+        for details in (
+            ParticipantDetails(person_id="dated", date_of_death="2026-08-09"),
+            ParticipantDetails(person_id="killed", injury_status="Killed"),
+            ParticipantDetails(person_id="fatal", injury_status="Fatal injury"),
+            ParticipantDetails(person_id="deceased", injury_status="Deceased"),
+        ):
+            self.assertTrue(participant_is_deceased(details))
+        self.assertFalse(participant_is_deceased(ParticipantDetails(
+            person_id="injured",
+            injury_status="Injured",
+        )))
+
     def test_weather_measurements_add_units_once_and_preserve_descriptions(self):
         self.assertEqual(format_weather_measurement("temperature", "71"), "71 F")
         self.assertEqual(format_weather_measurement("temperature", "71 F"), "71 F")
@@ -493,6 +507,7 @@ class PdfExportTest(unittest.TestCase):
                 people_page_text,
                 r"M / White\s+DOB: 01/02/1985",
             )
+            self.assertIn("Morgan Lee\nDECEASED", people_page_text)
             self.assertNotIn("01/02/1985 / M / White", people_page_text)
             self.assertIn("123 Example Street, Portland, OR 97201", normalized_text)
             self.assertIn("2024 Toyota Camry", text)

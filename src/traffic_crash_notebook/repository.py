@@ -1727,7 +1727,8 @@ class CaseRepository:
                            '', 'unknown', 'not injured', 'uninjured', 'none'
                          )
                          AND lower(pd.injury_status) NOT LIKE '%kill%'
-                         AND lower(pd.injury_status) NOT LIKE '%fatal%'""",
+                         AND lower(pd.injury_status) NOT LIKE '%fatal%'
+                         AND lower(pd.injury_status) NOT LIKE '%deceas%'""",
                     (case_id,),
                 ).fetchone()[0],
                 "fatal": connection.execute(
@@ -1736,6 +1737,7 @@ class CaseRepository:
                        WHERE p.case_id=? AND (
                          lower(pd.injury_status) LIKE '%kill%'
                          OR lower(pd.injury_status) LIKE '%fatal%'
+                         OR lower(pd.injury_status) LIKE '%deceas%'
                          OR trim(pd.date_of_death) <> ''
                        )""",
                     (case_id,),

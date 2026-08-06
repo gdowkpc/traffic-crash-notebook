@@ -56,6 +56,7 @@ from .models import (
     WitnessDetails,
     format_crash_location,
     format_weather_measurement,
+    participant_is_deceased,
     scene_evidence_for_output,
 )
 from .repository import CaseRepository
@@ -68,6 +69,7 @@ PALE_BLUE = colors.HexColor("#EAF2F7")
 GRAY = colors.HexColor("#5D6870")
 LIGHT_GRAY = colors.HexColor("#E4E8EB")
 WARNING = colors.HexColor("#FFF3CD")
+DECEASED_RED = "#B00020"
 
 
 class _PacketCanvas(pdf_canvas.Canvas):
@@ -280,7 +282,7 @@ def export_case_pdf(
             ))
 
     if working_copy or people_list:
-        story.extend(_people_section(people_list, styles))
+        story.extend(_people_section(people_list, participant_details, styles))
         if working_copy:
             story.extend(_write_in_area("Additional people / contact updates", styles, lines=12))
 
@@ -1394,7 +1396,11 @@ def _conditions_section(
     return story
 
 
-def _people_section(people: list[Person], styles) -> list[object]:
+def _people_section(
+    people: list[Person],
+    participant_details: dict[str, ParticipantDetails],
+    styles,
+) -> list[object]:
     story: list[object] = [Paragraph("People", styles["Section"])]
     if not people:
         story.append(Paragraph("No people entered.", styles["Empty"]))
@@ -1403,6 +1409,12 @@ def _people_section(people: list[Person], styles) -> list[object]:
         "NAME", "ROLE(S)", "IDENTITY", "ADDRESS", "CONTACT", "OCCUPATION / NOTES"
     )]]
     for person in people:
+        name_markup = _text(person.display_name)
+        details = participant_details.get(person.id)
+        if details and participant_is_deceased(details):
+            name_markup += (
+                f'<br/><font color="{DECEASED_RED}"><b>DECEASED</b></font>'
+            )
         phones = "; ".join(value for value in (
             f"Cell {person.cell_phone}" if person.cell_phone else "",
             f"Home {person.home_phone}" if person.home_phone else "",
@@ -1422,7 +1434,7 @@ def _people_section(people: list[Person], styles) -> list[object]:
             if value
         ]
         data.append([
-            Paragraph(_text(person.display_name), styles["Cell"]),
+            Paragraph(name_markup, styles["Cell"]),
             Paragraph(_text(", ".join(person.roles)), styles["Cell"]),
             Paragraph("<br/>".join(identity_lines) or "-", styles["Cell"]),
             Paragraph(_text(_person_address(person)), styles["Cell"]),

@@ -111,6 +111,13 @@ class RepositoryTest(unittest.TestCase):
             "people": 1, "vehicles": 1, "chronology": 1, "open_tasks": 1,
             "injured": 0, "fatal": 0, "vru": 0,
         })
+        self.repository.save_participant_details(ParticipantDetails(
+            person_id=person.id,
+            injury_status="Deceased",
+        ))
+        counts = self.repository.case_counts(self.case.id)
+        self.assertEqual(counts["injured"], 0)
+        self.assertEqual(counts["fatal"], 1)
 
     def test_legacy_dims_scene_evidence_is_normalized_to_axon(self):
         self.repository.save_crash_details(CrashDetails(case_id=self.case.id))
