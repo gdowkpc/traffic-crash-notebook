@@ -1313,6 +1313,8 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.window.crash_date.setText("08/04/2026")
         self.window.checklist_boxes["Participant Interviews"].setChecked(True)
         self.window.checklist_widgets["assigned_dda"].setText("Taylor Example")
+        self.window.checklist_widgets["da_case_number"].setText("DA-26-100")
+        self.window.checklist_widgets["court_case_number"].setText("COURT-26-200")
         self.window.packet_widgets["nearest_city"].setText("Gresham")
         self.window.packet_widgets["road_name"].setText("SE Stark Street")
         self.window.packet_widgets["intersection_road"].setText("SE 182nd Avenue")
@@ -1325,6 +1327,8 @@ class AddRecordWorkflowTest(unittest.TestCase):
         details = self.repository.get_crash_details(self.case.id)
         self.assertIn("Participant Interviews", checklist.completed_items)
         self.assertEqual(checklist.assigned_dda, "Taylor Example")
+        self.assertEqual(checklist.da_case_number, "DA-26-100")
+        self.assertEqual(checklist.court_case_number, "COURT-26-200")
         self.assertEqual(details.nearest_city, "Gresham")
         self.assertEqual(details.road_name, "SE Stark Street")
         self.assertEqual(details.intersection_road, "SE 182nd Avenue")
@@ -1352,6 +1356,10 @@ class AddRecordWorkflowTest(unittest.TestCase):
             "08/04/2026",
         )
         self.assertTrue(self.window.checklist_boxes["Participant Interviews"].isChecked())
+        self.assertEqual(
+            self.window.checklist_widgets["court_case_number"].text(),
+            "COURT-26-200",
+        )
         self.assertEqual(self.window.packet_widgets["nearest_city"].text(), "Gresham")
         self.assertTrue(self.window.scene_evidence_boxes["FARO"].isChecked())
 

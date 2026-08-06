@@ -640,6 +640,7 @@ class MainWindow(QMainWindow):
         for name, label, placeholder in (
             ("assigned_dda", "Assigned DDA", ""),
             ("da_case_number", "DA case number", ""),
+            ("court_case_number", "Court case number", ""),
         ):
             widget = QLineEdit()
             widget.setPlaceholderText(placeholder)

@@ -55,7 +55,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
 
 
 SCHEMA = """
@@ -477,6 +477,7 @@ CREATE TABLE IF NOT EXISTS investigative_checklists (
     submitted_to_da_date TEXT NOT NULL DEFAULT '',
     assigned_dda TEXT NOT NULL DEFAULT '',
     da_case_number TEXT NOT NULL DEFAULT '',
+    court_case_number TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL
 );
 
@@ -572,7 +573,7 @@ CREATE INDEX IF NOT EXISTS idx_hit_run_evidence_case
     ON hit_run_evidence_items(case_id, evidence_number, created_at);
 CREATE INDEX IF NOT EXISTS idx_hit_run_person_leads_case
     ON hit_run_person_leads(case_id, lead_number, created_at);
-PRAGMA user_version = 24;
+PRAGMA user_version = 25;
 """
 
 
@@ -598,10 +599,10 @@ class CaseRepository:
         with self._connect() as connection:
             previous_version = connection.execute("PRAGMA user_version").fetchone()[0]
             connection.executescript(SCHEMA)
-            self._migrate_schema_24(connection, previous_version)
+            self._migrate_schema_25(connection, previous_version)
 
     @staticmethod
-    def _migrate_schema_24(
+    def _migrate_schema_25(
         connection: sqlite3.Connection,
         previous_version: int,
     ) -> None:
@@ -682,6 +683,7 @@ class CaseRepository:
             "investigative_checklists": {
                 "peer_review_date": "TEXT NOT NULL DEFAULT ''",
                 "sergeant_review_date": "TEXT NOT NULL DEFAULT ''",
+                "court_case_number": "TEXT NOT NULL DEFAULT ''",
             },
             "vehicle_inspections": {
                 "nicb_status": "TEXT NOT NULL DEFAULT ''",
@@ -924,7 +926,7 @@ class CaseRepository:
                 )
                 """
             )
-        connection.execute("PRAGMA user_version = 24")
+        connection.execute("PRAGMA user_version = 25")
 
     def get_user_defaults(self) -> UserDefaults:
         with self._connect() as connection:
@@ -1299,10 +1301,11 @@ class CaseRepository:
             connection.execute(
                 """INSERT INTO investigative_checklists
                 (case_id, completed_items_json, peer_review_date, sergeant_review_date,
-                 submitted_to_da_date, assigned_dda, da_case_number, updated_at)
+                 submitted_to_da_date, assigned_dda, da_case_number, court_case_number,
+                 updated_at)
                 VALUES (:case_id, :completed_items_json, :peer_review_date,
                         :sergeant_review_date, :submitted_to_da_date, :assigned_dda,
-                        :da_case_number, :updated_at)
+                        :da_case_number, :court_case_number, :updated_at)
                 ON CONFLICT(case_id) DO UPDATE SET
                   completed_items_json=excluded.completed_items_json,
                   peer_review_date=excluded.peer_review_date,
@@ -1310,6 +1313,7 @@ class CaseRepository:
                   submitted_to_da_date=excluded.submitted_to_da_date,
                   assigned_dda=excluded.assigned_dda,
                   da_case_number=excluded.da_case_number,
+                  court_case_number=excluded.court_case_number,
                   updated_at=excluded.updated_at""",
                 values,
             )

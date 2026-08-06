@@ -30,10 +30,10 @@ presentation controls.
 
 ## Page-by-page coverage
 
-| Page(s) | Packet section | Required semantic data | v0.5.4 implementation |
+| Page(s) | Packet section | Required semantic data | v0.5.5 implementation |
 |---|---|---|---|
-| 1 | Packet cover | Case number, crash date/time/location/status, assigned investigator, DPSST, assignment, calculated people/vehicle/injury/fatal/VRU/Journal/task totals, peer and MCT sergeant review, DA submission, assigned DDA, DA case number, summary, and writable routing notes | Complete as a dedicated first page in the full and compact packet PDFs |
-| 2 | Investigative checklist | Evidence collection, vehicle work, crash-diagram completion, Axon sharing, dated peer review, sergeant review, and DA submission milestones, assigned DDA, DA case number, unlimited charge/disposition rows | Complete |
+| 1 | Packet cover | Case number, crash date/time/location/status, assigned investigator, DPSST, assignment, calculated people/vehicle/injury/fatal/VRU/Journal/task totals, peer and MCT sergeant review, DA submission, assigned DDA, DA case number, court case number, summary, and writable routing notes | Complete as a dedicated first page in the full and compact packet PDFs |
+| 2 | Investigative checklist | Evidence collection, vehicle work, crash-diagram completion, Axon sharing, dated peer review, sergeant review, and DA submission milestones, assigned DDA, DA case number, court case number, unlimited charge/disposition rows | Complete |
 | 3-4 | Investigative journal | Unlimited dated/timed journal entries with category, summary, and detail | Complete |
 | 5 | Crash information | Date/day/time, city/county, road and intersection, coordinates, road jurisdiction, calculated participant/vehicle/fatal/VRU counts, team notification and response times, scene personnel, evidence/media methods, unlimited video sources with location address and Axon upload status | Complete; counts are calculated from shared records |
 | 6 | Road and weather | Compact weather entry with station and reading time plus automatic F, mph, percent, inHg, and inch display units; a dedicated Surface subtab with unlimited add/edit/remove records for roadway/location, composition, condition, friction/drag factor, and notes; ambient lighting, sunrise/sunset, morning/evening civil twilight, moonrise/moonset/phase, streetlight status and notes, visual obstructions, area classifications, unlimited roadway records with per-roadway speed posting, curve values, characteristics and traffic controls, initial point of collision, skid/drag notes | Complete |

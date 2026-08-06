@@ -569,6 +569,7 @@ class InvestigativeChecklist:
     submitted_to_da_date: str = ""
     assigned_dda: str = ""
     da_case_number: str = ""
+    court_case_number: str = ""
     updated_at: str = ""
 
 

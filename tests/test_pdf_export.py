@@ -123,6 +123,7 @@ class PdfExportTest(unittest.TestCase):
                 self.assertIn("PEER REVIEW", cover_text)
                 self.assertIn("MCT SERGEANT REVIEW", cover_text)
                 self.assertIn("SUBMITTED TO DA", cover_text)
+                self.assertIn("COURT CASE NUMBER", cover_text)
                 self.assertNotIn("Key questions", cover_text)
                 self.assertNotIn("unresolved issues", cover_text.lower())
                 self.assertNotIn("Investigative packet", cover_text)
@@ -349,6 +350,7 @@ class PdfExportTest(unittest.TestCase):
                 submitted_to_da_date="2026-08-08",
                 assigned_dda="Taylor Example",
                 da_case_number="DA-26-100",
+                court_case_number="COURT-26-200",
             ))
             repository.save_charge_disposition(ChargeDisposition(
                 id="", case_id=case.id, charge="Reckless Driving", disposition="Issued",
@@ -471,6 +473,7 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("Complete - 08/08/2026", normalized_cover_text)
             self.assertIn("Taylor Example", cover_text)
             self.assertIn("DA-26-100", cover_text)
+            self.assertIn("COURT-26-200", cover_text)
             self.assertNotIn("Key questions", cover_text)
             self.assertNotIn("unresolved issues", cover_text.lower())
             self.assertNotIn("Investigative packet", cover_text)
@@ -578,6 +581,8 @@ class PdfExportTest(unittest.TestCase):
                 self.assertNotIn(storage_date, text)
             self.assertNotIn("DIMS", text)
             self.assertIn("Taylor Example", text)
+            self.assertIn("COURT CASE NUMBER", text)
+            self.assertIn("COURT-26-200", text)
             self.assertIn("Reckless Driving", text)
             self.assertIn("North intersection camera", text)
             self.assertIn(

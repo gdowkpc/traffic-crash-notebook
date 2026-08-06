@@ -663,9 +663,13 @@ def _packet_cover(
         styles,
     )
     da_routing = _cover_detail_table(
-        ("ASSIGNED DDA", "DA CASE NUMBER"),
-        (checklist.assigned_dda, checklist.da_case_number),
-        [3.3 * inch, 3.3 * inch],
+        ("ASSIGNED DDA", "DA CASE NUMBER", "COURT CASE NUMBER"),
+        (
+            checklist.assigned_dda,
+            checklist.da_case_number,
+            checklist.court_case_number,
+        ),
+        [2.2 * inch, 2.2 * inch, 2.2 * inch],
         styles,
     )
     story.extend([
@@ -841,10 +845,18 @@ def _packet_case_section(
     story.extend([Paragraph("Investigative checklist", styles["Subsection"]), checklist_table])
 
     da_rows = [
-        [Paragraph("ASSIGNED DDA", styles["Label"]), Paragraph(_text(checklist.assigned_dda), styles["Cell"]),
-         Paragraph("DA CASE NUMBER", styles["Label"]), Paragraph(_text(checklist.da_case_number), styles["Cell"])],
+        [
+            Paragraph("ASSIGNED DDA", styles["Label"]),
+            Paragraph("DA CASE NUMBER", styles["Label"]),
+            Paragraph("COURT CASE NUMBER", styles["Label"]),
+        ],
+        [
+            Paragraph(_text(checklist.assigned_dda), styles["Cell"]),
+            Paragraph(_text(checklist.da_case_number), styles["Cell"]),
+            Paragraph(_text(checklist.court_case_number), styles["Cell"]),
+        ],
     ]
-    da_table = Table(da_rows, colWidths=[1.2 * inch, 2.1 * inch, 1.2 * inch, 2.1 * inch])
+    da_table = Table(da_rows, colWidths=[2.2 * inch, 2.2 * inch, 2.2 * inch])
     da_table.setStyle(_standard_table_style())
     story.extend([Paragraph("District attorney / charges", styles["Subsection"]), da_table])
     if charges:

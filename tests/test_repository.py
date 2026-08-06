@@ -400,7 +400,43 @@ class RepositoryTest(unittest.TestCase):
                 SCHEMA_VERSION,
             )
 
-    def test_schema_17_vru_data_survives_schema_24_migrations(self):
+    def test_schema_24_checklist_receives_court_case_number_without_data_loss(self):
+        self.repository.save_investigative_checklist(InvestigativeChecklist(
+            case_id=self.case.id,
+            assigned_dda="Legacy DDA",
+            da_case_number="DA-24-100",
+        ))
+        with self.repository._connect() as connection:
+            connection.execute(
+                "ALTER TABLE investigative_checklists DROP COLUMN court_case_number"
+            )
+            connection.execute("PRAGMA user_version = 24")
+
+        migrated = CaseRepository(self.database)
+        checklist = migrated.get_investigative_checklist(self.case.id)
+        self.assertEqual(checklist.assigned_dda, "Legacy DDA")
+        self.assertEqual(checklist.da_case_number, "DA-24-100")
+        self.assertEqual(checklist.court_case_number, "")
+        checklist.court_case_number = "COURT-24-200"
+        migrated.save_investigative_checklist(checklist)
+        self.assertEqual(
+            migrated.get_investigative_checklist(self.case.id).court_case_number,
+            "COURT-24-200",
+        )
+        with closing(sqlite3.connect(self.database)) as connection:
+            columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info(investigative_checklists)"
+                ).fetchall()
+            }
+            self.assertIn("court_case_number", columns)
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                SCHEMA_VERSION,
+            )
+
+    def test_schema_17_vru_data_survives_schema_25_migrations(self):
         analysis = self.repository.save_vru_analysis(VRUAnalysis(
             id="",
             case_id=self.case.id,
@@ -472,7 +508,7 @@ class RepositoryTest(unittest.TestCase):
                 SCHEMA_VERSION,
             )
 
-    def test_schema_12_data_survives_schema_24_exchange_report_migration(self):
+    def test_schema_12_data_survives_schema_25_exchange_report_migration(self):
         vehicle = self.repository.save_vehicle(Vehicle(
             id="",
             case_id=self.case.id,
@@ -599,7 +635,7 @@ class RepositoryTest(unittest.TestCase):
             self.repository.get_hit_run_person_lead(person_lead.id).vehicle_lead_id
         )
 
-    def test_schema_11_data_survives_schema_24_migration(self):
+    def test_schema_11_data_survives_schema_25_migration(self):
         vehicle = self.repository.save_vehicle(Vehicle(
             id="",
             case_id=self.case.id,
@@ -725,7 +761,7 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(reopened.get_road_conditions(self.case.id).temperature, "60 F")
         self.assertEqual(reopened.get_witness_details("missing").interviewed, "Unknown")
 
-    def test_schema_10_vehicle_data_survives_schema_24_migration(self):
+    def test_schema_10_vehicle_data_survives_schema_25_migration(self):
         legacy_database = Path(self.temp.name) / "legacy-vehicle.sqlite3"
         with closing(sqlite3.connect(legacy_database)) as connection:
             connection.executescript("""
@@ -794,7 +830,7 @@ class RepositoryTest(unittest.TestCase):
                 SCHEMA_VERSION,
             )
 
-    def test_schema_3_person_data_survives_schema_24_column_migration(self):
+    def test_schema_3_person_data_survives_schema_25_column_migration(self):
         legacy_database = Path(self.temp.name) / "legacy.sqlite3"
         with closing(sqlite3.connect(legacy_database)) as connection:
             connection.executescript("""
@@ -930,6 +966,7 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(checklist.submitted_to_da_date, "2025-01-15")
         self.assertEqual(checklist.peer_review_date, "")
         self.assertEqual(checklist.sergeant_review_date, "")
+        self.assertEqual(checklist.court_case_number, "")
         with closing(sqlite3.connect(legacy_database)) as connection:
             columns = {
                 row[1]
@@ -939,6 +976,7 @@ class RepositoryTest(unittest.TestCase):
             }
             self.assertIn("peer_review_date", columns)
             self.assertIn("sergeant_review_date", columns)
+            self.assertIn("court_case_number", columns)
             self.assertEqual(
                 connection.execute("PRAGMA user_version").fetchone()[0],
                 SCHEMA_VERSION,
@@ -1153,6 +1191,7 @@ class RepositoryTest(unittest.TestCase):
             submitted_to_da_date="2026-08-04",
             assigned_dda="Example DDA",
             da_case_number="DA-123",
+            court_case_number="COURT-456",
         ))
         charge = self.repository.save_charge_disposition(ChargeDisposition(
             id="", case_id=self.case.id, charge="Reckless driving", disposition="Pending",
@@ -1179,6 +1218,7 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(loaded_checklist.sergeant_review_date, "2026-08-03")
         self.assertEqual(loaded_checklist.submitted_to_da_date, "2026-08-04")
         self.assertEqual(loaded_checklist.da_case_number, "DA-123")
+        self.assertEqual(loaded_checklist.court_case_number, "COURT-456")
         self.assertEqual(
             self.repository.get_charge_disposition(charge.id).disposition, "Pending"
         )

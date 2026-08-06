@@ -1,5 +1,6 @@
 ## Traffic Crash Notebook 0.5.5 (Unreleased)
 
+- Adds a separate Court Case Number beside the DA Case Number, preserves it with the case, and includes it on the packet cover and investigative checklist.
 - Displays a branded TIU startup splash from the Windows bootloader while the portable application loads, then closes it only after the main window can paint.
 - Closes the splash before first-run storage setup, storage-recovery prompts, startup errors, or portable self-tests so it never obscures a required dialog or automated verification.
 
