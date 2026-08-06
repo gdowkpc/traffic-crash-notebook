@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QDialogButtonBox,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QTabWidget,
@@ -184,6 +185,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
             dialog.driver.setCurrentIndex(dialog.driver.findData(driver.id))
             dialog.insurance_company.setText("Example Mutual")
             dialog.insurance_policy_number.setText("POL-13579")
+            self.assertFalse(dialog.towed.isChecked())
+            self.assertFalse(dialog.towed_to.isEnabled())
+            dialog.towed.setChecked(True)
+            self.assertTrue(dialog.towed_to.isEnabled())
+            dialog.towed_to.setText("Central Evidence Tow Yard")
             dialog.release_date.setText("08/05/2026")
             dialog.release_information.setPlainText(
                 "Released to registered owner with receipt"
@@ -203,8 +209,14 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(vehicles[0].insurance_policy_number, "POL-13579")
         self.assertEqual(vehicles[0].body_style, "Four-door sedan")
         self.assertEqual(vehicles[0].property_damage, "None")
+        self.assertTrue(vehicles[0].towed)
+        self.assertEqual(
+            vehicles[0].tow_information,
+            "Central Evidence Tow Yard",
+        )
         self.assertTrue(vehicles[0].warrant_obtained)
         self.assertTrue(vehicles[0].vehicle_inspection_completed)
+        self.assertTrue(vehicles[0].nhtsa_recalls_checked)
         self.assertTrue(vehicles[0].cdr_equipped)
         self.assertTrue(vehicles[0].cdr_imaged)
         self.assertTrue(vehicles[0].cdr_report_uploaded)
@@ -216,17 +228,136 @@ class AddRecordWorkflowTest(unittest.TestCase):
         )
         self.assertEqual(self.window.vehicles_table.rowCount(), 1)
         self.assertIn(
+            "NHTSA Recalls Checked",
+            self.window.vehicles_table.item(0, 4).text(),
+        )
+        self.assertIn(
             "CDR Report Uploaded",
             self.window.vehicles_table.item(0, 4).text(),
         )
         self.assertIn(
-            "Released - 08/05/2026 - Released to registered owner with receipt",
+            "Yes - Central Evidence Tow Yard",
             self.window.vehicles_table.item(0, 5).text(),
         )
-        self.assertEqual(
+        self.assertIn(
+            "Released - 08/05/2026 - Released to registered owner with receipt",
             self.window.vehicles_table.item(0, 6).text(),
+        )
+        self.assertEqual(
+            self.window.vehicles_table.item(0, 7).text(),
             "Example Mutual / POL-13579",
         )
+
+        saved_vehicle_id = vehicles[0].id
+        self.window.loading = True
+        self.window.close()
+        self.app.processEvents()
+        self.window = MainWindow(self.repository)
+        self.window.show()
+        self.app.processEvents()
+        reopened_vehicle = self.repository.get_vehicle(saved_vehicle_id)
+        self.assertIsNotNone(reopened_vehicle)
+        self.assertEqual(reopened_vehicle.vehicle_number, "V-1")
+        self.assertEqual(self.window.vehicles_table.rowCount(), 1)
+
+    def test_overview_autosaves_on_top_level_nested_and_periodic_triggers(self):
+        self.assertTrue(self.window.periodic_autosave_timer.isActive())
+        self.assertEqual(self.window.periodic_autosave_timer.interval(), 30_000)
+
+        self.window.general_notes.setPlainText("Saved when leaving Overview")
+        self.window.autosave_timer.stop()
+        self.assertTrue(self.window.overview_dirty)
+        people_index = next(
+            index
+            for index in range(self.window.tabs.count())
+            if self.window.tabs.tabText(index) == "People"
+        )
+        self.window.tabs.setCurrentIndex(people_index)
+        self.app.processEvents()
+        self.assertEqual(
+            self.repository.get_case(self.case.id).notes,
+            "Saved when leaving Overview",
+        )
+        self.assertFalse(self.window.overview_dirty)
+
+        road_weather_index = next(
+            index
+            for index in range(self.window.tabs.count())
+            if self.window.tabs.tabText(index) == "Road / Weather"
+        )
+        self.window.tabs.setCurrentIndex(road_weather_index)
+        self.app.processEvents()
+        road_weather_tabs = self.window.tabs.widget(road_weather_index).findChild(
+            QTabWidget
+        )
+        self.assertIsNotNone(road_weather_tabs)
+        self.window.condition_widgets["temperature"].setText("72")
+        self.window.autosave_timer.stop()
+        self.assertTrue(self.window.overview_dirty)
+        road_weather_tabs.setCurrentIndex(
+            (road_weather_tabs.currentIndex() + 1) % road_weather_tabs.count()
+        )
+        self.app.processEvents()
+        self.assertEqual(
+            self.repository.get_road_conditions(self.case.id).temperature,
+            "72",
+        )
+        self.assertFalse(self.window.overview_dirty)
+
+        self.window.summary.setPlainText("Saved by periodic safety timer")
+        self.window.autosave_timer.stop()
+        self.assertTrue(self.window.overview_dirty)
+        self.window._autosave_if_dirty()
+        self.assertEqual(
+            self.repository.get_case(self.case.id).summary,
+            "Saved by periodic safety timer",
+        )
+        self.assertFalse(self.window.overview_dirty)
+
+    def test_vehicle_dialog_warns_before_discarding_unsaved_changes(self):
+        dialog = VehicleDialog(self.case.id, [], parent=self.window)
+        dialog.show()
+        dialog.vehicle_number.setFocus()
+        QTest.keyClicks(dialog.vehicle_number, "V-9")
+        self.app.processEvents()
+        self.assertTrue(dialog.record_dirty)
+
+        with patch(
+            "traffic_crash_notebook.ui.dialogs.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.No,
+        ) as question:
+            dialog.reject()
+        question.assert_called_once()
+        self.assertTrue(dialog.isVisible())
+
+        with patch(
+            "traffic_crash_notebook.ui.dialogs.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ):
+            dialog.reject()
+        self.assertFalse(dialog.isVisible())
+
+    def test_vehicle_save_failure_is_visible_and_keeps_the_draft(self):
+        vehicle = Vehicle(
+            id="",
+            case_id=self.case.id,
+            vehicle_number="V-DRAFT",
+            make="Unsaved",
+        )
+        with (
+            patch.object(
+                self.repository,
+                "save_vehicle",
+                side_effect=sqlite3.OperationalError("storage unavailable"),
+            ),
+            patch(
+                "traffic_crash_notebook.ui.main_window.QMessageBox.critical"
+            ) as critical,
+        ):
+            self.assertFalse(self.window._save_vehicle_record(vehicle))
+        self.assertEqual(vehicle.vehicle_number, "V-DRAFT")
+        self.assertEqual(vehicle.make, "Unsaved")
+        self.assertIn("storage unavailable", critical.call_args.args[2])
 
     def test_journal_supports_guided_add_edit_remove_workflow(self):
         tab_labels = [
@@ -304,6 +435,134 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(self.repository.list_chronology(self.case.id), [])
         self.assertEqual(self.window.chronology_table.rowCount(), 0)
         self.assertIn("0 journal entries", self.window.counts_label.text())
+
+    def test_case_packet_workspace_previews_prints_and_exports_both_packet_types(self):
+        tab_labels = [
+            self.window.tabs.tabText(index)
+            for index in range(self.window.tabs.count())
+        ]
+        self.assertIn("Packet Preview", tab_labels)
+        packet_tab_index = tab_labels.index("Packet Preview")
+        packet_tab = self.window.tabs.widget(packet_tab_index)
+        button_labels = {
+            button.text() for button in packet_tab.findChildren(QPushButton)
+        }
+        self.assertEqual(
+            button_labels,
+            {"Refresh Preview", "Print Packet...", "Export Preview to PDF"},
+        )
+        self.assertEqual(
+            [
+                self.window.packet_preview_mode.itemText(index)
+                for index in range(self.window.packet_preview_mode.count())
+            ],
+            ["Full Working Packet", "Compact Packet"],
+        )
+
+        self.window.tabs.setCurrentIndex(packet_tab_index)
+        self.app.processEvents()
+        full_preview_path = self.window.packet_preview_path
+        self.assertTrue(full_preview_path.is_file())
+        full_page_count = self.window.packet_pdf_document.pageCount()
+        self.assertGreater(full_page_count, 1)
+        full_text = "\n".join(
+            page.extract_text() or ""
+            for page in PdfReader(full_preview_path).pages
+        )
+        self.assertIn("FULL WORKING PACKET", full_text)
+        self.assertIn(
+            "Preview ready - Full Working Packet",
+            self.window.packet_preview_status.text(),
+        )
+
+        self.window.packet_preview_mode.setCurrentIndex(1)
+        self.app.processEvents()
+        compact_preview_path = self.window.packet_preview_path
+        self.assertNotEqual(compact_preview_path, full_preview_path)
+        self.assertTrue(compact_preview_path.is_file())
+        compact_page_count = self.window.packet_pdf_document.pageCount()
+        self.assertLess(compact_page_count, full_page_count)
+        compact_text = "\n".join(
+            page.extract_text() or ""
+            for page in PdfReader(compact_preview_path).pages
+        )
+        self.assertIn("COMPACT COMPLETED-CASE PACKET", compact_text)
+        self.assertIn(
+            "Preview ready - Compact Packet",
+            self.window.packet_preview_status.text(),
+        )
+
+        locked_preview_path = self.window.packet_preview_path
+        original_unlink = Path.unlink
+
+        def refuse_locked_preview(path: Path, *args, **kwargs):
+            if path == locked_preview_path:
+                raise PermissionError(
+                    32,
+                    "The process cannot access the file because it is being used "
+                    "by another process",
+                    str(path),
+                )
+            return original_unlink(path, *args, **kwargs)
+
+        with patch.object(Path, "unlink", refuse_locked_preview):
+            self.window.preview_case_packet()
+            refreshed_preview_path = self.window.packet_preview_path
+            self.assertNotEqual(refreshed_preview_path, locked_preview_path)
+            self.assertTrue(refreshed_preview_path.is_file())
+            self.assertTrue(locked_preview_path.is_file())
+            self.assertIn(
+                "Preview ready",
+                self.window.packet_preview_status.text(),
+            )
+            self.window._cleanup_stale_packet_previews()
+            self.assertIn(
+                locked_preview_path,
+                self.window.packet_stale_preview_paths,
+            )
+
+        self.app.processEvents()
+        self.window._cleanup_stale_packet_previews()
+        self.assertFalse(locked_preview_path.exists())
+
+        printed_preview = Path(self.temp.name) / "compact-packet-preview-printed.pdf"
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        printer.setOutputFormat(QPrinter.OutputFormat.PdfFormat)
+        printer.setOutputFileName(str(printed_preview))
+        printer.setPageSize(QPageSize(QPageSize.PageSizeId.Letter))
+        with (
+            patch.object(
+                self.window,
+                "_create_packet_printer",
+                return_value=printer,
+            ),
+            patch(
+                "traffic_crash_notebook.ui.main_window.QPrintDialog.exec",
+                return_value=QDialog.DialogCode.Accepted,
+            ),
+        ):
+            self.window.print_case_packet()
+        self.assertTrue(printed_preview.is_file())
+        self.assertEqual(
+            len(PdfReader(printed_preview).pages),
+            self.window.packet_pdf_document.pageCount(),
+        )
+
+        exported_preview = Path(self.temp.name) / "compact-packet-preview-export.pdf"
+        with (
+            patch(
+                "traffic_crash_notebook.ui.main_window.QFileDialog.getSaveFileName",
+                return_value=(str(exported_preview), "PDF files (*.pdf)"),
+            ),
+            patch(
+                "traffic_crash_notebook.ui.main_window.QDesktopServices.openUrl"
+            ),
+        ):
+            self.window.export_case_packet_preview()
+        self.assertEqual(
+            exported_preview.read_bytes(),
+            self.window.packet_preview_path.read_bytes(),
+        )
 
     def test_exchange_report_workspace_is_read_only_and_previews_existing_data(self):
         tab_labels = [
@@ -488,10 +747,141 @@ class AddRecordWorkflowTest(unittest.TestCase):
             ),
         ):
             self.window.export_exchange_report()
-        self.assertEqual(
-            exported_preview.read_bytes(),
-            self.window.exchange_preview_path.read_bytes(),
+        exported_reader = PdfReader(exported_preview)
+        exported_text = "\n".join(
+            page.extract_text() or "" for page in exported_reader.pages
         )
+        current_preview_text = "\n".join(
+            page.extract_text() or ""
+            for page in PdfReader(self.window.exchange_preview_path).pages
+        )
+        self.assertEqual(len(exported_reader.pages), 2)
+        self.assertEqual(exported_text, current_preview_text)
+
+    def test_exchange_report_never_reuses_prior_case_preview_after_case_switch(self):
+        tab_labels = [
+            self.window.tabs.tabText(index)
+            for index in range(self.window.tabs.count())
+        ]
+        self.window.tabs.setCurrentIndex(tab_labels.index("Exchange Report"))
+        self.app.processEvents()
+
+        prior_preview_path = self.window.exchange_preview_path
+        prior_preview_text = "\n".join(
+            page.extract_text() or ""
+            for page in PdfReader(prior_preview_path).pages
+        )
+        self.assertIn("UI-TEST", prior_preview_text)
+        self.assertEqual(self.window.exchange_preview_case_id, self.case.id)
+
+        next_case = self.repository.create_case(
+            "UI-SECOND",
+            "Second Case Investigator",
+        )
+        self.window.refresh_cases()
+        next_case_row = next(
+            row
+            for row in range(self.window.case_list.count())
+            if self.window.case_list.item(row).data(Qt.ItemDataRole.UserRole)
+            == next_case.id
+        )
+        attempted_destination = (
+            Path(self.temp.name) / "UI-SECOND_Exchange_Report.pdf"
+        )
+
+        with (
+            patch(
+                "traffic_crash_notebook.ui.main_window.export_exchange_report_pdf",
+                side_effect=RuntimeError("synthetic current-case generation failure"),
+            ),
+            patch(
+                "traffic_crash_notebook.ui.main_window.QFileDialog.getSaveFileName",
+                return_value=(str(attempted_destination), "PDF files (*.pdf)"),
+            ) as save_dialog,
+            patch(
+                "traffic_crash_notebook.ui.main_window.QPrintDialog.exec"
+            ) as print_dialog,
+            patch(
+                "traffic_crash_notebook.ui.main_window.QDesktopServices.openUrl"
+            ),
+            patch(
+                "traffic_crash_notebook.ui.main_window.QMessageBox.critical"
+            ) as critical,
+        ):
+            self.window.case_list.setCurrentRow(next_case_row)
+            self.app.processEvents()
+            self.assertEqual(self.window.current_case.id, next_case.id)
+            self.assertIsNone(self.window.exchange_preview_case_id)
+            self.assertTrue(self.window.exchange_pdf_view.isHidden())
+            self.assertIn(
+                "Preview failed for UI-SECOND",
+                self.window.exchange_preview_status.text(),
+            )
+
+            self.window.export_exchange_report()
+            self.window.print_exchange_report()
+
+        self.assertFalse(attempted_destination.exists())
+        save_dialog.assert_called_once()
+        print_dialog.assert_not_called()
+        self.assertEqual(critical.call_count, 2)
+        self.assertIn(
+            "synthetic current-case generation failure",
+            critical.call_args_list[0].args[2],
+        )
+        self.assertIn("verified preview", critical.call_args_list[1].args[2])
+
+        with (
+            patch(
+                "traffic_crash_notebook.ui.main_window.QFileDialog.getSaveFileName",
+                return_value=(str(attempted_destination), "PDF files (*.pdf)"),
+            ),
+            patch(
+                "traffic_crash_notebook.ui.main_window.QDesktopServices.openUrl"
+            ),
+        ):
+            self.window.export_exchange_report()
+
+        self.assertTrue(attempted_destination.is_file())
+        current_preview_text = "\n".join(
+            page.extract_text() or ""
+            for page in PdfReader(attempted_destination).pages
+        )
+        self.assertIn("UI-SECOND", current_preview_text)
+        self.assertNotIn("UI-TEST", current_preview_text)
+        self.assertEqual(self.window.exchange_preview_case_id, next_case.id)
+        self.assertFalse(self.window.exchange_pdf_view.isHidden())
+        self.assertIn("Case: UI-SECOND", self.window.exchange_preview_status.text())
+
+        preview_independent_destination = (
+            Path(self.temp.name) / "UI-SECOND_Exchange_Report_No_Preview.pdf"
+        )
+        with (
+            patch.object(
+                self.window,
+                "refresh_exchange_report",
+                side_effect=lambda *_args, **_kwargs: self.window._invalidate_exchange_preview(
+                    "Preview renderer unavailable for test."
+                ),
+            ),
+            patch(
+                "traffic_crash_notebook.ui.main_window.QFileDialog.getSaveFileName",
+                return_value=(
+                    str(preview_independent_destination),
+                    "PDF files (*.pdf)",
+                ),
+            ),
+            patch(
+                "traffic_crash_notebook.ui.main_window.QDesktopServices.openUrl"
+            ),
+        ):
+            self.window.export_exchange_report()
+        preview_independent_text = "\n".join(
+            page.extract_text() or ""
+            for page in PdfReader(preview_independent_destination).pages
+        )
+        self.assertIn("UI-SECOND", preview_independent_text)
+        self.assertNotIn("UI-TEST", preview_independent_text)
 
     def test_about_identifies_exact_build_and_running_location(self):
         self.assertIn(__version__, self.window.windowTitle())
@@ -1099,6 +1489,12 @@ class AddRecordWorkflowTest(unittest.TestCase):
 
     def test_weather_station_time_and_celestial_lighting_fields_persist(self):
         expected_values = {
+            "temperature": "71",
+            "dew_point": "54",
+            "winds": "NW 6",
+            "humidity": "43",
+            "pressure": "29.92",
+            "precipitation": "0.04",
             "weather_station": "KPDX ASOS",
             "weather_time": "14:35 PDT",
             "sunrise": "05:59",
@@ -1112,6 +1508,15 @@ class AddRecordWorkflowTest(unittest.TestCase):
         labels = {label.text() for label in self.window.findChildren(QLabel)}
         self.assertIn("Weather station", labels)
         self.assertIn("Time of reading", labels)
+        self.assertIn("Temperature (F)", labels)
+        self.assertIn("Dew point (F)", labels)
+        self.assertIn("Winds (mph)", labels)
+        self.assertIn("Humidity (%)", labels)
+        self.assertIn("Pressure (inHg)", labels)
+        self.assertIn("Precipitation (in)", labels)
+        self.assertEqual(self.window.weather_fields_grid.rowCount(), 5)
+        self.assertEqual(self.window.weather_fields_grid.verticalSpacing(), 5)
+        self.assertEqual(self.window.weather_fields_grid.horizontalSpacing(), 10)
         self.assertNotIn("Observation time", labels)
         self.assertIn("Civil twilight - morning", labels)
         self.assertIn("Civil twilight - evening", labels)
@@ -1135,7 +1540,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
             self.assertEqual(self.window.condition_widgets[name].text(), value)
         self.assertTrue(self.window.area_type_boxes["Interstate"].isChecked())
 
-    def test_multiple_tagged_roadways_can_be_added_and_edited(self):
+    def test_multiple_roadways_can_be_added_and_edited(self):
         retired_single_roadway_fields = {
             "speed_limit",
             "speed_limit_posted",
@@ -1150,15 +1555,22 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertTrue(
             retired_single_roadway_fields.isdisjoint(self.window.condition_widgets)
         )
+        self.assertEqual(
+            self.window.roadways_table.horizontalHeaderItem(0).text(),
+            "Roadway",
+        )
 
         def add_roadway(
-            tag: str,
+            roadway_name: str,
             speed_limit: str,
             characteristics: str,
             controls: str,
         ) -> None:
             def configure(dialog: RoadwayDialog) -> None:
-                dialog.roadway_tag.setText(tag)
+                labels = {label.text() for label in dialog.findChildren(QLabel)}
+                self.assertIn("Roadway", labels)
+                self.assertNotIn("Roadway / tag", labels)
+                dialog.roadway_tag.setText(roadway_name)
                 dialog.speed_limit.setText(speed_limit)
                 dialog.speed_limit_posted.setCurrentText("Yes")
                 dialog.speed_limit_location.setText("Approach sign")
@@ -1366,7 +1778,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
                 "Investigator Photos",
                 "Uploaded to Axon",
                 "UAS",
-                "DIMS",
+                "Axon",
                 "FARO",
             },
         )
@@ -1374,6 +1786,28 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertNotIn("Surveillance Video", self.window.scene_evidence_boxes)
         self.assertNotIn("PED", self.window.scene_evidence_boxes)
         self.assertNotIn("Trimble", self.window.scene_evidence_boxes)
+        self.assertEqual(
+            [
+                self.window.video_sources_table.horizontalHeaderItem(index).text()
+                for index in range(self.window.video_sources_table.columnCount())
+            ],
+            ["Video source", "Address", "Uploaded to Axon", "Notes"],
+        )
+        video_dialog = VideoSourceDialog(self.case.id, parent=self.window)
+        video_labels = {
+            label.text() for label in video_dialog.findChildren(QLabel)
+        }
+        self.assertIn("Address", video_labels)
+        self.assertIn("Uploaded to Axon", video_labels)
+        self.assertNotIn("Entered in DIMS", video_labels)
+        video_dialog.source.setText("Business camera")
+        with patch(
+            "traffic_crash_notebook.ui.dialogs.QMessageBox.warning"
+        ) as warning:
+            video_dialog._validate_and_accept()
+        warning.assert_called_once()
+        self.assertIn("address", warning.call_args.args[2].lower())
+        video_dialog.close()
 
     def test_axon_upload_requires_investigator_photos(self):
         photos = self.window.scene_evidence_boxes["Investigator Photos"]
@@ -1409,8 +1843,12 @@ class AddRecordWorkflowTest(unittest.TestCase):
 
     def test_narrative_fields_use_offline_spell_check(self):
         self.assertIsInstance(self.window.summary, SpellCheckedTextEdit)
-        self.assertIsInstance(self.window.key_questions, SpellCheckedTextEdit)
         self.assertIsInstance(self.window.general_notes, SpellCheckedTextEdit)
+        self.assertFalse(hasattr(self.window, "key_questions"))
+        self.assertNotIn(
+            "Key questions / unresolved issues",
+            {label.text() for label in self.window.findChildren(QLabel)},
+        )
 
         dialog = PersonDialog(self.case.id, parent=self.window)
         try:
@@ -1455,7 +1893,8 @@ class AddRecordWorkflowTest(unittest.TestCase):
 
         def configure_video(dialog: VideoSourceDialog) -> None:
             dialog.source.setText("North intersection camera")
-            dialog.dims_status.setCurrentText("Entered")
+            dialog.address.setText("100 North Example Street, Portland, OR 97201")
+            dialog.axon_status.setCurrentText("Yes")
             dialog.notes.setPlainText("Requested from city traffic operations")
 
         self._complete_modal_dialog(
@@ -1468,6 +1907,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(self.window.charges_table.rowCount(), 1)
         self.assertEqual(len(self.repository.list_video_sources(self.case.id)), 1)
         self.assertEqual(self.window.video_sources_table.rowCount(), 1)
+        self.assertEqual(
+            self.window.video_sources_table.item(0, 1).text(),
+            "100 North Example Street, Portland, OR 97201",
+        )
+        self.assertEqual(self.window.video_sources_table.item(0, 2).text(), "Yes")
         self.assertTrue(self.window.surveillance_video_indicator.isChecked())
         self.assertFalse(self.window.surveillance_video_indicator.isEnabled())
         self.assertNotIn(
@@ -1476,6 +1920,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
         )
 
         video_source = self.repository.list_video_sources(self.case.id)[0]
+        self.assertEqual(
+            video_source.address,
+            "100 North Example Street, Portland, OR 97201",
+        )
+        self.assertEqual(video_source.axon_status, "Yes")
         self.repository.delete_video_source(video_source.id)
         self.window.refresh_video_sources()
         self.assertFalse(self.window.surveillance_video_indicator.isChecked())
@@ -1513,6 +1962,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
             dialog.testing_method_boxes["SFST"].setChecked(True)
             dialog.license_restricted.setCurrentText("Yes")
             dialog.license_restriction_explanation.setText("Corrective lenses")
+            dialog.endorsements.setText("Passenger; Tank")
 
         self._complete_modal_dialog(
             self.window.edit_driver_profile,
@@ -1604,6 +2054,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertIn("Laceration", details.injury_codes)
         profile = self.repository.get_driver_profile(person.id)
         self.assertEqual(profile.license_restricted, "Yes")
+        self.assertEqual(profile.endorsements, "Passenger; Tank")
         self.assertIn("SFST", profile.testing_methods)
         contact = self.repository.list_contacts(self.case.id)[0]
         self.assertEqual(contact.work_phone, "503-555-0103")

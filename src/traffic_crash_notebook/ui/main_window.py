@@ -5,6 +5,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+import uuid
 from datetime import datetime
 from pathlib import Path
 
@@ -91,6 +92,7 @@ from ..models import (
     ROAD_AREA_OPTIONS,
     SCENE_EVIDENCE_METHODS,
     SURVEILLANCE_VIDEO_EVIDENCE,
+    WEATHER_DISPLAY_UNITS,
     ContactRelationship,
     CrashCase,
     CrashDetails,
@@ -105,6 +107,7 @@ from ..models import (
     Vehicle,
     VEHICLE_WORKFLOW_FIELDS,
     format_crash_location,
+    normalize_scene_evidence_methods,
 )
 from ..pdf_export import export_case_compact_pdf, export_case_pdf, export_case_summary_pdf
 from ..pdf_printing import print_pdf_document, selected_pdf_page_indexes
@@ -316,6 +319,16 @@ class MainWindow(QMainWindow):
         self.checklist: InvestigativeChecklist | None = None
         self.crash_details: CrashDetails | None = None
         self.hit_run_overview: HitRunOverview | None = None
+        self.packet_preview_directory = QTemporaryDir(
+            "TrafficCrashNotebook-packet-preview-XXXXXX"
+        )
+        if not self.packet_preview_directory.isValid():
+            raise RuntimeError("Unable to create the case-packet preview folder.")
+        self.packet_preview_generation = 0
+        self.packet_stale_preview_paths: set[Path] = set()
+        self.packet_preview_path = Path(
+            self.packet_preview_directory.path()
+        ) / "Traffic_Crash_Case_Packet_Preview_000000.pdf"
         self.exchange_preview_directory = QTemporaryDir(
             "TrafficCrashNotebook-exchange-preview-XXXXXX"
         )
@@ -323,10 +336,12 @@ class MainWindow(QMainWindow):
             raise RuntimeError("Unable to create the exchange-report preview folder.")
         self.exchange_preview_generation = 0
         self.exchange_stale_preview_paths: set[Path] = set()
+        self.exchange_preview_case_id: str | None = None
         self.exchange_preview_path = Path(
             self.exchange_preview_directory.path()
         ) / "Traffic_Crash_Exchange_Report_Preview_000000.pdf"
         self.loading = False
+        self.overview_dirty = False
         self.storage_error_active = False
         self.update_check_thread: UpdateCheckThread | None = None
         self.update_download_thread: UpdateDownloadThread | None = None
@@ -336,6 +351,10 @@ class MainWindow(QMainWindow):
         self.autosave_timer.setSingleShot(True)
         self.autosave_timer.setInterval(700)
         self.autosave_timer.timeout.connect(self.save_overview)
+        self.periodic_autosave_timer = QTimer(self)
+        self.periodic_autosave_timer.setInterval(30_000)
+        self.periodic_autosave_timer.timeout.connect(self._autosave_if_dirty)
+        self.periodic_autosave_timer.start()
 
         self.setWindowTitle(f"Traffic Crash Notebook {__version__}")
         self.resize(1320, 820)
@@ -343,6 +362,7 @@ class MainWindow(QMainWindow):
         self._build_menu_bar()
         self._build_toolbar()
         self._build_content()
+        self._connect_case_subtab_autosave()
         self.setStatusBar(QStatusBar())
         self.setStyleSheet(APP_STYLE)
         self.refresh_cases(select_first=True)
@@ -474,6 +494,10 @@ class MainWindow(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_overview_tab(), "Overview")
         self.tabs.addTab(self._build_packet_tab(), "Packet")
+        self.packet_preview_tab_index = self.tabs.addTab(
+            self._build_packet_preview_tab(),
+            "Packet Preview",
+        )
         self.tabs.addTab(self._build_conditions_tab(), "Road / Weather")
         self.tabs.addTab(self._build_people_tab(), "People")
         self.tabs.addTab(self._build_vehicles_tab(), "Vehicles")
@@ -524,13 +548,10 @@ class MainWindow(QMainWindow):
         layout.addLayout(form)
         self.summary = SpellCheckedTextEdit()
         self.summary.setPlaceholderText("Brief description of the crash and the present investigative picture")
-        self.key_questions = SpellCheckedTextEdit()
-        self.key_questions.setPlaceholderText("Unresolved questions, competing explanations, or items requiring follow-up")
         self.general_notes = SpellCheckedTextEdit()
         self.general_notes.setPlaceholderText("General working notes")
         for label, widget in (
             ("Crash summary", self.summary),
-            ("Key questions / unresolved issues", self.key_questions),
             ("General investigative notes", self.general_notes),
         ):
             layout.addWidget(QLabel(label))
@@ -546,7 +567,6 @@ class MainWindow(QMainWindow):
             widget.textChanged.connect(self.schedule_autosave)
         self.status.currentTextChanged.connect(self.schedule_autosave)
         self.summary.textChanged.connect(self.schedule_autosave)
-        self.key_questions.textChanged.connect(self.schedule_autosave)
         self.general_notes.textChanged.connect(self.schedule_autosave)
         return tab
 
@@ -705,13 +725,14 @@ class MainWindow(QMainWindow):
         tabs.addTab(_scrollable(response_tab), "Response / Evidence")
 
         video_tab, self.video_sources_table = self._table_tab(
-            ["Video source", "Entered in DIMS", "Notes"],
+            ["Video source", "Address", "Uploaded to Axon", "Notes"],
             self.add_video_source,
             self.edit_video_source,
             self.delete_video_source,
         )
-        self.video_sources_table.setColumnWidth(0, 280)
-        self.video_sources_table.setColumnWidth(1, 130)
+        self.video_sources_table.setColumnWidth(0, 220)
+        self.video_sources_table.setColumnWidth(1, 240)
+        self.video_sources_table.setColumnWidth(2, 130)
         tabs.addTab(video_tab, "Video Sources")
 
         outer.addWidget(tabs, 1)
@@ -748,22 +769,69 @@ class MainWindow(QMainWindow):
             return widget
 
         weather = QWidget()
-        weather_form = QFormLayout(weather)
-        for name, label, placeholder in (
-            ("temperature", "Temperature", "Degrees F"),
-            ("dew_point", "Dew point", "Degrees F"),
-            ("winds", "Winds", "Direction and speed"),
-            ("humidity", "Humidity", "%"),
-            ("weather_condition", "Condition", "Clear, rain, fog..."),
-            ("pressure", "Pressure", ""),
-            ("precipitation", "Precipitation", ""),
-            ("weather_station", "Weather station", "Station name or identifier"),
-            ("weather_time", "Time of reading", "HH:MM; include time zone if known"),
-        ):
-            weather_form.addRow(label, line(name, placeholder))
+        weather.setObjectName("weather_form")
+        weather_layout = QVBoxLayout(weather)
+        weather_layout.setContentsMargins(10, 10, 10, 10)
+        weather_layout.setSpacing(6)
+        self.weather_fields_grid = QGridLayout()
+        self.weather_fields_grid.setObjectName("weather_fields_grid")
+        self.weather_fields_grid.setHorizontalSpacing(10)
+        self.weather_fields_grid.setVerticalSpacing(5)
+
+        weather_pairs = (
+            (
+                ("temperature", "Temperature", "Numeric observation"),
+                ("dew_point", "Dew point", "Numeric observation"),
+            ),
+            (
+                ("winds", "Winds", "Direction and speed"),
+                ("humidity", "Humidity", "Numeric observation"),
+            ),
+            (
+                ("pressure", "Pressure", "Numeric observation"),
+                ("precipitation", "Precipitation", "Numeric total or None"),
+            ),
+            (
+                ("weather_station", "Weather station", "Station name or identifier"),
+                ("weather_time", "Time of reading", "HH:MM; include time zone if known"),
+            ),
+        )
+        for row, pair in enumerate(weather_pairs):
+            for column_group, (name, label, placeholder) in enumerate(pair):
+                unit = WEATHER_DISPLAY_UNITS.get(name)
+                display_label = f"{label} ({unit})" if unit else label
+                label_widget = QLabel(display_label)
+                label_widget.setAlignment(
+                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+                )
+                field_column = column_group * 2
+                self.weather_fields_grid.addWidget(label_widget, row, field_column)
+                self.weather_fields_grid.addWidget(
+                    line(name, placeholder),
+                    row,
+                    field_column + 1,
+                )
+
+        condition_label = QLabel("Condition")
+        condition_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.weather_fields_grid.addWidget(condition_label, 4, 0)
+        self.weather_fields_grid.addWidget(
+            line("weather_condition", "Clear, rain, fog..."),
+            4,
+            1,
+            1,
+            3,
+        )
+        self.weather_fields_grid.setColumnStretch(1, 1)
+        self.weather_fields_grid.setColumnStretch(3, 1)
+        weather_layout.addLayout(self.weather_fields_grid)
         other_weather = memo("other_weather", "Weather source and other relevant observations")
-        other_weather.setMaximumHeight(120)
-        weather_form.addRow("Other weather information", other_weather)
+        other_weather.setMaximumHeight(90)
+        weather_layout.addWidget(QLabel("Other weather information"))
+        weather_layout.addWidget(other_weather)
+        weather_layout.addStretch(1)
         tabs.addTab(_scrollable(weather), "Weather")
 
         surfaces_tab, self.surface_observations_table = self._table_tab(
@@ -830,7 +898,7 @@ class MainWindow(QMainWindow):
 
         roadways_tab, self.roadways_table = self._table_tab(
             [
-                "Roadway / Tag",
+                "Roadway",
                 "Speed Limit",
                 "Posted",
                 "Posting Location",
@@ -946,6 +1014,7 @@ class MainWindow(QMainWindow):
                 "Driver",
                 "Plate",
                 "Vehicle Workflow",
+                "Towing",
                 "Release",
                 "Insurance",
                 "Damage / Notes",
@@ -961,9 +1030,69 @@ class MainWindow(QMainWindow):
         self.vehicles_table.setColumnWidth(1, 220)
         self.vehicles_table.setColumnWidth(2, 180)
         self.vehicles_table.setColumnWidth(4, 230)
-        self.vehicles_table.setColumnWidth(5, 250)
-        self.vehicles_table.setColumnWidth(6, 180)
+        self.vehicles_table.setColumnWidth(5, 220)
+        self.vehicles_table.setColumnWidth(6, 250)
+        self.vehicles_table.setColumnWidth(7, 180)
         return tab
+
+    def _build_packet_preview_tab(self) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
+        title = QLabel("Case Packet Preview")
+        title.setStyleSheet("font-size: 17px; font-weight: 700; color: #18344a;")
+        layout.addWidget(title)
+        guidance = QLabel(
+            "This is a read-only preview generated from the current case. Choose the "
+            "Full Working Packet for the attorney folder and handwritten continuation "
+            "space, or the Compact Packet for a shorter completed-case packet. Make "
+            "changes in the case tabs, then refresh this preview."
+        )
+        guidance.setWordWrap(True)
+        guidance.setStyleSheet("color: #5d6870;")
+        layout.addWidget(guidance)
+
+        actions = QHBoxLayout()
+        actions.addWidget(QLabel("Packet type"))
+        self.packet_preview_mode = QComboBox()
+        self.packet_preview_mode.addItem("Full Working Packet", "full")
+        self.packet_preview_mode.addItem("Compact Packet", "compact")
+        self.packet_preview_mode.setToolTip(
+            "Full includes writable continuation areas; Compact omits unused sections."
+        )
+        self.packet_preview_mode.currentIndexChanged.connect(self.preview_case_packet)
+        actions.addWidget(self.packet_preview_mode)
+        actions.addWidget(_button("Refresh Preview", self.preview_case_packet))
+        print_button = _button(
+            "Print Packet...",
+            self.print_case_packet,
+            secondary=True,
+        )
+        print_button.setToolTip(
+            "Print the current packet preview using the standard Windows printer dialog"
+        )
+        actions.addWidget(print_button)
+        actions.addWidget(
+            _button(
+                "Export Preview to PDF",
+                self.export_case_packet_preview,
+                secondary=True,
+            )
+        )
+        actions.addStretch(1)
+        layout.addLayout(actions)
+
+        self.packet_preview_status = QLabel("Open this tab or choose Refresh Preview.")
+        self.packet_preview_status.setStyleSheet("color: #5d6870;")
+        layout.addWidget(self.packet_preview_status)
+
+        self.packet_pdf_document = QPdfDocument(self)
+        self.packet_pdf_buffer: QBuffer | None = None
+        self.packet_pdf_view = QPdfView(container)
+        self.packet_pdf_view.setDocument(self.packet_pdf_document)
+        self.packet_pdf_view.setPageMode(QPdfView.PageMode.MultiPage)
+        self.packet_pdf_view.setZoomMode(QPdfView.ZoomMode.FitToWidth)
+        layout.addWidget(self.packet_pdf_view, 1)
+        return container
 
     def _build_exchange_report_tab(self) -> QWidget:
         container = QWidget()
@@ -1200,7 +1329,21 @@ class MainWindow(QMainWindow):
 
     def schedule_autosave(self, *_args) -> None:
         if not self.loading and self.current_case:
+            self.overview_dirty = True
             self.autosave_timer.start()
+
+    def _autosave_if_dirty(self) -> None:
+        if self.overview_dirty and not self.loading and self.current_case:
+            self.save_overview()
+
+    def _connect_case_subtab_autosave(self) -> None:
+        for tab_widget in self.findChildren(QTabWidget):
+            if tab_widget is not self.tabs:
+                tab_widget.currentChanged.connect(self._case_subtab_changed)
+
+    def _case_subtab_changed(self, _index: int) -> None:
+        if not self.loading and self.current_case:
+            self.save_overview()
 
     def _packet_location_text(self) -> str:
         road_widget = self.packet_widgets.get("road_name")
@@ -1234,6 +1377,7 @@ class MainWindow(QMainWindow):
             self._save_overview_records()
         except (OSError, sqlite3.Error) as error:
             self.autosave_timer.stop()
+            self.overview_dirty = True
             if not self.storage_error_active:
                 QMessageBox.critical(
                     self,
@@ -1246,6 +1390,8 @@ class MainWindow(QMainWindow):
             self.storage_error_active = True
             return False
         self.storage_error_active = False
+        self.overview_dirty = False
+        self.autosave_timer.stop()
         return True
 
     def _save_overview_records(self) -> None:
@@ -1260,7 +1406,6 @@ class MainWindow(QMainWindow):
         case.assignment = self.assignment.text().strip()
         case.status = self.status.currentText()
         case.summary = self.summary.toPlainText().strip()
-        case.key_questions = self.key_questions.toPlainText().strip()
         case.notes = self.general_notes.toPlainText().strip()
         self.save_conditions()
         self.save_packet_case_data()
@@ -1389,6 +1534,13 @@ class MainWindow(QMainWindow):
             self.load_case(case)
 
     def load_case(self, case: CrashCase) -> None:
+        self.autosave_timer.stop()
+        self.overview_dirty = False
+        if not self.current_case or self.current_case.id != case.id:
+            self._invalidate_exchange_preview(
+                f"Exchange preview not yet generated for "
+                f"{case.case_number or 'this case'}."
+            )
         self.loading = True
         self.current_case = case
         self.case_number.setText(case.case_number)
@@ -1400,7 +1552,6 @@ class MainWindow(QMainWindow):
         index = self.status.findText(case.status)
         self.status.setCurrentIndex(max(0, index))
         self.summary.setPlainText(case.summary)
-        self.key_questions.setPlainText(case.key_questions)
         self.general_notes.setPlainText(case.notes)
         self.checklist = self.repository.get_investigative_checklist(case.id)
         for name, widget in self.checklist_widgets.items():
@@ -1443,7 +1594,9 @@ class MainWindow(QMainWindow):
                 index = widget.findText(value)
                 widget.setCurrentIndex(max(0, index))
         self._sync_location_preview()
-        scene_evidence = set(self.crash_details.scene_evidence)
+        scene_evidence = set(normalize_scene_evidence_methods(
+            self.crash_details.scene_evidence
+        ))
         for method, checkbox in self.scene_evidence_boxes.items():
             checkbox.setChecked(method in scene_evidence)
         self._sync_axon_upload_availability(
@@ -1484,6 +1637,7 @@ class MainWindow(QMainWindow):
         self.hit_run_narrative.setPlainText(self.hit_run_overview.narrative)
         self.hit_run_follow_up.setPlainText(self.hit_run_overview.follow_up_notes)
         self.loading = False
+        self.overview_dirty = False
         self.refresh_case_tables()
         self._update_header()
 
@@ -1515,6 +1669,7 @@ class MainWindow(QMainWindow):
         self.refresh_roadways()
         self.refresh_people()
         self.refresh_vehicles()
+        self.refresh_case_packet_preview()
         self.refresh_exchange_report()
         self.refresh_hit_run_evidence()
         self.refresh_hit_run_vehicle_leads()
@@ -1609,7 +1764,10 @@ class MainWindow(QMainWindow):
         self._populate_table(
             self.video_sources_table,
             [
-                (record.id, [record.source, record.dims_status, record.notes])
+                (
+                    record.id,
+                    [record.source, record.address, record.axon_status, record.notes],
+                )
                 for record in records
             ],
         )
@@ -1870,6 +2028,12 @@ class MainWindow(QMainWindow):
                 format_date_for_display(v.release_date),
                 v.release_information,
             ) if value)
+            towing = "No"
+            if v.towed:
+                towing = " - ".join(value for value in (
+                    "Yes",
+                    v.tow_information,
+                ) if value)
             if v.edr_status:
                 notes = " - ".join(value for value in (
                     notes,
@@ -1881,6 +2045,7 @@ class MainWindow(QMainWindow):
                 driver,
                 plate,
                 workflow,
+                towing,
                 release,
                 insurance,
                 notes,
@@ -1891,10 +2056,19 @@ class MainWindow(QMainWindow):
         if not self.current_case:
             return
         people = self.repository.list_people(self.current_case.id)
-        dialog = VehicleDialog(self.current_case.id, people, parent=self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.repository.save_vehicle(dialog.result_record())
-            self.refresh_case_tables()
+        vehicle: Vehicle | None = None
+        while True:
+            dialog = VehicleDialog(
+                self.current_case.id,
+                people,
+                vehicle,
+                self,
+            )
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            vehicle = dialog.result_record()
+            if self._save_vehicle_record(vehicle):
+                return
 
     def edit_vehicle(self, *_args) -> None:
         vehicle_id = self._selected_id(self.vehicles_table)
@@ -1903,10 +2077,39 @@ class MainWindow(QMainWindow):
         vehicle = self.repository.get_vehicle(vehicle_id)
         if not vehicle:
             return
-        dialog = VehicleDialog(vehicle.case_id, self.repository.list_people(vehicle.case_id), vehicle, self)
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            self.repository.save_vehicle(dialog.result_record())
-            self.refresh_case_tables()
+        people = self.repository.list_people(vehicle.case_id)
+        while True:
+            dialog = VehicleDialog(vehicle.case_id, people, vehicle, self)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            vehicle = dialog.result_record()
+            if self._save_vehicle_record(vehicle):
+                return
+
+    def _save_vehicle_record(self, vehicle: Vehicle) -> bool:
+        try:
+            saved = self.repository.save_vehicle(vehicle)
+            persisted = self.repository.get_vehicle(saved.id)
+            if persisted is None:
+                raise RuntimeError(
+                    "The database did not return the vehicle after saving it."
+                )
+        except (OSError, sqlite3.Error, RuntimeError) as error:
+            QMessageBox.critical(
+                self,
+                "Vehicle could not be saved",
+                "The vehicle was not confirmed in the case database. Your entries "
+                "will remain in the vehicle window so you can reconnect the data "
+                "drive and choose Save again.\n\n"
+                f"Database: {self.repository.database_path}\n\n{error}",
+            )
+            return False
+        self.refresh_case_tables()
+        self.statusBar().showMessage(
+            f"Vehicle {persisted.vehicle_number or persisted.description} saved and verified.",
+            5000,
+        )
+        return True
 
     def delete_vehicle(self) -> None:
         vehicle_id = self._selected_id(self.vehicles_table)
@@ -1915,8 +2118,116 @@ class MainWindow(QMainWindow):
             self.refresh_case_tables()
 
     def _case_tab_changed(self, index: int) -> None:
+        if self.loading:
+            return
+        if self.current_case and not self.save_overview():
+            return
+        if index == self.packet_preview_tab_index:
+            self.refresh_case_packet_preview(force_preview=True)
         if index == self.exchange_report_tab_index:
-            self.preview_exchange_report()
+            self.refresh_exchange_report(force_preview=True)
+
+    def _packet_preview_details(self):
+        if self.packet_preview_mode.currentData() == "compact":
+            return (
+                "Compact Packet",
+                "Compact_Packet",
+                export_case_compact_pdf,
+            )
+        return (
+            "Full Working Packet",
+            "Full_Working_Packet",
+            export_case_pdf,
+        )
+
+    def preview_case_packet(self, *_args) -> None:
+        if not self.current_case or not self.save_overview():
+            return
+        self.refresh_case_packet_preview(force_preview=True)
+
+    def refresh_case_packet_preview(
+        self,
+        *_args,
+        force_preview: bool = False,
+    ) -> None:
+        if not self.current_case:
+            return
+        preview_is_visible = (
+            hasattr(self, "tabs")
+            and self.tabs.currentIndex() == self.packet_preview_tab_index
+        )
+        if not force_preview and not preview_is_visible:
+            return
+        self._generate_case_packet_preview()
+
+    def _generate_case_packet_preview(self) -> None:
+        if not self.current_case:
+            return
+        packet_label, packet_suffix, exporter = self._packet_preview_details()
+        self.packet_preview_generation += 1
+        next_preview_path = Path(
+            self.packet_preview_directory.path()
+        ) / (
+            f"Traffic_Crash_{packet_suffix}_Preview_"
+            f"{self.packet_preview_generation:06d}.pdf"
+        )
+        next_document = QPdfDocument(self)
+        next_buffer = QBuffer(next_document)
+        try:
+            exporter(
+                self.repository,
+                self.current_case.id,
+                next_preview_path,
+            )
+            next_buffer.setData(QByteArray(next_preview_path.read_bytes()))
+            if not next_buffer.open(QIODevice.OpenModeFlag.ReadOnly):
+                raise RuntimeError("The preview PDF could not be opened in memory.")
+            next_document.load(next_buffer)
+            load_error = next_document.error()
+            if load_error != QPdfDocument.Error.None_:
+                raise RuntimeError(
+                    f"The preview PDF could not be loaded ({load_error.name})."
+                )
+            if next_document.pageCount() < 1:
+                raise RuntimeError("The preview PDF did not contain any pages.")
+        except Exception as error:
+            next_buffer.close()
+            next_document.close()
+            next_document.deleteLater()
+            self.packet_stale_preview_paths.add(next_preview_path)
+            QTimer.singleShot(250, self._cleanup_stale_packet_previews)
+            self.packet_preview_status.setText(f"Preview failed: {error}")
+            self.packet_preview_status.setStyleSheet("color: #a32a2a;")
+            return
+
+        previous_document = self.packet_pdf_document
+        previous_preview_path = self.packet_preview_path
+        self.packet_pdf_view.setDocument(next_document)
+        self.packet_pdf_document = next_document
+        self.packet_pdf_buffer = next_buffer
+        self.packet_preview_path = next_preview_path
+        previous_document.close()
+        previous_document.deleteLater()
+        if previous_preview_path.is_file():
+            self.packet_stale_preview_paths.add(previous_preview_path)
+            QTimer.singleShot(250, self._cleanup_stale_packet_previews)
+        self.packet_preview_status.setText(
+            f"Preview ready - {packet_label}, "
+            f"{self.packet_pdf_document.pageCount()} page(s)."
+        )
+        self.packet_preview_status.setStyleSheet("color: #2f6f3e;")
+
+    def _cleanup_stale_packet_previews(self) -> None:
+        for preview_path in tuple(self.packet_stale_preview_paths):
+            if preview_path == self.packet_preview_path:
+                continue
+            try:
+                preview_path.unlink(missing_ok=True)
+            except OSError:
+                # Windows may keep a page-render handle alive briefly after the
+                # viewer switches documents. A later refresh or timer will retry.
+                continue
+            self.packet_stale_preview_paths.discard(preview_path)
 
     def preview_exchange_report(self, *_args) -> None:
         if not self.current_case or not self.save_overview():
@@ -2016,9 +2327,31 @@ class MainWindow(QMainWindow):
             return
         self._generate_exchange_preview()
 
+    def _invalidate_exchange_preview(self, message: str) -> None:
+        self.exchange_preview_case_id = None
+        if hasattr(self, "exchange_pdf_view"):
+            self.exchange_pdf_view.hide()
+        if hasattr(self, "exchange_preview_status"):
+            self.exchange_preview_status.setText(message)
+            self.exchange_preview_status.setStyleSheet("color: #5d6870;")
+
+    def _exchange_preview_is_current(self) -> bool:
+        return bool(
+            self.current_case
+            and self.exchange_preview_case_id == self.current_case.id
+            and self.exchange_preview_path.is_file()
+            and self.exchange_pdf_document.pageCount() > 0
+            and not self.exchange_preview_status.text().startswith("Preview failed")
+        )
+
     def _generate_exchange_preview(self) -> None:
         if not self.current_case:
             return
+        case_id = self.current_case.id
+        case_label = self.current_case.case_number or "Untitled Case"
+        self._invalidate_exchange_preview(
+            f"Generating exchange preview for {case_label}..."
+        )
         self.exchange_preview_generation += 1
         next_preview_path = Path(
             self.exchange_preview_directory.path()
@@ -2031,7 +2364,7 @@ class MainWindow(QMainWindow):
         try:
             export_exchange_report_pdf(
                 self.repository,
-                self.current_case.id,
+                case_id,
                 next_preview_path,
             )
             next_buffer.setData(QByteArray(next_preview_path.read_bytes()))
@@ -2045,13 +2378,19 @@ class MainWindow(QMainWindow):
                 )
             if next_document.pageCount() < 1:
                 raise RuntimeError("The preview PDF did not contain any pages.")
+            if not self.current_case or self.current_case.id != case_id:
+                raise RuntimeError(
+                    "The selected case changed while the preview was being generated."
+                )
         except Exception as error:
             next_buffer.close()
             next_document.close()
             next_document.deleteLater()
             self.exchange_stale_preview_paths.add(next_preview_path)
             QTimer.singleShot(250, self._cleanup_stale_exchange_previews)
-            self.exchange_preview_status.setText(f"Preview failed: {error}")
+            self.exchange_preview_status.setText(
+                f"Preview failed for {case_label}: {error}"
+            )
             self.exchange_preview_status.setStyleSheet("color: #a32a2a;")
             return
 
@@ -2061,6 +2400,8 @@ class MainWindow(QMainWindow):
         self.exchange_pdf_document = next_document
         self.exchange_pdf_buffer = next_buffer
         self.exchange_preview_path = next_preview_path
+        self.exchange_preview_case_id = case_id
+        self.exchange_pdf_view.show()
         previous_document.close()
         previous_document.deleteLater()
         if previous_preview_path.is_file():
@@ -2068,7 +2409,8 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(250, self._cleanup_stale_exchange_previews)
         self.exchange_preview_status.setText(
             f"Preview ready - {self.exchange_pdf_document.pageCount()} page(s), "
-            "including the information / responsibilities page."
+            "including the information / responsibilities page. "
+            f"Case: {case_label}."
         )
         self.exchange_preview_status.setStyleSheet("color: #2f6f3e;")
 
@@ -2739,6 +3081,131 @@ class MainWindow(QMainWindow):
         )
         return answer == QMessageBox.StandardButton.Yes
 
+    def export_case_packet_preview(self) -> None:
+        if not self.current_case or not self.save_overview():
+            return
+        self.refresh_case_packet_preview(force_preview=True)
+        if (
+            not self.packet_preview_path.is_file()
+            or self.packet_preview_status.text().startswith("Preview failed")
+        ):
+            QMessageBox.critical(
+                self,
+                "Case packet export failed",
+                "The packet preview could not be generated. Review the preview "
+                "message and try again.",
+            )
+            return
+        reports_directory = self._reports_directory()
+        if reports_directory is None:
+            return
+        packet_label, packet_suffix, _exporter = self._packet_preview_details()
+        safe_name = "".join(
+            character if character.isalnum() or character in "-_" else "_"
+            for character in (self.current_case.case_number or "CrashCase")
+        )
+        default = str(reports_directory / f"{safe_name}_{packet_suffix}.pdf")
+        destination, _ = QFileDialog.getSaveFileName(
+            self,
+            f"Export {packet_label} PDF",
+            default,
+            "PDF files (*.pdf)",
+        )
+        if not destination:
+            return
+        try:
+            shutil.copy2(self.packet_preview_path, destination)
+        except Exception as error:
+            QMessageBox.critical(self, "Case packet export failed", str(error))
+            return
+        self.statusBar().showMessage(
+            f"{packet_label} exported to {destination}",
+            5000,
+        )
+        QDesktopServices.openUrl(QUrl.fromLocalFile(destination))
+
+    def _create_packet_printer(self) -> QPrinter:
+        printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+        case_number = self.current_case.case_number if self.current_case else ""
+        _packet_label, packet_suffix, _exporter = self._packet_preview_details()
+        printer.setDocName(
+            f"{case_number or 'Traffic_Crash'}_{packet_suffix}"
+        )
+        printer.setCreator(f"Traffic Crash Notebook {__version__}")
+        printer.setPageSize(QPageSize(QPageSize.PageSizeId.Letter))
+        printer.setPageOrientation(QPageLayout.Orientation.Portrait)
+        return printer
+
+    def print_case_packet(self) -> None:
+        if not self.current_case or not self.save_overview():
+            return
+        self.refresh_case_packet_preview(force_preview=True)
+        page_count = self.packet_pdf_document.pageCount()
+        if (
+            page_count < 1
+            or not self.packet_preview_path.is_file()
+            or self.packet_preview_status.text().startswith("Preview failed")
+        ):
+            QMessageBox.critical(
+                self,
+                "Case packet print failed",
+                "The current packet preview could not be generated. Review the "
+                "preview message and try again.",
+            )
+            return
+
+        packet_label, _packet_suffix, _exporter = self._packet_preview_details()
+        printer = self._create_packet_printer()
+        dialog = QPrintDialog(printer, self)
+        dialog.setWindowTitle(f"Print {packet_label}")
+        dialog.setMinMax(1, page_count)
+        dialog.setFromTo(1, page_count)
+        for option in (
+            QAbstractPrintDialog.PrintDialogOption.PrintPageRange,
+            QAbstractPrintDialog.PrintDialogOption.PrintCurrentPage,
+            QAbstractPrintDialog.PrintDialogOption.PrintShowPageSize,
+        ):
+            dialog.setOption(option, True)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        if not printer.isValid():
+            QMessageBox.warning(
+                self,
+                "No printer available",
+                "Windows did not report an available printer. Add or reconnect a "
+                "printer, then try again.",
+            )
+            return
+
+        current_page = self.packet_pdf_view.pageNavigator().currentPage()
+        page_indexes = selected_pdf_page_indexes(
+            printer,
+            page_count,
+            current_page=current_page,
+        )
+        try:
+            printed_pages = print_pdf_document(
+                self.packet_pdf_document,
+                printer,
+                page_indexes,
+            )
+        except Exception as error:
+            QMessageBox.critical(
+                self,
+                "Case packet print failed",
+                f"The case packet could not be printed.\n\n{error}",
+            )
+            return
+        destination = (
+            printer.outputFileName()
+            or printer.printerName()
+            or "the selected printer"
+        )
+        self.statusBar().showMessage(
+            f"Sent {printed_pages} {packet_label.lower()} page(s) to {destination}.",
+            5000,
+        )
+
     def export_pdf(self) -> None:
         if not self.current_case:
             return
@@ -2800,13 +3267,6 @@ class MainWindow(QMainWindow):
         if not self.save_overview():
             return
         self.refresh_exchange_report(force_preview=True)
-        if not self.exchange_preview_path.is_file():
-            QMessageBox.critical(
-                self,
-                "Exchange report export failed",
-                "The preview PDF could not be generated. Review the preview message and try again.",
-            )
-            return
         reports_directory = self._reports_directory()
         if reports_directory is None:
             return
@@ -2825,11 +3285,34 @@ class MainWindow(QMainWindow):
         )
         if not destination:
             return
+        destination_path = Path(destination)
+        temporary_path = destination_path.with_name(
+            f".{destination_path.name}.{uuid.uuid4().hex}.tmp"
+        )
         try:
-            shutil.copy2(self.exchange_preview_path, destination)
+            export_exchange_report_pdf(
+                self.repository,
+                self.current_case.id,
+                temporary_path,
+            )
+            pdf_bytes = temporary_path.read_bytes()
+            if (
+                len(pdf_bytes) < 1000
+                or not pdf_bytes.startswith(b"%PDF-")
+                or b"%%EOF" not in pdf_bytes[-1024:]
+            ):
+                raise RuntimeError(
+                    "The newly generated exchange report did not pass its PDF integrity check."
+                )
+            os.replace(temporary_path, destination_path)
         except Exception as exc:
             QMessageBox.critical(self, "Exchange report export failed", str(exc))
             return
+        finally:
+            try:
+                temporary_path.unlink(missing_ok=True)
+            except OSError:
+                pass
         self.statusBar().showMessage(
             f"Exchange report exported to {destination}",
             5000,
@@ -2852,16 +3335,13 @@ class MainWindow(QMainWindow):
             return
         self.refresh_exchange_report(force_preview=True)
         page_count = self.exchange_pdf_document.pageCount()
-        if (
-            page_count < 1
-            or not self.exchange_preview_path.is_file()
-            or self.exchange_preview_status.text().startswith("Preview failed")
-        ):
+        if not self._exchange_preview_is_current():
             QMessageBox.critical(
                 self,
                 "Exchange report print failed",
-                "The current exchange-report preview could not be generated. "
-                "Review the preview message and try again.",
+                "A verified preview for the selected case could not be generated. "
+                "Nothing was sent to the printer. Review the preview message and "
+                "try again.",
             )
             return
 
@@ -3290,6 +3770,8 @@ class MainWindow(QMainWindow):
             if answer != QMessageBox.StandardButton.Yes:
                 event.ignore()
                 return
+        self.autosave_timer.stop()
+        self.periodic_autosave_timer.stop()
         event.accept()
 
 

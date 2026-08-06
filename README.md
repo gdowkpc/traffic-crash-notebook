@@ -13,14 +13,14 @@ grant permission to reuse the source or bundled assets. Agency names, forms, mar
 and other third-party material remain the property of their respective owners; no
 agency endorsement is implied.
 
-## Included in version 0.5.3
+## Included in version 0.5.4
 
 - Create and reopen unlimited cases.
 - Read the selected case clearly with high-contrast text whether the case selector has keyboard focus or not.
 - Use a guided first-run Data Storage Setup to select an investigator's assigned K: drive, another approved folder, or local storage; safely copy existing cases and verify the selected folder before use.
 - Open Settings from the case header to review or change the data location and save the investigator's name, numeric DPSST, and assignment as defaults for new cases.
 - Automatically check the official public GitHub release manifest at most once every 24 hours, or check immediately from **Help > Check for Updates**; approved downloads are size- and SHA-256-verified before being kept.
-- Record the case overview, assigned officer, numeric DPSST, assignment, crash summary, unresolved questions, and general notes; display crash times with AM/PM.
+- Record the case overview, assigned officer, numeric DPSST, assignment, crash summary, and general notes; display crash times with AM/PM.
 - Enter a person once and assign multiple roles such as driver, passenger, pedestrian, witness, or victim.
 - Create unlimited vehicles and link existing people as drivers or owners.
 - Preview, print through the standard Windows printer dialog, and export a Traffic Crash Exchange Report from existing case records without duplicate data entry. It preserves linked and unambiguous legacy drivers; includes every saved passenger, witness, pedestrian, and bicyclist; maps DPSST and Assignment into the footer; creates continuation pages as needed; and appends a searchable text information/responsibilities page last.
@@ -28,16 +28,16 @@ agency endorsement is implied.
 - Track open, waiting, completed, and unnecessary tasks or evidence requests.
 - Automatically save overview changes.
 - Underline misspelled words in narrative and notes fields using a bundled offline English dictionary, with right-click corrections and a personal dictionary.
-- Export a comprehensive Full Working Packet with a dedicated routing cover page and ruled handwriting areas, a Compact Packet that suppresses unused material, and a concise Quick Review.
+- Preview, print through the standard Windows printer dialog, and export a comprehensive Full Working Packet with a dedicated routing cover page and ruled handwriting areas or a Compact Packet that suppresses unused material; a separate Quick Review export remains available.
 - Print case identity on every page with final "Page X of Y" numbering and a top-edge punch-safe layout for two-hole attorney folders.
 - Create a consistent SQLite database backup while the application is running.
-- Record unlimited tagged roadways with their own speed, posting, curve, characteristics, and traffic-control details, plus weather-station and reading-time data, celestial lighting/twilight details, visibility, and scene-analysis conditions.
+- Record unlimited roadways with their own speed, posting, curve, characteristics, and traffic-control details, plus a compact weather form with station, reading time, and automatic display units, celestial lighting/twilight details, visibility, and scene-analysis conditions.
 - Maintain participant injury, transport, restraint, ejection/extraction, autopsy, next-of-kin, and medical/evidence notes.
-- Maintain driver trip, impairment, sleep, work, familiarity, history, and license information.
-- Record vehicle weights, brakes, safety equipment, lighting, tire contribution, individual tire measurements, and per-vehicle release status, date, and details.
+- Maintain driver trip, impairment, sleep, work, familiarity, history, and license information including endorsements.
+- Record vehicle weights, brakes, safety equipment, lighting, tire contribution, individual tire measurements, a per-vehicle NHTSA recall-check confirmation, towing status and destination, and release status, date, and details.
 - Record structured equipped/operable states, switch positions, body/glass/restraint observations, identity checks, and unlimited tire positions.
 - Complete the original packet's 44-item motorcycle inspection with ratings, measurements, comments, and inspection metadata.
-- Track the investigative checklist, crash-diagram completion, Axon sharing, dated peer/sergeant/DA submission milestones, unlimited charges/dispositions, crash-team response details, and unlimited video sources.
+- Track the investigative checklist, crash-diagram completion, Axon sharing, dated peer/sergeant/DA submission milestones, unlimited charges/dispositions, crash-team response details, and unlimited video sources with location addresses and Axon upload status.
 - Add, edit, and remove multiple roadway-surface records from a dedicated Surface subtab, with roadway/location, composition, condition, friction/drag factor, and notes.
 - Store separate cell, home, and work numbers plus city, state, occupation, and business address data for people and contacts, with ZIP codes on person addresses.
 - Display the Traffic Investigations Unit logo in the application and generated PDF.
@@ -69,7 +69,7 @@ builds the executable, runs the finished executable's portable self-test, and
 creates:
 
 ```text
-release\TrafficCrashNotebook-0.5.3-Windows-Portable.zip
+release\TrafficCrashNotebook-0.5.4-Windows-Portable.zip
 ```
 
 The included GitHub Actions workflow performs the same build on a hosted Windows
@@ -154,8 +154,9 @@ entered text to a network service.
 
 ## Printing modes
 
-- **Export Full Working Packet** preserves the complete section order and adds ruled areas for handwritten updates after printing. It is the intended attorney-folder copy. Print one-sided when practical so every ruled area remains easy to use.
-- **Export Compact Packet** includes the complete entered record but omits unused sections and dedicated handwriting areas.
+- **Case Packet Preview** displays either the Full Working Packet or Compact Packet inside the application and supports refresh, PDF export, and direct printing of all pages, the current page, or a selected page range.
+- **Full Working Packet** preserves the complete section order and adds ruled areas for handwritten updates after printing. It is the intended attorney-folder copy. Print one-sided when practical so every ruled area remains easy to use.
+- **Compact Packet** includes the complete entered record but omits unused sections and dedicated handwriting areas.
 - **Export Quick Review** creates a concise briefing copy rather than the complete packet.
 - **Exchange Report preview / export** creates a searchable, template-style information-exchange form from existing case data. It preserves drivers, dynamically packs existing vehicles plus pedestrian and bicyclist participants, adds numbered continuation pages as needed, and appends a selectable-text information/responsibilities page last.
 

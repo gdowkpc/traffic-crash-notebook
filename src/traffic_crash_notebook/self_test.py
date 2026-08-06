@@ -170,8 +170,11 @@ def run_self_test(output_directory: str | Path) -> Path:
         insurance_company="Verification Insurance",
         insurance_policy_number="POLICY-123",
         property_damage="None",
+        towed=True,
+        tow_information="Verification Tow Yard",
         warrant_obtained=True,
         vehicle_inspection_completed=True,
+        nhtsa_recalls_checked=True,
         cdr_equipped=True,
         cdr_imaged=True,
         cdr_report_uploaded=True,
@@ -183,10 +186,12 @@ def run_self_test(output_directory: str | Path) -> Path:
     if not loaded_vehicle or not all((
         loaded_vehicle.warrant_obtained,
         loaded_vehicle.vehicle_inspection_completed,
+        loaded_vehicle.nhtsa_recalls_checked,
         loaded_vehicle.cdr_equipped,
         loaded_vehicle.cdr_imaged,
         loaded_vehicle.cdr_report_uploaded,
         loaded_vehicle.released,
+        loaded_vehicle.towed,
     )):
         raise RuntimeError(
             "The per-vehicle checklist and release status could not be saved and reloaded."
@@ -194,12 +199,13 @@ def run_self_test(output_directory: str | Path) -> Path:
     if (
         loaded_vehicle.insurance_company != "Verification Insurance"
         or loaded_vehicle.insurance_policy_number != "POLICY-123"
+        or loaded_vehicle.tow_information != "Verification Tow Yard"
         or loaded_vehicle.release_date != "2026-08-05"
         or loaded_vehicle.release_information
         != "Released to verification owner with receipt"
     ):
         raise RuntimeError(
-            "The vehicle insurance or release fields could not be saved and reloaded."
+            "The vehicle insurance, towing, or release fields could not be saved and reloaded."
         )
     repository.save_witness_details(WitnessDetails(
         person_id=person.id, interviewed="Yes",
@@ -228,11 +234,22 @@ def run_self_test(output_directory: str | Path) -> Path:
         sergeant="Verification Sergeant", medical_examiner_on_scene="Verification MDI",
         scene_evidence=["Investigator Photos", "Uploaded to Axon", "FARO"],
     ))
-    repository.save_video_source(VideoSource(
-        id="", case_id=case.id, source="Verification camera", dims_status="Yes",
+    video_source = repository.save_video_source(VideoSource(
+        id="", case_id=case.id, source="Verification camera",
+        address="456 Verification Avenue, Portland, OR 97204",
+        axon_status="Yes",
     ))
+    loaded_video_source = repository.get_video_source(video_source.id)
+    if (
+        not loaded_video_source
+        or loaded_video_source.address != "456 Verification Avenue, Portland, OR 97204"
+        or loaded_video_source.axon_status != "Yes"
+    ):
+        raise RuntimeError("Video-source address and Axon upload status persistence failed.")
     repository.save_road_conditions(RoadConditions(
-        case_id=case.id, weather_condition="Clear",
+        case_id=case.id, temperature="68", dew_point="51", winds="NW 7",
+        humidity="48", pressure="29.94", precipitation="0.02",
+        weather_condition="Clear",
         weather_station="KPDX", weather_time="08:53 PDT",
         area_classifications="Business; Interstate",
         streetlight_notes="Verification note",
@@ -266,9 +283,13 @@ def run_self_test(output_directory: str | Path) -> Path:
     if repository.get_participant_details(person.id).extracted != "Yes":
         raise RuntimeError("The participant extracted status could not be saved and reloaded.")
     repository.save_driver_profile(DriverProfile(
-        person_id=person.id, testing_methods="SFST", license_restricted="No",
+        person_id=person.id, physical_condition_types="Vision",
+        testing_methods="SFST", license_restricted="No",
         license_number="SELFTEST-DL", license_state="OR",
+        endorsements="Passenger; Tank",
     ))
+    if repository.get_driver_profile(person.id).endorsements != "Passenger; Tank":
+        raise RuntimeError("The driver-license endorsements could not be saved and reloaded.")
     pedestrian = repository.save_person(Person(
         id=new_id(), case_id=case.id, first_name="Portable", last_name="Pedestrian",
         address="200 Verification Walk", city="Portland", state="OR",
@@ -416,11 +437,24 @@ def run_self_test(output_directory: str | Path) -> Path:
     packet_document.close()
     normalized_packet_text = " ".join(packet_text.split())
     for required_text in (
+        "NHTSA RECALLS CHECKED",
+        "TOWED / TO",
+        "Yes - Verification Tow Yard",
+        "68 F",
+        "51 F",
+        "NW 7 mph",
+        "48%",
+        "29.94 inHg",
+        "0.02 in",
         "RELEASED",
         "08/05/2026",
         "Released to verification owner with receipt",
         "LIGHT METER USED",
         "LIGHT BOARD USED",
+        "PHYSICAL CONDITIONS",
+        "Vision",
+        "ENDORSEMENTS",
+        "Passenger; Tank",
     ):
         if required_text not in normalized_packet_text:
             raise RuntimeError(
@@ -483,7 +517,8 @@ def run_self_test(output_directory: str | Path) -> Path:
             f"Exchange-report PDF bytes: {exchange_pdf.stat().st_size}",
             "Person ZIP code persistence: PASS",
             "Participant extracted status persistence: PASS",
-            "Per-vehicle checklist, release, and insurance persistence: PASS",
+            "Per-vehicle checklist, towing, release, and insurance persistence: PASS",
+            "Video-source address and Axon upload status persistence: PASS",
             "VRU light-meter and light-board persistence: PASS",
             "Hit-and-run overview, evidence, lead, and confirmed-record links: PASS",
             "Assigned-officer DPSST and assignment persistence: PASS",

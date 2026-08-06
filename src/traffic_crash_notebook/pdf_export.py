@@ -55,6 +55,7 @@ from .models import (
     VRUAnalysis,
     WitnessDetails,
     format_crash_location,
+    format_weather_measurement,
     scene_evidence_for_output,
 )
 from .repository import CaseRepository
@@ -673,13 +674,6 @@ def _packet_cover(
         da_routing,
     ])
     story.extend(_narrative_block("Crash summary", case.summary, styles))
-    story.extend(
-        _narrative_block(
-            "Key questions / unresolved issues",
-            case.key_questions,
-            styles,
-        )
-    )
     return story
 
 
@@ -749,7 +743,6 @@ def _case_overview(
     ]))
     story.append(metrics)
     story.extend(_narrative_block("Crash summary", case.summary, styles))
-    story.extend(_narrative_block("Key questions / unresolved issues", case.key_questions, styles))
     return story
 
 
@@ -911,16 +904,22 @@ def _packet_case_section(
     if video_sources:
         video_rows = [[
             Paragraph("VIDEO SOURCE", styles["Label"]),
-            Paragraph("DIMS", styles["Label"]),
+            Paragraph("ADDRESS", styles["Label"]),
+            Paragraph("UPLOADED TO AXON", styles["Label"]),
             Paragraph("NOTES", styles["Label"]),
         ]]
         video_rows.extend([
             [Paragraph(_text(record.source), styles["Cell"]),
-             Paragraph(_text(record.dims_status), styles["Cell"]),
+             Paragraph(_text(record.address), styles["Cell"]),
+             Paragraph(_text(record.axon_status), styles["Cell"]),
              Paragraph(_text(record.notes), styles["Cell"])]
             for record in video_sources
         ])
-        video_table = Table(video_rows, colWidths=[2.4 * inch, 1.0 * inch, 3.2 * inch], repeatRows=1)
+        video_table = Table(
+            video_rows,
+            colWidths=[1.65 * inch, 2.1 * inch, 1.25 * inch, 1.6 * inch],
+            repeatRows=1,
+        )
         video_table.setStyle(_standard_table_style())
         story.extend([Paragraph("Video sources", styles["Subsection"]), video_table])
     return story
@@ -1235,16 +1234,25 @@ def _conditions_section(
     ):
         story.append(Paragraph("No detailed road or weather conditions entered.", styles["Empty"]))
         return story
+    temperature = format_weather_measurement("temperature", conditions.temperature)
+    dew_point = format_weather_measurement("dew_point", conditions.dew_point)
+    winds = format_weather_measurement("winds", conditions.winds)
+    humidity = format_weather_measurement("humidity", conditions.humidity)
+    pressure = format_weather_measurement("pressure", conditions.pressure)
+    precipitation = format_weather_measurement(
+        "precipitation",
+        conditions.precipitation,
+    )
     data = [
-        [Paragraph("TEMPERATURE", styles["Label"]), Paragraph(_text(conditions.temperature), styles["Cell"]),
+        [Paragraph("TEMPERATURE", styles["Label"]), Paragraph(_text(temperature), styles["Cell"]),
          Paragraph("WEATHER", styles["Label"]), Paragraph(_text(conditions.weather_condition), styles["Cell"])],
         [Paragraph("WEATHER STATION", styles["Label"]), Paragraph(_text(conditions.weather_station), styles["Cell"]),
          Paragraph("TIME OF READING", styles["Label"]), Paragraph(_text(conditions.weather_time), styles["Cell"])],
-        [Paragraph("WINDS", styles["Label"]), Paragraph(_text(conditions.winds), styles["Cell"]),
-         Paragraph("PRECIPITATION", styles["Label"]), Paragraph(_text(conditions.precipitation), styles["Cell"])],
+        [Paragraph("WINDS", styles["Label"]), Paragraph(_text(winds), styles["Cell"]),
+         Paragraph("PRECIPITATION", styles["Label"]), Paragraph(_text(precipitation), styles["Cell"])],
         [Paragraph("HUMIDITY / DEW POINT", styles["Label"]),
-         Paragraph(_text(" / ".join(x for x in (conditions.humidity, conditions.dew_point) if x)), styles["Cell"]),
-         Paragraph("PRESSURE", styles["Label"]), Paragraph(_text(conditions.pressure), styles["Cell"])],
+         Paragraph(_text(" / ".join(x for x in (humidity, dew_point) if x)), styles["Cell"]),
+         Paragraph("PRESSURE", styles["Label"]), Paragraph(_text(pressure), styles["Cell"])],
         [Paragraph("AREA CLASSIFICATIONS", styles["Label"]),
          Paragraph(_text(conditions.area_classifications), styles["Cell"]),
          Paragraph("AREA TYPE", styles["Label"]),
@@ -1260,7 +1268,7 @@ def _conditions_section(
         ])
     if roadway_records:
         roadway_rows = [[Paragraph(item, styles["Label"]) for item in (
-            "ROADWAY / TAG",
+            "ROADWAY",
             "SPEED",
             "POSTED / LOCATION",
             "CURVE / CRITICAL SPEED",
@@ -1389,10 +1397,22 @@ def _people_section(people: list[Person], styles) -> list[object]:
             f"Work {person.work_phone}" if person.work_phone else "",
             person.email,
         ) if value)
+        sex_and_race = " / ".join(
+            value for value in (person.sex, person.race) if value
+        )
+        display_dob = format_date_for_display(person.dob)
+        identity_lines = [
+            _text(value)
+            for value in (
+                sex_and_race,
+                f"DOB: {display_dob}" if display_dob else "",
+            )
+            if value
+        ]
         data.append([
             Paragraph(_text(person.display_name), styles["Cell"]),
             Paragraph(_text(", ".join(person.roles)), styles["Cell"]),
-            Paragraph(_text(" / ".join(value for value in (format_date_for_display(person.dob), person.sex, person.race) if value)), styles["Cell"]),
+            Paragraph("<br/>".join(identity_lines) or "-", styles["Cell"]),
             Paragraph(_text(_person_address(person)), styles["Cell"]),
             Paragraph(_text(phones), styles["Cell"]),
             Paragraph(_text("; ".join(value for value in (
@@ -1403,7 +1423,7 @@ def _people_section(people: list[Person], styles) -> list[object]:
         ])
     table = Table(
         data,
-        colWidths=[1.15 * inch, 0.9 * inch, 0.9 * inch, 1.3 * inch, 1.15 * inch, 1.2 * inch],
+        colWidths=[1.1 * inch, 0.85 * inch, 1.05 * inch, 1.25 * inch, 1.15 * inch, 1.2 * inch],
         repeatRows=1,
     )
     table.setStyle(_standard_table_style())
@@ -1434,17 +1454,23 @@ def _participant_sections(
         story.append(Paragraph(_text(person.display_name), styles["Subsection"]))
         if _has_detail(details, {"person_id", "updated_at"}):
             participant_data = [
+                [Paragraph("GENDER / RACE", styles["Label"]),
+                 Paragraph(_text(" / ".join(
+                     value for value in (person.sex, person.race) if value
+                 )), styles["Cell"]),
+                 Paragraph("DOB", styles["Label"]),
+                 Paragraph(_text(format_date_for_display(person.dob)), styles["Cell"])],
                 [Paragraph("VEHICLE / POSITION", styles["Label"]),
                  Paragraph(_text("; ".join(x for x in (vehicle_names.get(details.vehicle_id, ""), details.occupant_position) if x)), styles["Cell"]),
                  Paragraph("INJURY STATUS", styles["Label"]), Paragraph(_text(details.injury_status), styles["Cell"])],
+                [Paragraph("HEIGHT / WEIGHT", styles["Label"]),
+                 Paragraph(_text(" / ".join(value for value in (details.height, details.weight) if value)), styles["Cell"]),
+                 Paragraph("INJURY CODES", styles["Label"]), Paragraph(_text(details.injury_codes), styles["Cell"])],
                 [Paragraph("TRANSPORT", styles["Label"]),
                  Paragraph(_text(f"{details.transported} - {details.transported_to}" if details.transported_to else details.transported), styles["Cell"]),
                  Paragraph("HOSPITAL / RECORDS", styles["Label"]), Paragraph(_text("; ".join(
                      value for value in (details.hospital, details.medical_records_status) if value
                  )), styles["Cell"])],
-                [Paragraph("HEIGHT / WEIGHT", styles["Label"]),
-                 Paragraph(_text(" / ".join(value for value in (details.height, details.weight) if value)), styles["Cell"]),
-                 Paragraph("INJURY CODES", styles["Label"]), Paragraph(_text(details.injury_codes), styles["Cell"])],
                 [Paragraph("RESTRAINT / AIR BAG", styles["Label"]),
                  Paragraph(_text(f"Installed {details.seatbelt_installed}; used {details.seatbelt_used}; air bag {details.airbag_deployed}"), styles["Cell"]),
                  Paragraph("EJECTED / EXTRACTED", styles["Label"]),
@@ -1472,6 +1498,8 @@ def _participant_sections(
                  Paragraph(_text(f"{profile.trip_from} to {profile.trip_to}; {profile.trip_purpose}"), styles["Cell"]),
                  Paragraph("IMPAIRMENT", styles["Label"]),
                  Paragraph(_text("; ".join(x for x in (profile.impairment_status, profile.bac, profile.testing) if x)), styles["Cell"])],
+                [Paragraph("PHYSICAL CONDITIONS", styles["Label"]),
+                 Paragraph(_text(profile.physical_condition_types), styles["Cell"]), "", ""],
                 [Paragraph("SLEEP / AWAKE", styles["Label"]),
                  Paragraph(_text(f"{profile.hours_asleep} asleep; {profile.hours_awake} awake"), styles["Cell"]),
                  Paragraph("WORK", styles["Label"]),
@@ -1483,17 +1511,21 @@ def _participant_sections(
                 [Paragraph("LICENSE", styles["Label"]),
                  Paragraph(_text(" ".join(x for x in (profile.license_state, profile.license_number,
                      profile.license_class, profile.license_status) if x)), styles["Cell"]),
-                 Paragraph("RESTRICTIONS", styles["Label"]), Paragraph(_text("; ".join(value for value in (
+                 Paragraph("ENDORSEMENTS", styles["Label"]),
+                 Paragraph(_text(profile.endorsements), styles["Cell"])],
+                [Paragraph("RESTRICTIONS", styles["Label"]), Paragraph(_text("; ".join(value for value in (
                      profile.license_restricted,
                      profile.license_restriction_explanation,
                      profile.license_restrictions,
-                 ) if value)), styles["Cell"])],
+                 ) if value)), styles["Cell"]), "", ""],
             ]
             table = Table(driver_data, colWidths=[1.3 * inch, 2.05 * inch, 1.18 * inch, 2.07 * inch])
-            table.setStyle(_standard_table_style())
+            driver_table_style = _standard_table_style()
+            driver_table_style.add("SPAN", (1, 1), (3, 1))
+            driver_table_style.add("SPAN", (1, 5), (3, 5))
+            table.setStyle(driver_table_style)
             story.extend([Paragraph("Driver background", styles["Label"]), table])
-            for title, value in (("Physical condition selections", profile.physical_condition_types),
-                                 ("Medical conditions", "\n".join(x for x in (profile.permanent_conditions, profile.temporary_conditions) if x)),
+            for title, value in (("Medical conditions", "\n".join(x for x in (profile.permanent_conditions, profile.temporary_conditions) if x)),
                                  ("Testing methods", profile.testing_methods),
                                  ("Impairment notes", profile.impairment_notes), ("Driver notes", profile.notes)):
                 if value:
@@ -1517,13 +1549,19 @@ def _vehicles_section(
     for vehicle in vehicles:
         heading = f"{_text(vehicle.vehicle_number or 'Vehicle')} - {_text(vehicle.description)}"
         insurance_company = vehicle.insurance_company or vehicle.insurance
+        towing = "No"
+        if vehicle.towed:
+            towing = " - ".join(value for value in (
+                "Yes",
+                vehicle.tow_information,
+            ) if value)
         details = [
             [Paragraph("COLOR", styles["Label"]), Paragraph("PLATE", styles["Label"]),
-             Paragraph("VIN", styles["Label"]), Paragraph("TOW", styles["Label"])],
+             Paragraph("VIN", styles["Label"]), Paragraph("TOWED / TO", styles["Label"])],
             [Paragraph(_text(vehicle.color), styles["Cell"]),
              Paragraph(_text(" ".join(x for x in (vehicle.plate_state, vehicle.plate) if x)), styles["Cell"]),
              Paragraph(_text(vehicle.vin), styles["Cell"]),
-             Paragraph(_text(vehicle.tow_information), styles["Cell"])],
+             Paragraph(_text(towing), styles["Cell"])],
             [Paragraph("DRIVER", styles["Label"]), Paragraph("OWNER", styles["Label"]),
              Paragraph("INSURANCE COMPANY", styles["Label"]),
              Paragraph("POLICY NUMBER", styles["Label"])],

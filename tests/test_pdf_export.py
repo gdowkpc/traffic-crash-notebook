@@ -33,6 +33,7 @@ from traffic_crash_notebook.models import (
     VideoSource,
     VRUAnalysis,
     WitnessDetails,
+    format_weather_measurement,
     scene_evidence_for_output,
 )
 from traffic_crash_notebook.pdf_export import (
@@ -44,6 +45,20 @@ from traffic_crash_notebook.repository import CaseRepository, new_id
 
 
 class PdfExportTest(unittest.TestCase):
+    def test_weather_measurements_add_units_once_and_preserve_descriptions(self):
+        self.assertEqual(format_weather_measurement("temperature", "71"), "71 F")
+        self.assertEqual(format_weather_measurement("temperature", "71 F"), "71 F")
+        self.assertEqual(format_weather_measurement("dew_point", "54"), "54 F")
+        self.assertEqual(format_weather_measurement("dew_point", "54 F"), "54 F")
+        self.assertEqual(format_weather_measurement("winds", "NW 6"), "NW 6 mph")
+        self.assertEqual(format_weather_measurement("winds", "Calm"), "Calm")
+        self.assertEqual(format_weather_measurement("humidity", "43"), "43%")
+        self.assertEqual(format_weather_measurement("humidity", "43%"), "43%")
+        self.assertEqual(format_weather_measurement("pressure", "29.92"), "29.92 inHg")
+        self.assertEqual(format_weather_measurement("pressure", "1013 hPa"), "1013 hPa")
+        self.assertEqual(format_weather_measurement("precipitation", "0.04"), "0.04 in")
+        self.assertEqual(format_weather_measurement("precipitation", "Trace"), "Trace")
+
     def test_scene_evidence_filters_retired_values_and_derives_surveillance_video(self):
         selected = [
             "Crime Scene Log",
@@ -51,19 +66,21 @@ class PdfExportTest(unittest.TestCase):
             "Surveillance Video",
             "PED",
             "Trimble",
+            "DIMS",
             "Investigator Photos",
             "Uploaded to Axon",
             "FARO",
         ]
         self.assertEqual(
             scene_evidence_for_output(selected, has_video_sources=False),
-            ["Investigator Photos", "Uploaded to Axon", "FARO"],
+            ["Investigator Photos", "Uploaded to Axon", "Axon", "FARO"],
         )
         self.assertEqual(
             scene_evidence_for_output(selected, has_video_sources=True),
             [
                 "Investigator Photos",
                 "Uploaded to Axon",
+                "Axon",
                 "FARO",
                 "Surveillance Video",
             ],
@@ -106,6 +123,8 @@ class PdfExportTest(unittest.TestCase):
                 self.assertIn("PEER REVIEW", cover_text)
                 self.assertIn("MCT SERGEANT REVIEW", cover_text)
                 self.assertIn("SUBMITTED TO DA", cover_text)
+                self.assertNotIn("Key questions", cover_text)
+                self.assertNotIn("unresolved issues", cover_text.lower())
                 self.assertNotIn("Investigative packet", cover_text)
                 self.assertIn("Investigative packet", second_page_text)
 
@@ -251,6 +270,7 @@ class PdfExportTest(unittest.TestCase):
                 home_phone="503-555-0102", work_phone="503-555-0103",
                 address="123 Example Street", city="Portland", state="OR",
                 zip_code="97201", occupation="Engineer", dob="1985-01-02",
+                sex="M", race="White",
                 business_address="100 Example Avenue",
             )
             repository.save_person(person)
@@ -263,8 +283,11 @@ class PdfExportTest(unittest.TestCase):
                 make="Toyota", model="Camry", driver_person_id=person.id,
                 insurance_company="Example Mutual",
                 insurance_policy_number="POL-24680",
+                towed=True,
+                tow_information="Central Evidence Tow Yard",
                 warrant_obtained=True,
                 vehicle_inspection_completed=True,
+                nhtsa_recalls_checked=True,
                 cdr_equipped=True,
                 cdr_imaged=True,
                 cdr_report_uploaded=True,
@@ -275,7 +298,9 @@ class PdfExportTest(unittest.TestCase):
             )
             repository.save_vehicle(vehicle)
             repository.save_road_conditions(RoadConditions(
-                case_id=case.id, temperature="71 F",
+                case_id=case.id, temperature="71", dew_point="54",
+                winds="NW 6", humidity="43", pressure="29.92",
+                precipitation="0.04",
                 surface_condition="LEGACY SINGLE SURFACE VALUE",
                 weather_station="KPDX ASOS", weather_time="14:35 PDT",
                 lighting_conditions="Daylight", speed_limit="35",
@@ -347,7 +372,8 @@ class PdfExportTest(unittest.TestCase):
             ))
             repository.save_video_source(VideoSource(
                 id="", case_id=case.id, source="North intersection camera",
-                dims_status="Entered", notes="Requested from traffic operations",
+                address="100 North Example Street, Portland, OR 97201",
+                axon_status="Yes", notes="Requested from traffic operations",
             ))
             repository.save_participant_details(ParticipantDetails(
                 person_id=person.id, vehicle_id=vehicle.id, injury_status="Injured",
@@ -362,6 +388,7 @@ class PdfExportTest(unittest.TestCase):
                 hours_asleep="7 hours", license_status="Valid",
                 physical_condition_types="Vision", testing_methods="SFST",
                 license_restricted="Yes", license_restriction_explanation="Corrective lenses",
+                endorsements="Passenger; Tank",
             ))
             repository.save_witness_details(WitnessDetails(
                 person_id=person.id, interviewed="Yes", interview_date="2026-08-05",
@@ -444,6 +471,8 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("Complete - 08/08/2026", normalized_cover_text)
             self.assertIn("Taylor Example", cover_text)
             self.assertIn("DA-26-100", cover_text)
+            self.assertNotIn("Key questions", cover_text)
+            self.assertNotIn("unresolved issues", cover_text.lower())
             self.assertNotIn("Investigative packet", cover_text)
             self.assertIn(
                 "Investigative packet",
@@ -451,11 +480,25 @@ class PdfExportTest(unittest.TestCase):
             )
             self.assertIn("26-123456", text)
             self.assertIn("Morgan Lee", text)
+            people_page_text = next(
+                page.extract_text() or ""
+                for page in reader.pages
+                if "People" in (page.extract_text() or "")
+                and "Morgan Lee" in (page.extract_text() or "")
+            )
+            self.assertRegex(
+                people_page_text,
+                r"M / White\s+DOB: 01/02/1985",
+            )
+            self.assertNotIn("01/02/1985 / M / White", people_page_text)
             self.assertIn("123 Example Street, Portland, OR 97201", normalized_text)
             self.assertIn("2024 Toyota Camry", text)
             self.assertIn("Vehicle-specific checklist", normalized_text)
             self.assertIn("WARRANT", normalized_text)
             self.assertIn("VEHICLE INSPECTION", normalized_text)
+            self.assertIn("NHTSA RECALLS CHECKED", normalized_text)
+            self.assertIn("TOWED / TO", normalized_text)
+            self.assertIn("Yes - Central Evidence Tow Yard", normalized_text)
             self.assertIn("CDR EQUIPPED", normalized_text)
             self.assertIn("CDR IMAGED", normalized_text)
             self.assertIn("CDR REPORT UPLOADED", normalized_text)
@@ -481,6 +524,12 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("Road and weather conditions", text)
             self.assertIn("WEATHER STATION", normalized_text)
             self.assertIn("TIME OF READING", normalized_text)
+            self.assertIn("71 F", normalized_text)
+            self.assertIn("54 F", normalized_text)
+            self.assertIn("NW 6 mph", normalized_text)
+            self.assertIn("43%", normalized_text)
+            self.assertIn("29.92 inHg", normalized_text)
+            self.assertIn("0.04 in", normalized_text)
             self.assertIn("KPDX ASOS", text)
             self.assertIn("14:35 PDT", text)
             self.assertIn("MORNING CIVIL TWILIGHT", normalized_text)
@@ -495,6 +544,8 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("Waxing gibbous", text)
             self.assertIn("Interstate", text)
             self.assertIn("Roadways", text)
+            self.assertIn("ROADWAY", text)
+            self.assertNotIn("ROADWAY / TAG", text)
             self.assertIn("North Example Street - northbound", normalized_text)
             self.assertIn("Example Avenue - westbound", normalized_text)
             self.assertIn("Northbound approach sign", normalized_text)
@@ -525,10 +576,15 @@ class PdfExportTest(unittest.TestCase):
                 "1985-01-02",
             ):
                 self.assertNotIn(storage_date, text)
-            self.assertNotIn("DIMS CD Ordered", text)
+            self.assertNotIn("DIMS", text)
             self.assertIn("Taylor Example", text)
             self.assertIn("Reckless Driving", text)
             self.assertIn("North intersection camera", text)
+            self.assertIn(
+                "100 North Example Street, Portland, OR 97201",
+                normalized_text,
+            )
+            self.assertIn("UPLOADED TO AXON", text)
             self.assertIn("North Example Street / Example Avenue", normalized_text)
             self.assertIn("NOT AT INTERSECTION", normalized_text)
             self.assertIn("250 ft North of intersection", normalized_text)
@@ -551,6 +607,26 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("0.48", text)
             self.assertNotIn("LEGACY SINGLE SURFACE VALUE", text)
             self.assertIn("Corrective lenses", text)
+            participant_block = normalized_text.split(
+                "Participant and driver details",
+                1,
+            )[1].split("Vehicles", 1)[0]
+            self.assertIn("GENDER / RACE M / White DOB 01/02/1985", participant_block)
+            self.assertLess(
+                participant_block.index("HEIGHT / WEIGHT"),
+                participant_block.index("TRANSPORT"),
+            )
+            self.assertIn("ENDORSEMENTS Passenger; Tank", participant_block)
+            self.assertIn("PHYSICAL CONDITIONS Vision", participant_block)
+            self.assertLess(
+                participant_block.index("IMPAIRMENT"),
+                participant_block.index("PHYSICAL CONDITIONS"),
+            )
+            self.assertLess(
+                participant_block.index("PHYSICAL CONDITIONS"),
+                participant_block.index("SLEEP / AWAKE"),
+            )
+            self.assertNotIn("Physical condition selections", participant_block)
             self.assertIn("Roof Vault", text)
             self.assertIn("RF tread separation", text)
             self.assertIn("Motorcycle information and 44-item inspection", text)
@@ -598,8 +674,17 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("COVER NOTES / ROUTING UPDATES", compact_text)
             self.assertIn("Morgan Lee", compact_text)
             self.assertIn("KPDX ASOS", compact_text)
+            self.assertIn("71 F", compact_text)
+            self.assertIn("NW 6 mph", compact_text)
+            self.assertIn("29.92 inHg", compact_text)
             self.assertIn("Waxing gibbous", compact_text)
             normalized_compact_text = " ".join(compact_text.split())
+            self.assertIn("TOWED / TO", normalized_compact_text)
+            self.assertIn(
+                "Yes - Central Evidence Tow Yard",
+                normalized_compact_text,
+            )
+            self.assertNotIn("ROADWAY / TAG", normalized_compact_text)
             self.assertIn("North Example Street - northbound", normalized_compact_text)
             self.assertIn("Example Avenue - westbound", normalized_compact_text)
             self.assertIn("Motorcycle information and 44-item inspection", compact_text)
@@ -620,6 +705,8 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("26-123456", summary_text)
             self.assertIn("Scene scan completed", summary_text)
             self.assertIn("Quick review", summary_text)
+            self.assertNotIn("Key questions", summary_text)
+            self.assertNotIn("unresolved issues", summary_text.lower())
             self.assertIn(f"Page 1 of {len(summary_reader.pages)}", summary_text)
 
 
