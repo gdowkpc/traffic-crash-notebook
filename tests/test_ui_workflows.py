@@ -499,6 +499,58 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(valid_dialog.result(), QDialog.DialogCode.Accepted)
         valid_dialog.close()
 
+    def test_identifier_fields_normalize_to_uppercase(self):
+        vehicle_dialog = VehicleDialog(self.case.id, [], parent=self.window)
+        vehicle_dialog.vin.setText("1hgcm82633a004352")
+        vehicle_dialog.plate.setText("abc123")
+        vehicle_dialog.plate_state.setText("or")
+        vehicle_dialog.insurance_policy_number.setText("ab-123-cd")
+        self.assertEqual(vehicle_dialog.vin.text(), "1HGCM82633A004352")
+        self.assertEqual(vehicle_dialog.plate.text(), "ABC123")
+        self.assertEqual(vehicle_dialog.plate_state.text(), "OR")
+        self.assertEqual(vehicle_dialog.insurance_policy_number.text(), "AB-123-CD")
+        vehicle_dialog.close()
+
+        person = Person(id="person-1", case_id=self.case.id, last_name="Driver")
+        driver_dialog = DriverProfileDialog(
+            person,
+            DriverProfile(person_id=person.id),
+            parent=self.window,
+        )
+        driver_dialog.license_number.setText("or-a1b2c3")
+        driver_dialog.license_state.setText("or")
+        self.assertEqual(driver_dialog.license_number.text(), "OR-A1B2C3")
+        self.assertEqual(driver_dialog.license_state.text(), "OR")
+        driver_dialog.close()
+
+        vehicle_lead_dialog = HitRunVehicleLeadDialog(
+            self.case.id,
+            [],
+            parent=self.window,
+        )
+        vehicle_lead_dialog.vin.setText("1hgcm82633a004352")
+        vehicle_lead_dialog.plate.setText("xyz789")
+        vehicle_lead_dialog.plate_state.setText("wa")
+        self.assertEqual(vehicle_lead_dialog.vin.text(), "1HGCM82633A004352")
+        self.assertEqual(vehicle_lead_dialog.plate.text(), "XYZ789")
+        self.assertEqual(vehicle_lead_dialog.plate_state.text(), "WA")
+        vehicle_lead_dialog.close()
+
+        person_lead_dialog = HitRunPersonLeadDialog(
+            self.case.id,
+            [],
+            [],
+            parent=self.window,
+        )
+        person_lead_dialog.driver_license_number.setText("or-a1b2c3")
+        person_lead_dialog.driver_license_state.setText("or")
+        self.assertEqual(
+            person_lead_dialog.driver_license_number.text(),
+            "OR-A1B2C3",
+        )
+        self.assertEqual(person_lead_dialog.driver_license_state.text(), "OR")
+        person_lead_dialog.close()
+
     def test_vehicle_save_failure_is_visible_and_keeps_the_draft(self):
         vehicle = Vehicle(
             id="",

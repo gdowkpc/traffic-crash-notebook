@@ -86,6 +86,21 @@ def _line(text: str = "", placeholder: str = "") -> QLineEdit:
     return widget
 
 
+def _uppercase_line(text: str = "", placeholder: str = "") -> QLineEdit:
+    widget = _line(text.upper(), placeholder)
+
+    def normalize(value: str) -> None:
+        uppercase_value = value.upper()
+        if value == uppercase_value:
+            return
+        cursor_position = widget.cursorPosition()
+        widget.setText(uppercase_value)
+        widget.setCursorPosition(min(cursor_position, len(uppercase_value)))
+
+    widget.textChanged.connect(normalize)
+    return widget
+
+
 def _date_line(text: str = "") -> QLineEdit:
     widget = _line(format_date_for_display(text), DISPLAY_DATE_PLACEHOLDER)
     widget.editingFinished.connect(
@@ -316,9 +331,9 @@ class VehicleDialog(RecordDialog):
         self.model = _line(self.vehicle.model)
         self.body_style = _line(self.vehicle.body_style, "Sedan, SUV, pickup, motorcycle...")
         self.color = _line(self.vehicle.color)
-        self.vin = _line(self.vehicle.vin, "17-character VIN")
-        self.plate = _line(self.vehicle.plate)
-        self.plate_state = _line(self.vehicle.plate_state)
+        self.vin = _uppercase_line(self.vehicle.vin, "17-character VIN")
+        self.plate = _uppercase_line(self.vehicle.plate)
+        self.plate_state = _uppercase_line(self.vehicle.plate_state)
         self.driver = self._person_combo(
             self.vehicle.driver_person_id,
             required_role="Driver",
@@ -327,7 +342,7 @@ class VehicleDialog(RecordDialog):
         self.insurance_company = _line(
             self.vehicle.insurance_company or self.vehicle.insurance
         )
-        self.insurance_policy_number = _line(
+        self.insurance_policy_number = _uppercase_line(
             self.vehicle.insurance_policy_number
         )
         self.insurance_claim_number = _line(
@@ -1126,8 +1141,8 @@ class DriverProfileDialog(RecordDialog):
 
         license_tab = QWidget()
         license_form = QFormLayout(license_tab)
-        self.license_number = _line(profile.license_number)
-        self.license_state = _line(profile.license_state)
+        self.license_number = _uppercase_line(profile.license_number)
+        self.license_state = _uppercase_line(profile.license_state)
         self.license_class = _line(profile.license_class)
         self.license_status = _line(profile.license_status)
         self.license_issued_date = _date_line(profile.license_issued_date)
@@ -1720,9 +1735,9 @@ class HitRunVehicleLeadDialog(RecordDialog):
         self.model = _line(self.record.model)
         self.body_style = _line(self.record.body_style, "SUV, pickup, sedan...")
         self.color = _line(self.record.color)
-        self.plate = _line(self.record.plate)
-        self.plate_state = _line(self.record.plate_state)
-        self.vin = _line(self.record.vin)
+        self.plate = _uppercase_line(self.record.plate)
+        self.plate_state = _uppercase_line(self.record.plate_state)
+        self.vin = _uppercase_line(self.record.vin)
         self.last_seen_location = SpellCheckedLineEdit(self.record.last_seen_location)
         self.last_seen_date = _date_line(self.record.last_seen_date)
         self.last_seen_time = _line(self.record.last_seen_time, "HH:MM")
@@ -1897,8 +1912,12 @@ class HitRunPersonLeadDialog(RecordDialog):
         self.home_phone = _line(self.record.home_phone)
         self.work_phone = _line(self.record.work_phone)
         self.email = _line(self.record.email)
-        self.driver_license_number = _line(self.record.driver_license_number)
-        self.driver_license_state = _line(self.record.driver_license_state)
+        self.driver_license_number = _uppercase_line(
+            self.record.driver_license_number
+        )
+        self.driver_license_state = _uppercase_line(
+            self.record.driver_license_state
+        )
         self.relationship_to_vehicle = _line(self.record.relationship_to_vehicle)
         self.vehicle_lead = _related_hit_run_vehicle_lead_combo(
             vehicle_leads,
