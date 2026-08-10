@@ -1,3 +1,7 @@
+## Unreleased
+
+- Adds Non-Standard as an explicit Helmet choice and preserves it in saved participant details and packet output.
+
 ## Traffic Crash Notebook 0.5.6
 
 - Adds a participant Helmet field immediately after Air Bag Deployed with explicit Yes, No, and Not Applicable choices, safe migration of existing cases, and packet output.

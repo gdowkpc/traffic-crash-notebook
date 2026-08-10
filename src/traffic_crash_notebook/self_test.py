@@ -302,11 +302,14 @@ def run_self_test(output_directory: str | Path) -> Path:
     ))
     repository.save_participant_details(ParticipantDetails(
         person_id=person.id, vehicle_id=vehicle.id, height="70 in", weight="180 lb",
-        injury_status="Not injured", helmet="Yes", ejected="No", extracted="Yes",
+        injury_status="Not injured", helmet="Non-Standard", ejected="No", extracted="Yes",
         evidence_items="Clothing",
     ))
     loaded_participant = repository.get_participant_details(person.id)
-    if loaded_participant.extracted != "Yes" or loaded_participant.helmet != "Yes":
+    if (
+        loaded_participant.extracted != "Yes"
+        or loaded_participant.helmet != "Non-Standard"
+    ):
         raise RuntimeError(
             "The participant extracted and helmet statuses could not be saved and reloaded."
         )
@@ -557,7 +560,7 @@ def run_self_test(output_directory: str | Path) -> Path:
         "Complete - 08/01/2026",
         "Pending",
         "Not Started",
-        "helmet Yes",
+        "helmet Non-Standard",
         "Participant background",
         "Property receipt SELF-TEST-PR-1",
         "Portable Verification Owner",

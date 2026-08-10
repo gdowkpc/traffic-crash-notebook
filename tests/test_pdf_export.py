@@ -572,7 +572,7 @@ class PdfExportTest(unittest.TestCase):
             repository.save_participant_details(ParticipantDetails(
                 person_id=person.id, vehicle_id=vehicle.id, injury_status="Injured",
                 transported="Yes", transported_to="Example Hospital", hospital="OHSU",
-                height="70 in", weight="180 lb", helmet="Yes",
+                height="70 in", weight="180 lb", helmet="Non-Standard",
                 ejected="No", extracted="Yes",
                 injury_codes="1 - Laceration",
                 evidence_items="Blood; Clothing",
@@ -876,7 +876,7 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("Example Hospital", text)
             self.assertIn("EJECTED / EXTRACTED", normalized_text)
             self.assertIn("Ejected No; extracted Yes", normalized_text)
-            self.assertIn("air bag Unknown; helmet Yes", normalized_text)
+            self.assertIn("air bag Unknown; helmet Non-Standard", normalized_text)
             self.assertIn("12,345", text)
             self.assertIn("225/45R18", text)
             self.assertIn("Witness interviews and contacts", text)

@@ -953,7 +953,7 @@ class RepositoryTest(unittest.TestCase):
         participant = ParticipantDetails(
             person_id=person.id, vehicle_id=vehicle.id, occupant_position="Driver",
             injury_status="Injured", transported="Yes", transported_to="Example Hospital",
-            helmet="Yes",
+            helmet="Non-Standard",
         )
         driver = DriverProfile(
             person_id=person.id, trip_from="Home", trip_to="Work",
@@ -992,7 +992,10 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(loaded_conditions.moonset, "11:28")
         self.assertEqual(loaded_conditions.moon_phase, "Waxing gibbous")
         self.assertEqual(self.repository.get_participant_details(person.id).transported_to, "Example Hospital")
-        self.assertEqual(self.repository.get_participant_details(person.id).helmet, "Yes")
+        self.assertEqual(
+            self.repository.get_participant_details(person.id).helmet,
+            "Non-Standard",
+        )
         self.assertEqual(self.repository.get_driver_profile(person.id).hours_asleep, "7.5")
         self.assertEqual(
             self.repository.get_driver_profile(person.id).endorsements,

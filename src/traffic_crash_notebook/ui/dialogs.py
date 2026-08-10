@@ -73,7 +73,7 @@ from .spellcheck_text_edit import SpellCheckedLineEdit, SpellCheckedTextEdit
 
 
 YES_NO_UNKNOWN = ("Unknown", "Yes", "No")
-YES_NO_NOT_APPLICABLE = ("Yes", "No", "Not Applicable")
+HELMET_CHOICES = ("Yes", "No", "Non-Standard", "Not Applicable")
 
 
 def _line(text: str = "", placeholder: str = "") -> QLineEdit:
@@ -984,7 +984,7 @@ class ParticipantDetailsDialog(RecordDialog):
         self.seatbelt_installed = _combo(YES_NO_UNKNOWN, details.seatbelt_installed)
         self.seatbelt_used = _combo(YES_NO_UNKNOWN, details.seatbelt_used)
         self.airbag_deployed = _combo(YES_NO_UNKNOWN, details.airbag_deployed)
-        self.helmet = _combo(YES_NO_NOT_APPLICABLE, details.helmet)
+        self.helmet = _combo(HELMET_CHOICES, details.helmet)
         self.ejected = _combo(YES_NO_UNKNOWN, details.ejected)
         self.extracted = _combo(YES_NO_UNKNOWN, details.extracted)
         form.addRow("Associated vehicle", self.vehicle)

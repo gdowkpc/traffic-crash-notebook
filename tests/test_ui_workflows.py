@@ -2259,10 +2259,10 @@ class AddRecordWorkflowTest(unittest.TestCase):
             )
             self.assertEqual(
                 [dialog.helmet.itemText(index) for index in range(dialog.helmet.count())],
-                ["Yes", "No", "Not Applicable"],
+                ["Yes", "No", "Non-Standard", "Not Applicable"],
             )
             self.assertEqual(dialog.helmet.currentText(), "Not Applicable")
-            dialog.helmet.setCurrentText("Yes")
+            dialog.helmet.setCurrentText("Non-Standard")
             dialog.ejected.setCurrentText("No")
             dialog.extracted.setCurrentText("Yes")
             dialog.injury_code_boxes["1 - Laceration"].setChecked(True)
@@ -2409,7 +2409,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(details.height, "70 in")
         self.assertEqual(details.ejected, "No")
         self.assertEqual(details.extracted, "Yes")
-        self.assertEqual(details.helmet, "Yes")
+        self.assertEqual(details.helmet, "Non-Standard")
         self.assertIn("Laceration", details.injury_codes)
         profile = self.repository.get_driver_profile(person.id)
         self.assertEqual(profile.license_restricted, "Yes")
