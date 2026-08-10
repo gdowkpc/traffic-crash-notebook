@@ -1633,10 +1633,6 @@ def _participant_sections(
                  Paragraph(_text(f"{profile.trip_from} to {profile.trip_to}; {profile.trip_purpose}"), styles["Cell"]),
                  Paragraph("IMPAIRMENT", styles["Label"]),
                  Paragraph(_text("; ".join(x for x in (profile.impairment_status, profile.bac, profile.testing) if x)), styles["Cell"])],
-                [Paragraph("FAMILIARITY", styles["Label"]),
-                 Paragraph(_text(f"Road {profile.familiar_with_road}; vehicle {profile.familiar_with_vehicle}"), styles["Cell"]),
-                 Paragraph("DRIVING HISTORY", styles["Label"]),
-                 Paragraph(_text(driving_history), styles["Cell"])],
             ]
             span_rows = [4]
             work = "; ".join(
@@ -1669,10 +1665,28 @@ def _participant_sections(
                     "",
                 ])
                 span_rows.append(6)
+            familiarity_row = len(driver_data)
+            driver_data.append([
+                [
+                    Paragraph("FAMILIARITY", styles["Label"]),
+                    Paragraph(_text(
+                        f"Road {profile.familiar_with_road}; "
+                        f"vehicle {profile.familiar_with_vehicle}"
+                    ), styles["Cell"]),
+                ],
+                "",
+                [
+                    Paragraph("DRIVING HISTORY", styles["Label"]),
+                    Paragraph(_text(driving_history), styles["Cell"]),
+                ],
+                "",
+            ])
             table = Table(driver_data, colWidths=[1.3 * inch, 2.05 * inch, 1.18 * inch, 2.07 * inch])
             driver_table_style = _standard_table_style()
             for row in span_rows:
                 driver_table_style.add("SPAN", (1, row), (3, row))
+            driver_table_style.add("SPAN", (0, familiarity_row), (1, familiarity_row))
+            driver_table_style.add("SPAN", (2, familiarity_row), (3, familiarity_row))
             table.setStyle(driver_table_style)
             background_title = (
                 "Driver Background" if is_driver else "Participant Background"

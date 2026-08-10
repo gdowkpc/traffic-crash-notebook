@@ -3,6 +3,7 @@
 - Adds Non-Standard as an explicit Helmet choice and preserves it in saved participant details and packet output.
 - Treats Motorcyclist as a vulnerable-road-user role in person entry, calculated VRU counts, VRU analysis, packet output, and exchange-report output.
 - Standardizes full and compact packet section and subsection headings to title capitalization, including Participant and Driver Details.
+- Reflows Familiarity and Driving History in the participant/driver packet as two wide cells with each value beneath its label.
 
 ## Traffic Crash Notebook 0.5.6
 

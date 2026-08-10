@@ -628,6 +628,7 @@ class PdfExportTest(unittest.TestCase):
                 license_issued_date="2024-07-01",
                 license_expiration_date="2032-07-01",
                 physical_condition_types="Vision", testing_methods="SFST",
+                familiar_with_road="Yes", familiar_with_vehicle="No",
                 license_restricted="Yes", license_restrictions="Restriction B",
                 license_restriction_explanation="Corrective lenses",
                 endorsements="Passenger; Tank",
@@ -903,6 +904,14 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn(
                 "DRIVING HISTORY No preventable collisions documented.",
                 participant_block,
+            )
+            self.assertIn(
+                "FAMILIARITY\nRoad Yes; vehicle No",
+                text,
+            )
+            self.assertIn(
+                "DRIVING HISTORY\nNo preventable collisions documented.",
+                text,
             )
             self.assertIn("PHYSICAL CONDITIONS Vision", participant_block)
             self.assertLess(
