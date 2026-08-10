@@ -1,3 +1,16 @@
+## Traffic Crash Notebook 0.5.7
+
+- Adds Non-Standard as an explicit Helmet choice and preserves it in saved participant details and packet output.
+- Treats Motorcyclist as a vulnerable-road-user role in person entry, calculated VRU counts, VRU analysis, packet output, and exchange-report output.
+- Standardizes full and compact packet section and subsection headings to title capitalization, including Participant and Driver Details.
+- Reflows Familiarity and Driving History in the participant/driver packet as two wide cells with each value beneath its label.
+- Standardizes packet field grids so each label and its value stay together in the same cell; multi-record tables retain their column headers.
+- Changes evidence Property Owner entry to a case-people selector while preserving legacy owner text when an existing receipt is edited.
+- Reorders Road / Weather subtabs, adds weather visibility in miles, shows case locations in the selector, and makes packet coordinates direct Google Maps links.
+- Limits vehicle driver selection to people marked as drivers, validates optional VINs as 17-character identifiers, and normalizes license, plate, policy, and VIN letters to uppercase during entry.
+- Restores the Full Working Packet and Compact Packet in-app preview workspace through a Packet Preview toolbar action; it supports refresh, print, and export without first choosing a destination file.
+- Removes the direct Exchange Report export toolbar action while retaining the Exchange Report lower-tab preview, print, and export workflow.
+
 ## Traffic Crash Notebook 0.5.6
 
 - Adds a participant Helmet field immediately after Air Bag Deployed with explicit Yes, No, and Not Applicable choices, safe migration of existing cases, and packet output.

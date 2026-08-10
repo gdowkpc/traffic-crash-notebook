@@ -56,6 +56,10 @@ class PortableSelfTestTest(unittest.TestCase):
                 log_text,
             )
             self.assertIn(
+                "Motorcyclist role and calculated VRU count: PASS",
+                log_text,
+            )
+            self.assertIn(
                 "Data-folder user defaults and new-case prefill: PASS",
                 log_text,
             )
@@ -66,7 +70,7 @@ class PortableSelfTestTest(unittest.TestCase):
             self.assertIn("Compact-packet PDF bytes:", log_text)
             self.assertIn("Exchange-report PDF bytes:", log_text)
             self.assertIn(
-                "Driver, pedestrian, and bicyclist exchange-report inclusion: PASS",
+                "Driver, pedestrian, bicyclist, and motorcyclist exchange-report inclusion: PASS",
                 log_text,
             )
             self.assertIn(

@@ -416,7 +416,7 @@ class MainWindow(QMainWindow):
             ("Save", self.save_overview),
             ("Export Full Working Packet", self.export_pdf),
             ("Export Compact Packet", self.export_compact_pdf),
-            ("Export Exchange Report", self.export_exchange_report),
+            ("Packet Preview", self.show_packet_preview),
             ("Export Quick Review", self.export_summary_pdf),
             ("Back Up", self.backup_database),
             ("Data Folder", self.open_data_folder),
@@ -489,14 +489,6 @@ class MainWindow(QMainWindow):
         self.counts_label = QLabel()
         self.counts_label.setStyleSheet("color: #5d6870; font-weight: 600;")
         header.addWidget(self.counts_label)
-        self.packet_preview_button = _button(
-            "Packet Preview",
-            self.show_packet_preview,
-        )
-        self.packet_preview_button.setToolTip(
-            "Open the full or compact case-packet preview, printing, and PDF export workspace"
-        )
-        header.addWidget(self.packet_preview_button)
         self.settings_button = _button(
             "Settings",
             self.show_settings,
@@ -533,6 +525,19 @@ class MainWindow(QMainWindow):
         self.tabs.currentChanged.connect(self._case_tab_changed)
         layout.addWidget(self.tabs, 1)
         return container
+
+    def _build_packet_preview_dialog(self) -> QDialog:
+        dialog = QDialog(self)
+        dialog.setObjectName("packetPreviewDialog")
+        dialog.setWindowTitle("Case Packet Preview")
+        dialog.setModal(False)
+        dialog.setMinimumSize(760, 540)
+        dialog.resize(1100, 800)
+        dialog.setSizeGripEnabled(True)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._build_packet_preview_panel())
+        return dialog
 
     def _build_overview_tab(self) -> QWidget:
         tab = QWidget()
@@ -842,8 +847,12 @@ class MainWindow(QMainWindow):
                 ("precipitation", "Precipitation", "Numeric total or None"),
             ),
             (
+                ("visibility", "Visibility", "Distance in miles"),
                 ("weather_station", "Weather station", "Station name or identifier"),
+            ),
+            (
                 ("weather_time", "Time of reading", "HH:MM; include time zone if known"),
+                ("weather_condition", "Condition", "Clear, rain, fog..."),
             ),
         )
         for row, pair in enumerate(weather_pairs):
@@ -862,18 +871,6 @@ class MainWindow(QMainWindow):
                     field_column + 1,
                 )
 
-        condition_label = QLabel("Condition")
-        condition_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        self.weather_fields_grid.addWidget(condition_label, 4, 0)
-        self.weather_fields_grid.addWidget(
-            line("weather_condition", "Clear, rain, fog..."),
-            4,
-            1,
-            1,
-            3,
-        )
         self.weather_fields_grid.setColumnStretch(1, 1)
         self.weather_fields_grid.setColumnStretch(3, 1)
         weather_layout.addLayout(self.weather_fields_grid)
@@ -882,7 +879,7 @@ class MainWindow(QMainWindow):
         weather_layout.addWidget(QLabel("Other weather information"))
         weather_layout.addWidget(other_weather)
         weather_layout.addStretch(1)
-        tabs.addTab(_scrollable(weather), "Weather")
+        weather_tab = _scrollable(weather)
 
         surfaces_tab, self.surface_observations_table = self._table_tab(
             ["Roadway / Location", "Composition", "Condition", "Friction / Drag Factor", "Notes"],
@@ -904,7 +901,6 @@ class MainWindow(QMainWindow):
         self.surface_observations_table.setColumnWidth(1, 150)
         self.surface_observations_table.setColumnWidth(2, 130)
         self.surface_observations_table.setColumnWidth(3, 145)
-        tabs.addTab(surfaces_tab, "Surface")
 
         lighting = QWidget()
         lighting_form = QFormLayout(lighting)
@@ -944,7 +940,7 @@ class MainWindow(QMainWindow):
             self.area_type_boxes[option] = box
         area_layout.addStretch(1)
         lighting_form.addRow(area_group)
-        tabs.addTab(_scrollable(lighting), "Lighting / Visibility")
+        visibility_tab = _scrollable(lighting)
 
         roadways_tab, self.roadways_table = self._table_tab(
             [
@@ -964,7 +960,6 @@ class MainWindow(QMainWindow):
         self.roadways_table.setColumnWidth(2, 75)
         self.roadways_table.setColumnWidth(3, 180)
         self.roadways_table.setColumnWidth(4, 190)
-        tabs.addTab(roadways_tab, "Roadways")
 
         analysis = QWidget()
         analysis_layout = QFormLayout(analysis)
@@ -974,6 +969,10 @@ class MainWindow(QMainWindow):
         skid.setMaximumHeight(210)
         analysis_layout.addRow("Initial point of collision", impact)
         analysis_layout.addRow("Skid test / drag sled notes", skid)
+        tabs.addTab(roadways_tab, "Roadways")
+        tabs.addTab(surfaces_tab, "Surface")
+        tabs.addTab(visibility_tab, "Visibility")
+        tabs.addTab(weather_tab, "Weather")
         tabs.addTab(_scrollable(analysis), "Scene Analysis")
         outer.addWidget(tabs, 1)
         return container
@@ -1048,7 +1047,7 @@ class MainWindow(QMainWindow):
 
     def _build_vru_tab(self):
         tab, self.vru_table = self._table_tab(
-            ["Pedestrian / Bicyclist", "Vehicle", "Position / Movement", "Night Visibility Equipment", "Notes"],
+            ["Vulnerable Road User", "Vehicle", "Position / Movement", "Night Visibility Equipment", "Notes"],
             self.add_vru_analysis, self.edit_vru_analysis, self.delete_vru_analysis,
         )
         self.vru_table.setColumnWidth(0, 190)
@@ -1084,19 +1083,6 @@ class MainWindow(QMainWindow):
         self.vehicles_table.setColumnWidth(6, 250)
         self.vehicles_table.setColumnWidth(7, 280)
         return tab
-
-    def _build_packet_preview_dialog(self) -> QDialog:
-        dialog = QDialog(self)
-        dialog.setObjectName("packetPreviewDialog")
-        dialog.setWindowTitle("Case Packet Preview")
-        dialog.setModal(False)
-        dialog.setMinimumSize(760, 540)
-        dialog.resize(1100, 800)
-        dialog.setSizeGripEnabled(True)
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.addWidget(self._build_packet_preview_panel())
-        return dialog
 
     def _build_packet_preview_panel(self) -> QWidget:
         container = QWidget()
@@ -1145,7 +1131,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(actions)
 
         self.packet_preview_status = QLabel(
-            "Open Packet Preview from the case header or choose Refresh Preview."
+            "Choose Packet Preview from the toolbar or choose Refresh Preview."
         )
         self.packet_preview_status.setStyleSheet("color: #5d6870;")
         layout.addWidget(self.packet_preview_status)
@@ -1168,8 +1154,9 @@ class MainWindow(QMainWindow):
         guidance = QLabel(
             "This is a read-only preview generated from the existing Overview, People, "
             "Driver Background, Participant / Medical, and Vehicle records. Make changes "
-            "in those case areas, then refresh this preview. Every saved Passenger and "
-            "Witness is included as an involved-person block, with additional pages added "
+            "in those case areas, then refresh this preview. Every saved Passenger, "
+            "Witness, Pedestrian, Bicyclist, and Motorcyclist is included as an "
+            "involved-person block, with additional pages added "
             "as needed. The PDF prints only records that exist and always places the "
             "information / responsibilities page last."
         )
@@ -1703,7 +1690,10 @@ class MainWindow(QMainWindow):
 
     def _case_item_text(self, case: CrashCase) -> str:
         title = case.case_number or "Untitled Case"
-        detail = format_date_for_display(case.crash_date) or case.location or "No crash date"
+        detail = "  |  ".join(value for value in (
+            case.location,
+            format_date_for_display(case.crash_date),
+        ) if value) or "No incident location"
         return f"{title}\n{detail}  -  {case.status}"
 
     def _update_case_item(self, case: CrashCase) -> None:
@@ -2430,6 +2420,9 @@ class MainWindow(QMainWindow):
         self.packet_pdf_document = next_document
         self.packet_pdf_buffer = next_buffer
         self.packet_preview_path = next_preview_path
+        # The preview panel is created while its dialog is hidden. Explicitly
+        # show it after replacing the document.
+        self.packet_pdf_view.show()
         previous_document.close()
         previous_document.deleteLater()
         if previous_preview_path.is_file():
@@ -2522,6 +2515,7 @@ class MainWindow(QMainWindow):
         witness_count = sum("Witness" in person.roles for person in exchange_people)
         pedestrian_count = sum("Pedestrian" in person.roles for person in exchange_people)
         bicyclist_count = sum("Bicyclist" in person.roles for person in exchange_people)
+        motorcyclist_count = sum("Motorcyclist" in person.roles for person in exchange_people)
         officer_missing = []
         if not self.current_case.investigator:
             officer_missing.append("assigned officer")
@@ -2536,7 +2530,8 @@ class MainWindow(QMainWindow):
         self.exchange_readiness_label.setText(
             f"Preview content: {len(vehicles)} vehicle(s), {len(exchange_people)} additional "
             f"person(s) ({passenger_count} passenger, {witness_count} witness, "
-            f"{pedestrian_count} pedestrian, {bicyclist_count} bicyclist). "
+            f"{pedestrian_count} pedestrian, {bicyclist_count} bicyclist, "
+            f"{motorcyclist_count} motorcyclist). "
             f"Complete records: {complete_vehicles} vehicle block(s) and "
             f"{complete_people} person block(s). The PDF has {len(page_plan)} dynamic "
             f"front page(s) plus the required information page; unused record blocks "
@@ -3294,7 +3289,11 @@ class MainWindow(QMainWindow):
     def add_property_receipt(self) -> None:
         if not self.current_case:
             return
-        dialog = PropertyReceiptDialog(self.current_case.id, parent=self)
+        dialog = PropertyReceiptDialog(
+            self.current_case.id,
+            parent=self,
+            people=self.repository.list_people(self.current_case.id),
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             receipt = self.repository.save_property_receipt(
                 dialog.result_record()
@@ -3309,7 +3308,12 @@ class MainWindow(QMainWindow):
         receipt = self.repository.get_property_receipt(receipt_id)
         if not receipt:
             return
-        dialog = PropertyReceiptDialog(receipt.case_id, receipt, self)
+        dialog = PropertyReceiptDialog(
+            receipt.case_id,
+            receipt,
+            self,
+            people=self.repository.list_people(receipt.case_id),
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             saved = self.repository.save_property_receipt(dialog.result_record())
             self.refresh_property_receipts(saved.id)

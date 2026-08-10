@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -73,13 +75,29 @@ from .spellcheck_text_edit import SpellCheckedLineEdit, SpellCheckedTextEdit
 
 
 YES_NO_UNKNOWN = ("Unknown", "Yes", "No")
-YES_NO_NOT_APPLICABLE = ("Yes", "No", "Not Applicable")
+HELMET_CHOICES = ("Yes", "No", "Non-Standard", "Not Applicable")
+VIN_PATTERN = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
 
 
 def _line(text: str = "", placeholder: str = "") -> QLineEdit:
     widget = QLineEdit(text)
     if placeholder:
         widget.setPlaceholderText(placeholder)
+    return widget
+
+
+def _uppercase_line(text: str = "", placeholder: str = "") -> QLineEdit:
+    widget = _line(text.upper(), placeholder)
+
+    def normalize(value: str) -> None:
+        uppercase_value = value.upper()
+        if value == uppercase_value:
+            return
+        cursor_position = widget.cursorPosition()
+        widget.setText(uppercase_value)
+        widget.setCursorPosition(min(cursor_position, len(uppercase_value)))
+
+    widget.textChanged.connect(normalize)
     return widget
 
 
@@ -313,15 +331,18 @@ class VehicleDialog(RecordDialog):
         self.model = _line(self.vehicle.model)
         self.body_style = _line(self.vehicle.body_style, "Sedan, SUV, pickup, motorcycle...")
         self.color = _line(self.vehicle.color)
-        self.vin = _line(self.vehicle.vin)
-        self.plate = _line(self.vehicle.plate)
-        self.plate_state = _line(self.vehicle.plate_state)
-        self.driver = self._person_combo(self.vehicle.driver_person_id)
+        self.vin = _uppercase_line(self.vehicle.vin, "17-character VIN")
+        self.plate = _uppercase_line(self.vehicle.plate)
+        self.plate_state = _uppercase_line(self.vehicle.plate_state)
+        self.driver = self._person_combo(
+            self.vehicle.driver_person_id,
+            required_role="Driver",
+        )
         self.owner = self._person_combo(self.vehicle.owner_person_id)
         self.insurance_company = _line(
             self.vehicle.insurance_company or self.vehicle.insurance
         )
-        self.insurance_policy_number = _line(
+        self.insurance_policy_number = _uppercase_line(
             self.vehicle.insurance_policy_number
         )
         self.insurance_claim_number = _line(
@@ -409,11 +430,22 @@ class VehicleDialog(RecordDialog):
         self.root.addWidget(self.notes, 1)
         self.finish_layout()
 
-    def _person_combo(self, selected_id: str | None) -> QComboBox:
+    def _person_combo(
+        self,
+        selected_id: str | None,
+        *,
+        required_role: str | None = None,
+    ) -> QComboBox:
         combo = QComboBox()
         combo.addItem("Not assigned", None)
         for person in self.people:
-            combo.addItem(person.display_name, person.id)
+            is_selected = person.id == selected_id
+            if required_role and required_role not in person.roles and not is_selected:
+                continue
+            label = person.display_name
+            if required_role and required_role not in person.roles and is_selected:
+                label = f"{label} (legacy; not marked {required_role})"
+            combo.addItem(label, person.id)
             if person.id == selected_id:
                 combo.setCurrentIndex(combo.count() - 1)
         return combo
@@ -421,6 +453,16 @@ class VehicleDialog(RecordDialog):
     def _validate_and_accept(self) -> None:
         if not self.vehicle_number.text().strip():
             QMessageBox.warning(self, "Vehicle number required", "Enter a vehicle number such as V-1.")
+            return
+        vin = self.vin.text().strip().upper()
+        self.vin.setText(vin)
+        if vin and not VIN_PATTERN.fullmatch(vin):
+            QMessageBox.warning(
+                self,
+                "Valid VIN required",
+                "A VIN must contain exactly 17 letters and numbers. "
+                "The letters I, O, and Q are not used in VINs.",
+            )
             return
         super()._validate_and_accept()
 
@@ -542,6 +584,8 @@ class PropertyReceiptDialog(RecordDialog):
         case_id: str,
         receipt: PropertyReceipt | None = None,
         parent=None,
+        *,
+        people: list[Person] | None = None,
     ):
         super().__init__(
             "Edit Property Receipt" if receipt else "Add Property Receipt",
@@ -554,8 +598,20 @@ class PropertyReceiptDialog(RecordDialog):
             self.receipt.receipt_number,
             "Property receipt number",
         )
-        self.property_owner = SpellCheckedLineEdit(self.receipt.property_owner)
-        self.property_owner.setPlaceholderText("Person, business, agency, or other owner")
+        self.property_owner = QComboBox()
+        self.property_owner.addItem("No property owner selected", "")
+        for person in people or []:
+            self.property_owner.addItem(person.display_name, person.display_name)
+        current_owner = self.receipt.property_owner.strip()
+        if current_owner:
+            owner_index = self.property_owner.findData(current_owner)
+            if owner_index < 0:
+                self.property_owner.addItem(
+                    f"Legacy owner: {current_owner}",
+                    current_owner,
+                )
+                owner_index = self.property_owner.count() - 1
+            self.property_owner.setCurrentIndex(owner_index)
         self.lodging_type = _combo(
             PROPERTY_LODGING_TYPES,
             self.receipt.lodging_type,
@@ -585,7 +641,7 @@ class PropertyReceiptDialog(RecordDialog):
 
     def result_record(self) -> PropertyReceipt:
         self.receipt.receipt_number = self.receipt_number.text().strip()
-        self.receipt.property_owner = self.property_owner.text().strip()
+        self.receipt.property_owner = str(self.property_owner.currentData() or "").strip()
         self.receipt.lodging_type = self.lodging_type.currentText().strip()
         self.receipt.lodged_location = self.lodged_location.text().strip()
         self.receipt.lodged_date = normalize_date_for_storage(
@@ -984,7 +1040,7 @@ class ParticipantDetailsDialog(RecordDialog):
         self.seatbelt_installed = _combo(YES_NO_UNKNOWN, details.seatbelt_installed)
         self.seatbelt_used = _combo(YES_NO_UNKNOWN, details.seatbelt_used)
         self.airbag_deployed = _combo(YES_NO_UNKNOWN, details.airbag_deployed)
-        self.helmet = _combo(YES_NO_NOT_APPLICABLE, details.helmet)
+        self.helmet = _combo(HELMET_CHOICES, details.helmet)
         self.ejected = _combo(YES_NO_UNKNOWN, details.ejected)
         self.extracted = _combo(YES_NO_UNKNOWN, details.extracted)
         form.addRow("Associated vehicle", self.vehicle)
@@ -1085,8 +1141,8 @@ class DriverProfileDialog(RecordDialog):
 
         license_tab = QWidget()
         license_form = QFormLayout(license_tab)
-        self.license_number = _line(profile.license_number)
-        self.license_state = _line(profile.license_state)
+        self.license_number = _uppercase_line(profile.license_number)
+        self.license_state = _uppercase_line(profile.license_state)
         self.license_class = _line(profile.license_class)
         self.license_status = _line(profile.license_status)
         self.license_issued_date = _date_line(profile.license_issued_date)
@@ -1679,9 +1735,9 @@ class HitRunVehicleLeadDialog(RecordDialog):
         self.model = _line(self.record.model)
         self.body_style = _line(self.record.body_style, "SUV, pickup, sedan...")
         self.color = _line(self.record.color)
-        self.plate = _line(self.record.plate)
-        self.plate_state = _line(self.record.plate_state)
-        self.vin = _line(self.record.vin)
+        self.plate = _uppercase_line(self.record.plate)
+        self.plate_state = _uppercase_line(self.record.plate_state)
+        self.vin = _uppercase_line(self.record.vin)
         self.last_seen_location = SpellCheckedLineEdit(self.record.last_seen_location)
         self.last_seen_date = _date_line(self.record.last_seen_date)
         self.last_seen_time = _line(self.record.last_seen_time, "HH:MM")
@@ -1856,8 +1912,12 @@ class HitRunPersonLeadDialog(RecordDialog):
         self.home_phone = _line(self.record.home_phone)
         self.work_phone = _line(self.record.work_phone)
         self.email = _line(self.record.email)
-        self.driver_license_number = _line(self.record.driver_license_number)
-        self.driver_license_state = _line(self.record.driver_license_state)
+        self.driver_license_number = _uppercase_line(
+            self.record.driver_license_number
+        )
+        self.driver_license_state = _uppercase_line(
+            self.record.driver_license_state
+        )
         self.relationship_to_vehicle = _line(self.record.relationship_to_vehicle)
         self.vehicle_lead = _related_hit_run_vehicle_lead_combo(
             vehicle_leads,
@@ -2067,7 +2127,7 @@ class VRUAnalysisDialog(RecordDialog):
         form = QFormLayout(subject)
         self.person_id = _related_person_combo(people, self.analysis.person_id, "No VRU selected")
         self.vehicle_id = _related_vehicle_combo(vehicles, self.analysis.vehicle_id)
-        form.addRow("Pedestrian / bicyclist", self.person_id)
+        form.addRow("Vulnerable road user", self.person_id)
         form.addRow("Involved vehicle", self.vehicle_id)
         for attribute, label in (
             ("upper_clothing", "Upper clothing"), ("lower_clothing", "Lower clothing"),
@@ -2135,7 +2195,11 @@ class VRUAnalysisDialog(RecordDialog):
 
     def _validate_and_accept(self) -> None:
         if not self.person_id.currentData():
-            QMessageBox.warning(self, "VRU required", "Select the pedestrian or bicyclist being analyzed.")
+            QMessageBox.warning(
+                self,
+                "VRU required",
+                "Select the pedestrian, bicyclist, or motorcyclist being analyzed.",
+            )
             return
         super()._validate_and_accept()
 

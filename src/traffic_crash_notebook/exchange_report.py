@@ -25,6 +25,7 @@ EXCHANGE_PERSON_ROLES = {
     "Passenger",
     "Pedestrian",
     "Bicyclist",
+    "Motorcyclist",
     "Witness",
     "Victim",
     "Vehicle Owner",
@@ -641,6 +642,7 @@ def _draw_person_block(
         ("Witness", "WITNESS"),
         ("Pedestrian", "PEDESTRIAN"),
         ("Bicyclist", "BICYCLIST"),
+        ("Motorcyclist", "MOTORCYCLIST"),
     )
     for role, label in listed_roles:
         _draw_checkbox(

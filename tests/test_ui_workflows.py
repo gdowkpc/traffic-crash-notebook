@@ -129,6 +129,25 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertIn("QListWidget::item:selected:!active", style_sheet)
         self.assertIn("background: #2e6f95; color: #ffffff", style_sheet)
 
+    def test_case_picker_displays_incident_location_before_date_and_status(self):
+        case = self.window.current_case
+        self.assertIsNotNone(case)
+        case.crash_date = "2026-08-05"
+        case.location = "East Burnside Street / 122nd Avenue"
+        self.repository.save_case(case)
+        self.window._update_case_item(case)
+
+        item = next(
+            self.window.case_list.item(index)
+            for index in range(self.window.case_list.count())
+            if self.window.case_list.item(index).data(Qt.ItemDataRole.UserRole)
+            == self.case.id
+        )
+        self.assertEqual(
+            item.text(),
+            "UI-TEST\nEast Burnside Street / 122nd Avenue  |  08/05/2026  -  Active",
+        )
+
     def tearDown(self):
         self.window.loading = True
         self.window.autosave_timer.stop()
@@ -185,13 +204,15 @@ class AddRecordWorkflowTest(unittest.TestCase):
             dialog.state.setText("OR")
             dialog.zip_code.setText("97201-1234")
             dialog.role_boxes["Driver"].setChecked(True)
+            self.assertIn("Motorcyclist", dialog.role_boxes)
+            dialog.role_boxes["Motorcyclist"].setChecked(True)
 
         self._complete_modal_dialog(self.window.add_person, PersonDialog, configure)
 
         people = self.repository.list_people(self.case.id)
         self.assertEqual(len(people), 1)
         self.assertEqual(people[0].display_name, "Alex Tester")
-        self.assertEqual(people[0].roles, ["Driver"])
+        self.assertEqual(people[0].roles, ["Driver", "Motorcyclist"])
         self.assertEqual(people[0].dob, "1985-08-05")
         self.assertEqual(people[0].address, "123 Example Street")
         self.assertEqual(people[0].zip_code, "97201-1234")
@@ -402,6 +423,134 @@ class AddRecordWorkflowTest(unittest.TestCase):
             dialog.reject()
         self.assertFalse(dialog.isVisible())
 
+    def test_vehicle_driver_selector_only_includes_people_marked_driver(self):
+        driver = Person(
+            id="driver",
+            case_id=self.case.id,
+            first_name="Dana",
+            last_name="Driver",
+            roles=["Driver"],
+        )
+        passenger = Person(
+            id="passenger",
+            case_id=self.case.id,
+            first_name="Pat",
+            last_name="Passenger",
+            roles=["Passenger"],
+        )
+        dialog = VehicleDialog(self.case.id, [driver, passenger], parent=self.window)
+        self.assertEqual(
+            [dialog.driver.itemData(index) for index in range(dialog.driver.count())],
+            [None, "driver"],
+        )
+        self.assertEqual(
+            [dialog.owner.itemData(index) for index in range(dialog.owner.count())],
+            [None, "driver", "passenger"],
+        )
+        dialog.reject()
+
+        legacy_vehicle = Vehicle(
+            id="vehicle",
+            case_id=self.case.id,
+            driver_person_id="passenger",
+        )
+        legacy_dialog = VehicleDialog(
+            self.case.id,
+            [driver, passenger],
+            legacy_vehicle,
+            parent=self.window,
+        )
+        self.assertEqual(legacy_dialog.driver.currentData(), "passenger")
+        self.assertIn("legacy; not marked Driver", legacy_dialog.driver.currentText())
+        legacy_dialog.reject()
+
+    def test_vehicle_dialog_validates_optional_vin_as_17_characters(self):
+        dialog = VehicleDialog(self.case.id, [], parent=self.window)
+        dialog.vehicle_number.setText("V-1")
+        dialog.vin.setText("1HGCM82633A00435")
+        with patch(
+            "traffic_crash_notebook.ui.dialogs.QMessageBox.warning"
+        ) as warning:
+            dialog._validate_and_accept()
+        warning.assert_called_once()
+        self.assertIn("17", warning.call_args.args[2])
+        dialog.reject()
+
+        invalid_character_dialog = VehicleDialog(
+            self.case.id,
+            [],
+            parent=self.window,
+        )
+        invalid_character_dialog.vehicle_number.setText("V-2")
+        invalid_character_dialog.vin.setText("1HGCM82633A00435I")
+        with patch(
+            "traffic_crash_notebook.ui.dialogs.QMessageBox.warning"
+        ) as warning:
+            invalid_character_dialog._validate_and_accept()
+        warning.assert_called_once()
+        self.assertIn("I, O, and Q", warning.call_args.args[2])
+        invalid_character_dialog.reject()
+
+        valid_dialog = VehicleDialog(self.case.id, [], parent=self.window)
+        valid_dialog.vehicle_number.setText("V-3")
+        valid_dialog.vin.setText("1hgcm82633a004352")
+        valid_dialog._validate_and_accept()
+        self.assertEqual(valid_dialog.vin.text(), "1HGCM82633A004352")
+        self.assertEqual(valid_dialog.result(), QDialog.DialogCode.Accepted)
+        valid_dialog.close()
+
+    def test_identifier_fields_normalize_to_uppercase(self):
+        vehicle_dialog = VehicleDialog(self.case.id, [], parent=self.window)
+        vehicle_dialog.vin.setText("1hgcm82633a004352")
+        vehicle_dialog.plate.setText("abc123")
+        vehicle_dialog.plate_state.setText("or")
+        vehicle_dialog.insurance_policy_number.setText("ab-123-cd")
+        self.assertEqual(vehicle_dialog.vin.text(), "1HGCM82633A004352")
+        self.assertEqual(vehicle_dialog.plate.text(), "ABC123")
+        self.assertEqual(vehicle_dialog.plate_state.text(), "OR")
+        self.assertEqual(vehicle_dialog.insurance_policy_number.text(), "AB-123-CD")
+        vehicle_dialog.close()
+
+        person = Person(id="person-1", case_id=self.case.id, last_name="Driver")
+        driver_dialog = DriverProfileDialog(
+            person,
+            DriverProfile(person_id=person.id),
+            parent=self.window,
+        )
+        driver_dialog.license_number.setText("or-a1b2c3")
+        driver_dialog.license_state.setText("or")
+        self.assertEqual(driver_dialog.license_number.text(), "OR-A1B2C3")
+        self.assertEqual(driver_dialog.license_state.text(), "OR")
+        driver_dialog.close()
+
+        vehicle_lead_dialog = HitRunVehicleLeadDialog(
+            self.case.id,
+            [],
+            parent=self.window,
+        )
+        vehicle_lead_dialog.vin.setText("1hgcm82633a004352")
+        vehicle_lead_dialog.plate.setText("xyz789")
+        vehicle_lead_dialog.plate_state.setText("wa")
+        self.assertEqual(vehicle_lead_dialog.vin.text(), "1HGCM82633A004352")
+        self.assertEqual(vehicle_lead_dialog.plate.text(), "XYZ789")
+        self.assertEqual(vehicle_lead_dialog.plate_state.text(), "WA")
+        vehicle_lead_dialog.close()
+
+        person_lead_dialog = HitRunPersonLeadDialog(
+            self.case.id,
+            [],
+            [],
+            parent=self.window,
+        )
+        person_lead_dialog.driver_license_number.setText("or-a1b2c3")
+        person_lead_dialog.driver_license_state.setText("or")
+        self.assertEqual(
+            person_lead_dialog.driver_license_number.text(),
+            "OR-A1B2C3",
+        )
+        self.assertEqual(person_lead_dialog.driver_license_state.text(), "OR")
+        person_lead_dialog.close()
+
     def test_vehicle_save_failure_is_visible_and_keeps_the_draft(self):
         vehicle = Vehicle(
             id="",
@@ -533,6 +682,13 @@ class AddRecordWorkflowTest(unittest.TestCase):
             "Remove Item",
         }.issubset(button_labels))
         self.assertFalse(self.window.add_property_receipt_item_button.isEnabled())
+        owner = self.repository.save_person(Person(
+            id="",
+            case_id=self.case.id,
+            first_name="Jordan",
+            last_name="Property Owner",
+        ))
+        self.window.refresh_people()
 
         def configure_receipt(dialog: PropertyReceiptDialog) -> None:
             self.assertEqual(
@@ -547,8 +703,15 @@ class AddRecordWorkflowTest(unittest.TestCase):
                     "Safe Keeping",
                 ],
             )
+            self.assertEqual(
+                [
+                    dialog.property_owner.itemText(index)
+                    for index in range(dialog.property_owner.count())
+                ],
+                ["No property owner selected", owner.display_name],
+            )
             dialog.receipt_number.setText("PR-13579")
-            dialog.property_owner.setText("Jordan Property Owner")
+            dialog.property_owner.setCurrentText(owner.display_name)
             dialog.lodging_type.setCurrentText("Safe Keeping")
             dialog.lodged_location.setText("Central Property Room")
             dialog.lodged_date.setText("08/06/2026")
@@ -562,7 +725,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(len(receipts), 1)
         receipt = receipts[0]
         self.assertEqual(receipt.receipt_number, "PR-13579")
-        self.assertEqual(receipt.property_owner, "Jordan Property Owner")
+        self.assertEqual(receipt.property_owner, owner.display_name)
         self.assertEqual(receipt.lodging_type, "Safe Keeping")
         self.assertEqual(receipt.lodged_location, "Central Property Room")
         self.assertEqual(receipt.lodged_date, "2026-08-06")
@@ -615,9 +778,21 @@ class AddRecordWorkflowTest(unittest.TestCase):
             for index in range(self.window.tabs.count())
         ]
         self.assertNotIn("Packet Preview", tab_labels)
-        self.assertEqual(self.window.packet_preview_button.text(), "Packet Preview")
-        self.assertFalse(self.window.packet_preview_dialog.isModal())
-        self.assertFalse(self.window.packet_preview_dialog.isVisible())
+        toolbar = self.window.findChild(QToolBar)
+        toolbar_actions = [action.text() for action in toolbar.actions()]
+        self.assertEqual(
+            toolbar_actions,
+            [
+                "New Case",
+                "Save",
+                "Export Full Working Packet",
+                "Export Compact Packet",
+                "Packet Preview",
+                "Export Quick Review",
+                "Back Up",
+                "Data Folder",
+            ],
+        )
 
         self.window.show_packet_preview()
         self.app.processEvents()
@@ -644,6 +819,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertTrue(full_preview_path.is_file())
         full_page_count = self.window.packet_pdf_document.pageCount()
         self.assertGreater(full_page_count, 1)
+        self.assertTrue(self.window.packet_pdf_view.isVisible())
+        self.assertIs(
+            self.window.packet_pdf_view.document(),
+            self.window.packet_pdf_document,
+        )
         full_text = "\n".join(
             page.extract_text() or ""
             for page in PdfReader(full_preview_path).pages
@@ -755,7 +935,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
             self.window.tabs.count() - 1,
         )
         toolbar = self.window.findChild(QToolBar)
-        self.assertIn(
+        self.assertNotIn(
             "Export Exchange Report",
             [action.text() for action in toolbar.actions()],
         )
@@ -1226,8 +1406,10 @@ class AddRecordWorkflowTest(unittest.TestCase):
             self.window.conditions_tabs.tabText(index)
             for index in range(self.window.conditions_tabs.count())
         ]
-        self.assertIn("Weather", subtab_names)
-        self.assertIn("Surface", subtab_names)
+        self.assertEqual(
+            subtab_names,
+            ["Roadways", "Surface", "Visibility", "Weather", "Scene Analysis"],
+        )
         self.assertNotIn("Weather / Surface", subtab_names)
         self.assertNotIn("Multiple Surfaces", subtab_names)
         for retired_field in (
@@ -1762,6 +1944,52 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(self.window.chronology_table.item(0, 0).text(), "02/13/2026")
         self.assertEqual(self.window.tasks_table.item(0, 3).text(), "03/14/2026")
 
+    def test_property_receipt_owner_selector_uses_people_and_preserves_legacy_owner(self):
+        owner = Person(
+            id="person-owner",
+            case_id=self.case.id,
+            first_name="Alex",
+            last_name="Example",
+        )
+        receipt = PropertyReceipt(
+            id="receipt-legacy-owner",
+            case_id=self.case.id,
+            receipt_number="PR-LEGACY",
+            property_owner="Legacy Property Owner",
+        )
+
+        dialog = PropertyReceiptDialog(
+            self.case.id,
+            receipt,
+            people=[owner],
+        )
+
+        self.assertFalse(dialog.property_owner.isEditable())
+        self.assertEqual(
+            [
+                dialog.property_owner.itemText(index)
+                for index in range(dialog.property_owner.count())
+            ],
+            [
+                "No property owner selected",
+                owner.display_name,
+                "Legacy owner: Legacy Property Owner",
+            ],
+        )
+        self.assertEqual(
+            dialog.property_owner.currentData(),
+            "Legacy Property Owner",
+        )
+        self.assertEqual(
+            dialog.result_record().property_owner,
+            "Legacy Property Owner",
+        )
+        dialog.property_owner.setCurrentText(owner.display_name)
+        self.assertEqual(
+            dialog.result_record().property_owner,
+            owner.display_name,
+        )
+
     def test_weather_subtab_links_to_wunderground_history(self):
         weather_history_url = "https://www.wunderground.com/history"
         weather_history_link = self.window.findChild(
@@ -1789,7 +2017,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
             weather_history_url,
         )
 
-    def test_weather_station_time_and_celestial_lighting_fields_persist(self):
+    def test_weather_visibility_station_time_and_celestial_lighting_fields_persist(self):
         expected_values = {
             "temperature": "71",
             "dew_point": "54",
@@ -1797,6 +2025,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
             "humidity": "43",
             "pressure": "29.92",
             "precipitation": "0.04",
+            "visibility": "0.5",
             "weather_station": "KPDX ASOS",
             "weather_time": "14:35 PDT",
             "sunrise": "05:59",
@@ -1816,6 +2045,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertIn("Humidity (%)", labels)
         self.assertIn("Pressure (inHg)", labels)
         self.assertIn("Precipitation (in)", labels)
+        self.assertIn("Visibility (mi)", labels)
         self.assertEqual(self.window.weather_fields_grid.rowCount(), 5)
         self.assertEqual(self.window.weather_fields_grid.verticalSpacing(), 5)
         self.assertEqual(self.window.weather_fields_grid.horizontalSpacing(), 10)
@@ -2259,10 +2489,10 @@ class AddRecordWorkflowTest(unittest.TestCase):
             )
             self.assertEqual(
                 [dialog.helmet.itemText(index) for index in range(dialog.helmet.count())],
-                ["Yes", "No", "Not Applicable"],
+                ["Yes", "No", "Non-Standard", "Not Applicable"],
             )
             self.assertEqual(dialog.helmet.currentText(), "Not Applicable")
-            dialog.helmet.setCurrentText("Yes")
+            dialog.helmet.setCurrentText("Non-Standard")
             dialog.ejected.setCurrentText("No")
             dialog.extracted.setCurrentText("Yes")
             dialog.injury_code_boxes["1 - Laceration"].setChecked(True)
@@ -2345,6 +2575,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
         )
 
         def configure_vru(dialog: VRUAnalysisDialog) -> None:
+            subject_form = dialog.findChild(QTabWidget).widget(0).layout()
+            self.assertEqual(
+                subject_form.labelForField(dialog.person_id).text(),
+                "Vulnerable road user",
+            )
             dialog.person_id.setCurrentIndex(dialog.person_id.findData(person.id))
             dialog.projection_boxes["Roof Vault"].setChecked(True)
             dialog.light_meter_used.setChecked(True)
@@ -2409,7 +2644,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(details.height, "70 in")
         self.assertEqual(details.ejected, "No")
         self.assertEqual(details.extracted, "Yes")
-        self.assertEqual(details.helmet, "Yes")
+        self.assertEqual(details.helmet, "Non-Standard")
         self.assertIn("Laceration", details.injury_codes)
         profile = self.repository.get_driver_profile(person.id)
         self.assertEqual(profile.license_restricted, "Yes")
@@ -2437,6 +2672,10 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertTrue(analysis.light_meter_used)
         self.assertTrue(analysis.light_board_used)
         self.assertEqual(self.window.vru_table.item(0, 3).text(), "Light meter, Light board")
+        self.assertEqual(
+            self.window.vru_table.horizontalHeaderItem(0).text(),
+            "Vulnerable Road User",
+        )
         self.assertEqual(
             self.repository.list_surface_observations(self.case.id)[0].friction_value,
             "0.48",
@@ -2481,10 +2720,10 @@ class AddRecordWorkflowTest(unittest.TestCase):
     def test_packet_forms_scroll_in_compact_main_window(self):
         self.window.resize(900, 560)
         self.app.processEvents()
-        self.assertTrue(self.window.packet_preview_button.isVisible())
-        self.assertLessEqual(
-            self.window.packet_preview_button.geometry().right(),
-            self.window.packet_preview_button.parentWidget().rect().right(),
+        toolbar = self.window.findChild(QToolBar)
+        self.assertIn(
+            "Packet Preview",
+            [action.text() for action in toolbar.actions()],
         )
         self.window.tabs.setCurrentIndex(1)
         packet_tab = self.window.tabs.currentWidget()

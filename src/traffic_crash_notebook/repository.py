@@ -57,7 +57,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 30
+SCHEMA_VERSION = 31
 
 
 SCHEMA = """
@@ -295,7 +295,8 @@ CREATE TABLE IF NOT EXISTS road_conditions (
     temperature TEXT NOT NULL DEFAULT '', dew_point TEXT NOT NULL DEFAULT '',
     winds TEXT NOT NULL DEFAULT '', humidity TEXT NOT NULL DEFAULT '',
     weather_condition TEXT NOT NULL DEFAULT '', pressure TEXT NOT NULL DEFAULT '',
-    precipitation TEXT NOT NULL DEFAULT '', weather_station TEXT NOT NULL DEFAULT '',
+    precipitation TEXT NOT NULL DEFAULT '', visibility TEXT NOT NULL DEFAULT '',
+    weather_station TEXT NOT NULL DEFAULT '',
     weather_time TEXT NOT NULL DEFAULT '',
     other_weather TEXT NOT NULL DEFAULT '', surface_composition TEXT NOT NULL DEFAULT '',
     surface_condition TEXT NOT NULL DEFAULT '', friction_value TEXT NOT NULL DEFAULT '',
@@ -610,7 +611,7 @@ CREATE INDEX IF NOT EXISTS idx_hit_run_evidence_case
     ON hit_run_evidence_items(case_id, evidence_number, created_at);
 CREATE INDEX IF NOT EXISTS idx_hit_run_person_leads_case
     ON hit_run_person_leads(case_id, lead_number, created_at);
-PRAGMA user_version = 30;
+PRAGMA user_version = 31;
 """
 
 
@@ -636,10 +637,10 @@ class CaseRepository:
         with self._connect() as connection:
             previous_version = connection.execute("PRAGMA user_version").fetchone()[0]
             connection.executescript(SCHEMA)
-            self._migrate_schema_30(connection, previous_version)
+            self._migrate_schema_31(connection, previous_version)
 
     @staticmethod
-    def _migrate_schema_30(
+    def _migrate_schema_31(
         connection: sqlite3.Connection,
         previous_version: int,
     ) -> None:
@@ -686,6 +687,7 @@ class CaseRepository:
                 "streetlight_notes": "TEXT NOT NULL DEFAULT ''",
                 "area_classifications": "TEXT NOT NULL DEFAULT ''",
                 "weather_station": "TEXT NOT NULL DEFAULT ''",
+                "visibility": "TEXT NOT NULL DEFAULT ''",
                 "civil_twilight_morning": "TEXT NOT NULL DEFAULT ''",
                 "civil_twilight_evening": "TEXT NOT NULL DEFAULT ''",
                 "moonrise": "TEXT NOT NULL DEFAULT ''",
@@ -988,7 +990,7 @@ class CaseRepository:
                 )
                 """
             )
-        connection.execute("PRAGMA user_version = 30")
+        connection.execute("PRAGMA user_version = 31")
 
     def get_user_defaults(self) -> UserDefaults:
         with self._connect() as connection:
@@ -1914,7 +1916,8 @@ class CaseRepository:
                 "vru": connection.execute(
                     """SELECT COUNT(DISTINCT p.id) FROM people p
                        JOIN person_roles pr ON pr.person_id=p.id
-                       WHERE p.case_id=? AND pr.role IN ('Pedestrian', 'Bicyclist')""",
+                       WHERE p.case_id=?
+                         AND pr.role IN ('Pedestrian', 'Bicyclist', 'Motorcyclist')""",
                     (case_id,),
                 ).fetchone()[0],
             }
