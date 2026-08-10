@@ -464,6 +464,41 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertIn("legacy; not marked Driver", legacy_dialog.driver.currentText())
         legacy_dialog.reject()
 
+    def test_vehicle_dialog_validates_optional_vin_as_17_characters(self):
+        dialog = VehicleDialog(self.case.id, [], parent=self.window)
+        dialog.vehicle_number.setText("V-1")
+        dialog.vin.setText("1HGCM82633A00435")
+        with patch(
+            "traffic_crash_notebook.ui.dialogs.QMessageBox.warning"
+        ) as warning:
+            dialog._validate_and_accept()
+        warning.assert_called_once()
+        self.assertIn("17", warning.call_args.args[2])
+        dialog.reject()
+
+        invalid_character_dialog = VehicleDialog(
+            self.case.id,
+            [],
+            parent=self.window,
+        )
+        invalid_character_dialog.vehicle_number.setText("V-2")
+        invalid_character_dialog.vin.setText("1HGCM82633A00435I")
+        with patch(
+            "traffic_crash_notebook.ui.dialogs.QMessageBox.warning"
+        ) as warning:
+            invalid_character_dialog._validate_and_accept()
+        warning.assert_called_once()
+        self.assertIn("I, O, and Q", warning.call_args.args[2])
+        invalid_character_dialog.reject()
+
+        valid_dialog = VehicleDialog(self.case.id, [], parent=self.window)
+        valid_dialog.vehicle_number.setText("V-3")
+        valid_dialog.vin.setText("1hgcm82633a004352")
+        valid_dialog._validate_and_accept()
+        self.assertEqual(valid_dialog.vin.text(), "1HGCM82633A004352")
+        self.assertEqual(valid_dialog.result(), QDialog.DialogCode.Accepted)
+        valid_dialog.close()
+
     def test_vehicle_save_failure_is_visible_and_keeps_the_draft(self):
         vehicle = Vehicle(
             id="",

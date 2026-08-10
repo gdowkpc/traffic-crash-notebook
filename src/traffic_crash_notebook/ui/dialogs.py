@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -74,6 +76,7 @@ from .spellcheck_text_edit import SpellCheckedLineEdit, SpellCheckedTextEdit
 
 YES_NO_UNKNOWN = ("Unknown", "Yes", "No")
 HELMET_CHOICES = ("Yes", "No", "Non-Standard", "Not Applicable")
+VIN_PATTERN = re.compile(r"^[A-HJ-NPR-Z0-9]{17}$")
 
 
 def _line(text: str = "", placeholder: str = "") -> QLineEdit:
@@ -313,7 +316,7 @@ class VehicleDialog(RecordDialog):
         self.model = _line(self.vehicle.model)
         self.body_style = _line(self.vehicle.body_style, "Sedan, SUV, pickup, motorcycle...")
         self.color = _line(self.vehicle.color)
-        self.vin = _line(self.vehicle.vin)
+        self.vin = _line(self.vehicle.vin, "17-character VIN")
         self.plate = _line(self.vehicle.plate)
         self.plate_state = _line(self.vehicle.plate_state)
         self.driver = self._person_combo(
@@ -435,6 +438,16 @@ class VehicleDialog(RecordDialog):
     def _validate_and_accept(self) -> None:
         if not self.vehicle_number.text().strip():
             QMessageBox.warning(self, "Vehicle number required", "Enter a vehicle number such as V-1.")
+            return
+        vin = self.vin.text().strip().upper()
+        self.vin.setText(vin)
+        if vin and not VIN_PATTERN.fullmatch(vin):
+            QMessageBox.warning(
+                self,
+                "Valid VIN required",
+                "A VIN must contain exactly 17 letters and numbers. "
+                "The letters I, O, and Q are not used in VINs.",
+            )
             return
         super()._validate_and_accept()
 
