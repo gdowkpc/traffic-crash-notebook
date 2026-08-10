@@ -414,6 +414,7 @@ class MainWindow(QMainWindow):
         actions = (
             ("New Case", self.new_case),
             ("Save", self.save_overview),
+            ("Packet Preview", self.show_packet_preview),
             ("Export Full Working Packet", self.export_pdf),
             ("Export Compact Packet", self.export_compact_pdf),
             ("Export Exchange Report", self.export_exchange_report),
@@ -2428,6 +2429,10 @@ class MainWindow(QMainWindow):
         self.packet_pdf_document = next_document
         self.packet_pdf_buffer = next_buffer
         self.packet_preview_path = next_preview_path
+        # The preview panel is created while its dialog is hidden.  Explicitly
+        # show the view after replacing its document so the newly generated
+        # packet renders as soon as the dialog is opened or refreshed.
+        self.packet_pdf_view.show()
         previous_document.close()
         previous_document.deleteLater()
         if previous_preview_path.is_file():

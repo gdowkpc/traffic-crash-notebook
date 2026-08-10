@@ -755,6 +755,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertTrue(full_preview_path.is_file())
         full_page_count = self.window.packet_pdf_document.pageCount()
         self.assertGreater(full_page_count, 1)
+        self.assertTrue(self.window.packet_pdf_view.isVisible())
+        self.assertIs(
+            self.window.packet_pdf_view.document(),
+            self.window.packet_pdf_document,
+        )
         full_text = "\n".join(
             page.extract_text() or ""
             for page in PdfReader(full_preview_path).pages
