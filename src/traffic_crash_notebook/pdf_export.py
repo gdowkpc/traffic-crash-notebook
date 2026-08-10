@@ -250,13 +250,13 @@ def export_case_pdf(
         )
     )
     if working_copy:
-        story.extend(_write_in_area("Cover notes", styles, lines=5))
+        story.extend(_write_in_area("Cover Notes", styles, lines=5))
     story.append(PageBreak())
     story.extend(_packet_case_section(
         case, checklist, charge_dispositions, crash_details, video_sources, counts, styles
     ))
     if working_copy:
-        story.extend(_write_in_area("Packet / crash information additions", styles, lines=5))
+        story.extend(_write_in_area("Packet / Crash Information Additions", styles, lines=5))
 
     has_conditions = (
         _has_detail(conditions, {"case_id", "updated_at"})
@@ -271,7 +271,7 @@ def export_case_pdf(
             styles,
         ))
         if working_copy:
-            story.extend(_write_in_area("Road / weather follow-up", styles, lines=4))
+            story.extend(_write_in_area("Road / Weather Follow-Up", styles, lines=4))
 
     has_hit_run = _has_hit_run_content(
         hit_run_overview,
@@ -292,7 +292,7 @@ def export_case_pdf(
         ))
         if working_copy:
             story.extend(_write_in_area(
-                "Hit-and-run additions / lead development",
+                "Hit-and-Run Additions / Lead Development",
                 styles,
                 lines=12,
             ))
@@ -300,7 +300,7 @@ def export_case_pdf(
     if working_copy or people_list:
         story.extend(_people_section(people_list, participant_details, styles))
         if working_copy:
-            story.extend(_write_in_area("Additional people / contact updates", styles, lines=12))
+            story.extend(_write_in_area("Additional People / Contact Updates", styles, lines=12))
 
     participant_story = _participant_sections(
         people_list, participant_details, driver_profiles, vehicles, styles
@@ -309,11 +309,11 @@ def export_case_pdf(
         story.append(PageBreak() if working_copy else CondPageBreak(3.2 * inch))
         story.extend(participant_story)
         if working_copy:
-            story.extend(_write_in_area("Participant / driver follow-up", styles, lines=10))
+            story.extend(_write_in_area("Participant / Driver Follow-Up", styles, lines=10))
     elif working_copy:
         story.append(PageBreak())
         story.extend(_empty_working_section(
-            "Participant and driver details",
+            "Participant and Driver Details",
             "Use this area for participant, injury, transport, licensing, or driver-background updates.",
             styles,
             lines=8,
@@ -324,7 +324,7 @@ def export_case_pdf(
             vehicles, people, inspections, tires, motorcycle_inspections, styles
         ))
         if working_copy:
-            story.extend(_write_in_area("Vehicle / inspection follow-up", styles, lines=20))
+            story.extend(_write_in_area("Vehicle / Inspection Follow-Up", styles, lines=20))
 
     witness_contact_story = _witness_contact_sections(
         people_list, witness_details, contacts, people, vehicles, styles
@@ -335,7 +335,7 @@ def export_case_pdf(
     elif working_copy:
         story.append(PageBreak())
         story.extend(_empty_working_section(
-            "Witness interviews and contacts",
+            "Witness Interviews and Contacts",
             "Record newly identified witnesses, interview information, and contact information.",
             styles,
             lines=9,
@@ -345,10 +345,10 @@ def export_case_pdf(
     if vru_story:
         story.extend(vru_story)
         if working_copy:
-            story.extend(_write_in_area("VRU analysis follow-up", styles, lines=8))
+            story.extend(_write_in_area("VRU Analysis Follow-Up", styles, lines=8))
     elif working_copy:
         story.extend(_empty_working_section(
-            "Vulnerable road user analysis",
+            "Vulnerable Road User Analysis",
             "Use when pedestrian, bicyclist, motorcyclist, or other vulnerable-road-user facts are developed.",
             styles,
             lines=5,
@@ -364,22 +364,22 @@ def export_case_pdf(
             ))
             if working_copy:
                 story.extend(_write_in_area(
-                    "Evidence receipt / property item continuation",
+                    "Evidence Receipt / Property Item Continuation",
                     styles,
                     lines=6,
                 ))
         if working_copy or tasks:
             story.extend(_tasks_section(tasks, styles))
             if working_copy:
-                story.extend(_write_in_area("Task continuation", styles, lines=6))
+                story.extend(_write_in_area("Task Continuation", styles, lines=6))
         if working_copy or chronology:
             story.extend(_chronology_section(chronology, styles))
             if working_copy:
-                story.extend(_write_in_area("Journal continuation", styles, lines=7))
+                story.extend(_write_in_area("Journal Continuation", styles, lines=7))
         if working_copy or case.notes:
             story.extend(_notes_section(case, styles))
             if working_copy:
-                story.extend(_write_in_area("General handwritten continuation", styles, lines=20))
+                story.extend(_write_in_area("General Handwritten Continuation", styles, lines=20))
 
     canvas_factory = partial(
         _PacketCanvas,
@@ -696,7 +696,7 @@ def _packet_cover(
         ("TOPPADDING", (0, 0), (-1, 0), 8),
         ("BOTTOMPADDING", (0, 1), (-1, 1), 7),
     ]))
-    story.extend([metrics, Paragraph("Review and DA routing", styles["Subsection"])])
+    story.extend([metrics, Paragraph("Review and DA Routing", styles["Subsection"])])
 
     routing = _cover_detail_table(
         ("PEER REVIEW", "MCT SERGEANT REVIEW", "SUBMITTED TO DA"),
@@ -735,7 +735,7 @@ def _packet_cover(
         Spacer(1, 0.07 * inch),
         da_routing,
     ])
-    story.extend(_narrative_block("Crash summary", case.summary, styles))
+    story.extend(_narrative_block("Crash Summary", case.summary, styles))
     return story
 
 
@@ -851,7 +851,7 @@ def _empty_working_section(
         Paragraph(title, styles["Section"]),
         Paragraph(guidance, styles["BodySmall"]),
     ]
-    story.extend(_write_in_area("Handwritten additions / follow-up", styles, lines=lines))
+    story.extend(_write_in_area("Handwritten Additions / Follow-Up", styles, lines=lines))
     return story
 
 
@@ -864,7 +864,7 @@ def _packet_case_section(
     counts: dict[str, int],
     styles,
 ) -> list[object]:
-    story: list[object] = [Paragraph("Investigative packet", styles["Section"])]
+    story: list[object] = [Paragraph("Investigative Packet", styles["Section"])]
     day_of_week = weekday_name(case.crash_date)
 
     checklist_rows: list[list[Paragraph]] = [[
@@ -899,7 +899,7 @@ def _packet_case_section(
         repeatRows=1,
     )
     checklist_table.setStyle(_standard_table_style())
-    story.extend([Paragraph("Investigative checklist", styles["Subsection"]), checklist_table])
+    story.extend([Paragraph("Investigative Checklist", styles["Subsection"]), checklist_table])
 
     da_rows = [
         [
@@ -915,7 +915,7 @@ def _packet_case_section(
     ]
     da_table = Table(da_rows, colWidths=[2.2 * inch, 2.2 * inch, 2.2 * inch])
     da_table.setStyle(_standard_table_style())
-    story.extend([Paragraph("District attorney / charges", styles["Subsection"]), da_table])
+    story.extend([Paragraph("District Attorney / Charges", styles["Subsection"]), da_table])
     if charges:
         charge_rows = [[Paragraph("CHARGE", styles["Label"]), Paragraph("DISPOSITION", styles["Label"])]]
         charge_rows.extend([
@@ -927,7 +927,7 @@ def _packet_case_section(
         story.append(charge_table)
 
     story.append(CondPageBreak(3.6 * inch))
-    story.append(Paragraph("Crash information", styles["Subsection"]))
+    story.append(Paragraph("Crash Information", styles["Subsection"]))
     location = format_crash_location(details.road_name, details.intersection_road)
     non_intersection_distance = " / ".join(value for value in (
         f"{details.non_intersection_feet} ft" if details.non_intersection_feet else "",
@@ -990,7 +990,7 @@ def _packet_case_section(
             repeatRows=1,
         )
         video_table.setStyle(_standard_table_style())
-        story.extend([Paragraph("Video sources", styles["Subsection"]), video_table])
+        story.extend([Paragraph("Video Sources", styles["Subsection"]), video_table])
     return story
 
 
@@ -1095,8 +1095,8 @@ def _hit_run_section(
     _append_hit_run_narratives(
         story,
         (
-            ("Hit-and-run narrative", overview.narrative),
-            ("Hit-and-run follow-up", overview.follow_up_notes),
+            ("Hit-and-Run Narrative", overview.narrative),
+            ("Hit-and-Run Follow-Up", overview.follow_up_notes),
         ),
         styles,
     )
@@ -1146,10 +1146,10 @@ def _hit_run_section(
         _append_hit_run_narratives(
             story,
             (
-                ("Part / evidence description", record.part_description),
-                ("Damage / paint transfer", record.damage_paint_transfer),
-                ("Possible vehicle fitment", record.vehicle_fitment),
-                ("Evidence notes", record.notes),
+                ("Part / Evidence Description", record.part_description),
+                ("Damage / Paint Transfer", record.damage_paint_transfer),
+                ("Possible Vehicle Fitment", record.vehicle_fitment),
+                ("Evidence Notes", record.notes),
             ),
             styles,
         )
@@ -1210,11 +1210,11 @@ def _hit_run_section(
         _append_hit_run_narratives(
             story,
             (
-                ("Distinguishing features", lead.distinguishing_features),
-                ("Observed / expected damage", lead.observed_damage),
-                ("Missing parts", lead.missing_parts),
-                ("Elimination reason", lead.elimination_reason),
-                ("Vehicle lead notes", lead.notes),
+                ("Distinguishing Features", lead.distinguishing_features),
+                ("Observed / Expected Damage", lead.observed_damage),
+                ("Missing Parts", lead.missing_parts),
+                ("Elimination Reason", lead.elimination_reason),
+                ("Vehicle Lead Notes", lead.notes),
             ),
             styles,
         )
@@ -1279,10 +1279,10 @@ def _hit_run_section(
         _append_hit_run_narratives(
             story,
             (
-                ("Reason for lead / possible suspect", lead.reason_for_lead),
-                ("Information source", lead.information_source),
+                ("Reason for Lead / Possible Suspect", lead.reason_for_lead),
+                ("Information Source", lead.information_source),
                 ("Follow-up", lead.follow_up),
-                ("Elimination reason", lead.elimination_reason),
+                ("Elimination Reason", lead.elimination_reason),
             ),
             styles,
         )
@@ -1295,7 +1295,7 @@ def _conditions_section(
     roadway_records: list[RoadwayRecord],
     styles,
 ) -> list[object]:
-    story: list[object] = [Paragraph("Road and weather conditions", styles["Section"])]
+    story: list[object] = [Paragraph("Road and Weather Conditions", styles["Section"])]
     if (
         not _has_detail(conditions, {"case_id", "updated_at"})
         and not surface_observations
@@ -1332,7 +1332,7 @@ def _conditions_section(
     story.append(table)
     if conditions.other_weather:
         story.extend([
-            Paragraph("Other weather information", styles["Subsection"]),
+            Paragraph("Other Weather Information", styles["Subsection"]),
             Paragraph(_text(conditions.other_weather), styles["BodySmall"]),
         ])
     if roadway_records:
@@ -1416,15 +1416,15 @@ def _conditions_section(
     )
     lighting_table.setStyle(_standard_table_style())
     story.extend([
-        Paragraph("Lighting and visibility", styles["Subsection"]),
+        Paragraph("Lighting and Visibility", styles["Subsection"]),
         lighting_table,
     ])
     narratives = (
-        ("Lighting conditions", conditions.lighting_conditions),
-        ("Streetlight notes", conditions.streetlight_notes),
-        ("Visual obstructions", conditions.visual_obstructions),
-        ("Initial point of collision", conditions.initial_point_of_collision),
-        ("Skid test / drag sled notes", conditions.skid_test_notes),
+        ("Lighting Conditions", conditions.lighting_conditions),
+        ("Streetlight Notes", conditions.streetlight_notes),
+        ("Visual Obstructions", conditions.visual_obstructions),
+        ("Initial Point of Collision", conditions.initial_point_of_collision),
+        ("Skid Test / Drag Sled Notes", conditions.skid_test_notes),
     )
     for title, value in narratives:
         if value:
@@ -1447,7 +1447,7 @@ def _conditions_section(
             repeatRows=1,
         )
         surface_table.setStyle(_standard_table_style())
-        story.extend([Paragraph("Surface observations", styles["Subsection"]), surface_table])
+        story.extend([Paragraph("Surface Observations", styles["Subsection"]), surface_table])
     return story
 
 
@@ -1525,7 +1525,7 @@ def _participant_sections(
     ]
     if not qualifying:
         return []
-    story: list[object] = [Paragraph("Participant and driver details", styles["Section"])]
+    story: list[object] = [Paragraph("Participant and Driver Details", styles["Section"])]
     for person in qualifying:
         details = participant_details[person.id]
         profile = driver_profiles[person.id]
@@ -1569,9 +1569,9 @@ def _participant_sections(
             table.setStyle(_standard_table_style())
             story.append(table)
             for title, value in (("Injuries", details.injuries),
-                                 ("Structured evidence", details.evidence_items),
-                                 ("Evidence obtained", details.evidence_obtained),
-                                 ("Lab information", details.lab_information), ("Participant notes", details.notes)):
+                                 ("Structured Evidence", details.evidence_items),
+                                 ("Evidence Obtained", details.evidence_obtained),
+                                 ("Lab Information", details.lab_information), ("Participant Notes", details.notes)):
                 if value:
                     story.extend([Paragraph(title, styles["Label"]), Paragraph(_text(value), styles["BodySmall"])])
         if _has_detail(profile, {"person_id", "updated_at"}):
@@ -1675,16 +1675,16 @@ def _participant_sections(
                 driver_table_style.add("SPAN", (1, row), (3, row))
             table.setStyle(driver_table_style)
             background_title = (
-                "Driver background" if is_driver else "Participant background"
+                "Driver Background" if is_driver else "Participant Background"
             )
             story.extend([Paragraph(background_title, styles["Label"]), table])
             additional_driver_details = [
-                ("Testing methods", profile.testing_methods),
-                ("Impairment notes", profile.impairment_notes),
+                ("Testing Methods", profile.testing_methods),
+                ("Impairment Notes", profile.impairment_notes),
             ]
             if is_driver:
                 additional_driver_details.insert(0, (
-                    "Medical conditions",
+                    "Medical Conditions",
                     "\n".join(
                         value
                         for value in (
@@ -1778,22 +1778,22 @@ def _vehicles_section(
         block: list[object] = [
             Paragraph(heading, styles["Subsection"]),
             table,
-            Paragraph("Insurance claim", styles["Label"]),
+            Paragraph("Insurance Claim", styles["Label"]),
             claim_table,
-            Paragraph("Vehicle-specific checklist", styles["Label"]),
+            Paragraph("Vehicle-Specific Checklist", styles["Label"]),
             workflow_table,
-            Paragraph("Vehicle release", styles["Label"]),
+            Paragraph("Vehicle Release", styles["Label"]),
             release_table,
         ]
         if vehicle.edr_status:
             block.extend([
-                Paragraph("CDR / EDR notes", styles["Label"]),
+                Paragraph("CDR / EDR Notes", styles["Label"]),
                 Paragraph(_text(vehicle.edr_status), styles["BodySmall"]),
             ])
         if vehicle.damage_notes:
             block.extend([Paragraph("Damage", styles["Label"]), Paragraph(_text(vehicle.damage_notes), styles["BodySmall"])])
         if vehicle.notes:
-            block.extend([Paragraph("Additional notes", styles["Label"]), Paragraph(_text(vehicle.notes), styles["BodySmall"])])
+            block.extend([Paragraph("Additional Notes", styles["Label"]), Paragraph(_text(vehicle.notes), styles["BodySmall"])])
         inspection = inspections[vehicle.id]
         if _has_detail(inspection, {"vehicle_id", "updated_at"}):
             inspection_data = [
@@ -1815,22 +1815,22 @@ def _vehicles_section(
             inspection_table.setStyle(_standard_table_style())
             block.extend([Paragraph("Inspection", styles["Label"]), inspection_table])
             for title, value in (
-                ("Lighting / electrical", inspection.lighting_electrical),
-                ("Body equipment", inspection.body_equipment),
-                ("Safety systems", inspection.safety_systems),
-                ("Vehicle identity checks", "; ".join(value for value in (
+                ("Lighting / Electrical", inspection.lighting_electrical),
+                ("Body Equipment", inspection.body_equipment),
+                ("Safety Systems", inspection.safety_systems),
+                ("Vehicle Identity Checks", "; ".join(value for value in (
                     f"NICB: {inspection.nicb_status}" if inspection.nicb_status else "",
                     f"NHTSA recalls: {inspection.recall_status}" if inspection.recall_status else "",
                     f"VIN decode: {inspection.vin_decode_status}" if inspection.vin_decode_status else "",
                 ) if value)),
-                ("Switch positions", "; ".join(value for value in (
+                ("Switch Positions", "; ".join(value for value in (
                     f"Headlight: {inspection.headlight_switch_position}" if inspection.headlight_switch_position else "",
                     f"Wiper: {inspection.wiper_switch_position}" if inspection.wiper_switch_position else "",
                     f"Ignition: {inspection.ignition_position}" if inspection.ignition_position else "",
                     f"Radio: {inspection.radio_position}" if inspection.radio_position else "",
                     f"Heater: {inspection.heater_position}" if inspection.heater_position else "",
                 ) if value)),
-                ("Body / glazing / devices", "; ".join(value for value in (
+                ("Body / Glazing / Devices", "; ".join(value for value in (
                     f"Headlamp lens: {inspection.headlamp_lens_condition}" if inspection.headlamp_lens_condition else "",
                     f"Glass: {inspection.safety_glass_condition}" if inspection.safety_glass_condition else "",
                     f"Inside mirror: {inspection.inside_mirror}" if inspection.inside_mirror else "",
@@ -1841,9 +1841,9 @@ def _vehicles_section(
                     f"Exterior: {inspection.body_exterior_condition}" if inspection.body_exterior_condition else "",
                     inspection.device_observations,
                 ) if value)),
-                ("Tire contribution explanation", inspection.tire_contribution_explanation),
-                ("Tire notes", inspection.tire_notes),
-                ("Inspection notes", inspection.inspection_notes),
+                ("Tire Contribution Explanation", inspection.tire_contribution_explanation),
+                ("Tire Notes", inspection.tire_notes),
+                ("Inspection Notes", inspection.inspection_notes),
             ):
                 if value:
                     block.extend([Paragraph(title, styles["Label"]), Paragraph(_text(value), styles["BodySmall"])])
@@ -1870,7 +1870,7 @@ def _vehicles_section(
                     equipment_rows, colWidths=[3.4 * inch, 1.6 * inch, 1.6 * inch], repeatRows=1
                 )
                 equipment_table.setStyle(_standard_table_style())
-                block.extend([Paragraph("Equipment checks", styles["Label"]), equipment_table])
+                block.extend([Paragraph("Equipment Checks", styles["Label"]), equipment_table])
         vehicle_tires = tires[vehicle.id]
         if vehicle_tires:
             tire_data = [[Paragraph(item, styles["Label"]) for item in
@@ -1900,7 +1900,7 @@ def _vehicles_section(
         ))
         if has_motorcycle:
             story.append(CondPageBreak(4.0 * inch))
-            story.append(Paragraph("Motorcycle information and 44-item inspection", styles["Subsection"]))
+            story.append(Paragraph("Motorcycle Information and 44-Item Inspection", styles["Subsection"]))
             motorcycle_details = [
                 [Paragraph("FRAME NUMBER", styles["Label"]), Paragraph(_text(motorcycle.frame_number), styles["Cell"]),
                  Paragraph("ENGINE NUMBER", styles["Label"]), Paragraph(_text(motorcycle.engine_number), styles["Cell"])],
@@ -1946,7 +1946,7 @@ def _vehicles_section(
             story.append(item_table)
             if motorcycle.general_comments:
                 story.extend([
-                    Paragraph("Motorcycle inspection comments", styles["Label"]),
+                    Paragraph("Motorcycle Inspection Comments", styles["Label"]),
                     Paragraph(_text(motorcycle.general_comments), styles["BodySmall"]),
                 ])
         story.append(Spacer(1, 0.12 * inch))
@@ -1968,7 +1968,7 @@ def _witness_contact_sections(
     if not witnesses and not contacts:
         return []
     vehicle_names = {vehicle.id: f"{vehicle.vehicle_number} - {vehicle.description}" for vehicle in vehicles}
-    story: list[object] = [Paragraph("Witness interviews and contacts", styles["Section"])]
+    story: list[object] = [Paragraph("Witness Interviews and Contacts", styles["Section"])]
     for person, details in witnesses:
         story.append(Paragraph(_text(person.display_name), styles["Subsection"]))
         data = [
@@ -1995,13 +1995,13 @@ def _witness_contact_sections(
         table.setStyle(witness_style)
         story.append(table)
         for title, value in (
-            ("Statement summary", details.statement_summary),
-            ("Credibility / consistency", details.credibility_notes),
+            ("Statement Summary", details.statement_summary),
+            ("Credibility / Consistency", details.credibility_notes),
         ):
             if value:
                 story.extend([Paragraph(title, styles["Label"]), Paragraph(_text(value), styles["BodySmall"])])
     if contacts:
-        story.append(Paragraph("Contact relationships", styles["Subsection"]))
+        story.append(Paragraph("Contact Relationships", styles["Subsection"]))
         data = [[Paragraph(item, styles["Label"]) for item in
                  ("PERSON", "TYPE", "CONTACT", "PHONES / EMAIL", "ADDRESS / NOTES")]]
         for contact in contacts:
@@ -2044,7 +2044,7 @@ def _vru_section(
     if not analyses:
         return []
     vehicle_names = {vehicle.id: f"{vehicle.vehicle_number} - {vehicle.description}" for vehicle in vehicles}
-    story: list[object] = [Paragraph("Vulnerable road user analysis", styles["Section"])]
+    story: list[object] = [Paragraph("Vulnerable Road User Analysis", styles["Section"])]
     for analysis in analyses:
         subject = _name(analysis.person_id, people)
         vehicle = vehicle_names.get(analysis.vehicle_id, "-")
@@ -2076,10 +2076,10 @@ def _vru_section(
         story.append(table)
         narratives = (
             ("Sightlines", analysis.sightlines),
-            ("Driver thought process", analysis.driver_thought_process),
-            ("Driver sleep information", analysis.driver_sleep_information),
-            ("VRU impairment notes", analysis.vru_impairment_notes),
-            ("Analysis notes", analysis.notes),
+            ("Driver Thought Process", analysis.driver_thought_process),
+            ("Driver Sleep Information", analysis.driver_sleep_information),
+            ("VRU Impairment Notes", analysis.vru_impairment_notes),
+            ("Analysis Notes", analysis.notes),
         )
         for title, value in narratives:
             if value:
@@ -2100,7 +2100,7 @@ def _evidence_section(
     for receipt in receipts:
         story.append(CondPageBreak(1.45 * inch))
         story.append(Paragraph(
-            f"Property receipt {_text(receipt.receipt_number)}",
+            f"Property Receipt {_text(receipt.receipt_number)}",
             styles["Subsection"],
         ))
         receipt_table = Table(
@@ -2154,7 +2154,7 @@ def _evidence_section(
 
 
 def _chronology_section(entries: list[ChronologyEntry], styles) -> list[object]:
-    story: list[object] = [Paragraph("Investigative journal", styles["Section"])]
+    story: list[object] = [Paragraph("Investigative Journal", styles["Section"])]
     if not entries:
         story.append(Paragraph("No journal entries.", styles["Empty"]))
         return story

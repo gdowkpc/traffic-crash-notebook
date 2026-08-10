@@ -149,22 +149,45 @@ class PdfExportTest(unittest.TestCase):
                 self.assertIn("COURT CASE NUMBER", cover_text)
                 self.assertNotIn("Key questions", cover_text)
                 self.assertNotIn("unresolved issues", cover_text.lower())
-                self.assertNotIn("Investigative packet", cover_text)
-                self.assertIn("Investigative packet", second_page_text)
+                self.assertNotIn("Investigative Packet", cover_text)
+                self.assertIn("Investigative Packet", second_page_text)
 
             self.assertGreater(len(working_reader.pages), len(compact_reader.pages))
             self.assertNotIn("FULL WORKING PACKET", working_text)
-            self.assertIn("Participant and driver details", working_text)
-            self.assertIn("Witness interviews and contacts", working_text)
-            self.assertIn("Vulnerable road user analysis", working_text)
-            self.assertIn("Investigative journal", working_text)
+            expected_title_case_headings = (
+                "Investigative Packet",
+                "Review and DA Routing",
+                "Investigative Checklist",
+                "District Attorney / Charges",
+                "Crash Information",
+                "Crash Summary",
+                "Road and Weather Conditions",
+                "People",
+                "Participant and Driver Details",
+                "Vehicles",
+                "Witness Interviews and Contacts",
+                "Vulnerable Road User Analysis",
+                "Evidence",
+                "Tasks",
+                "Investigative Journal",
+            )
+            for heading in expected_title_case_headings:
+                self.assertIn(heading, working_text)
+            for retired_sentence_case_heading in (
+                "Investigative packet",
+                "Participant and driver details",
+                "Witness interviews and contacts",
+                "Vulnerable road user analysis",
+                "Investigative journal",
+            ):
+                self.assertNotIn(retired_sentence_case_heading, working_text)
             self.assertIn("No journal entries.", working_text)
             self.assertNotIn("Investigative chronology", working_text)
             self.assertNotIn("Handwritten sketch / diagram continuation", working_text)
             self.assertIn("GENERAL HANDWRITTEN CONTINUATION", working_text)
             self.assertIn("COMPACT COMPLETED-CASE PACKET", compact_text)
-            self.assertNotIn("Participant and driver details", compact_text)
-            self.assertNotIn("Witness interviews and contacts", compact_text)
+            self.assertNotIn("Participant and Driver Details", compact_text)
+            self.assertNotIn("Witness Interviews and Contacts", compact_text)
             self.assertNotIn("GENERAL HANDWRITTEN CONTINUATION", compact_text)
             self.assertNotIn("Hit & Run Investigation", working_text)
             self.assertNotIn("Hit & Run Investigation", compact_text)
@@ -248,7 +271,7 @@ class PdfExportTest(unittest.TestCase):
             text = "\n".join(page.extract_text() or "" for page in reader.pages)
             normalized_text = " ".join(text.split())
             for expected in (
-                "Property receipt PR-86420",
+                "Property Receipt PR-86420",
                 "Morgan Evidence Owner",
                 "Found Property",
                 "North Precinct Property Room",
@@ -260,7 +283,7 @@ class PdfExportTest(unittest.TestCase):
             ):
                 self.assertIn(expected, normalized_text)
             self.assertLess(
-                normalized_text.index("Property receipt PR-86420"),
+                normalized_text.index("Property Receipt PR-86420"),
                 normalized_text.index("Submit evidence for comparison"),
             )
             self.assertLess(
@@ -310,11 +333,11 @@ class PdfExportTest(unittest.TestCase):
             text = "\n".join(page.extract_text() or "" for page in reader.pages)
             normalized_text = " ".join(text.split())
             participant_block = normalized_text.split(
-                "Participant and driver details",
+                "Participant and Driver Details",
                 1,
             )[1]
-            self.assertIn("Participant background", participant_block)
-            self.assertNotIn("Driver background", participant_block)
+            self.assertIn("Participant Background", participant_block)
+            self.assertNotIn("Driver Background", participant_block)
             self.assertIn("LICENSE NUMBER NONDRIVER-DL", participant_block)
             self.assertIn("ISSUED 02/03/2023", participant_block)
             self.assertIn("EXPIRATION 02/03/2031", participant_block)
@@ -421,6 +444,7 @@ class PdfExportTest(unittest.TestCase):
             summary_text = "\n".join(page.extract_text() or "" for page in summary.pages)
 
             for text in (working_text, compact_text, summary_text):
+                normalized_text = " ".join(text.split())
                 self.assertIn("Hit & Run Investigation", text)
                 self.assertIn("HRV-1", text)
                 self.assertIn("HRE-1", text)
@@ -429,6 +453,24 @@ class PdfExportTest(unittest.TestCase):
                 self.assertIn("Morgan Possible (aka Mo)", text)
                 self.assertIn("08/04/2026", text)
                 self.assertIn("08/05/2026", text)
+                for heading in (
+                    "Hit-and-Run Narrative",
+                    "Hit-and-Run Follow-Up",
+                    "Part / Evidence Description",
+                    "Distinguishing Features",
+                    "Observed / Expected Damage",
+                    "Missing Parts",
+                    "Reason for Lead / Possible Suspect",
+                    "Information Source",
+                ):
+                    self.assertIn(heading, normalized_text)
+                for retired_heading in (
+                    "Hit-and-run narrative",
+                    "Part / evidence description",
+                    "Distinguishing features",
+                    "Reason for lead / possible suspect",
+                ):
+                    self.assertNotIn(retired_heading, normalized_text)
             self.assertIn(
                 "HIT-AND-RUN ADDITIONS / LEAD DEVELOPMENT",
                 working_text,
@@ -687,9 +729,9 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("COURT-26-200", cover_text)
             self.assertNotIn("Key questions", cover_text)
             self.assertNotIn("unresolved issues", cover_text.lower())
-            self.assertNotIn("Investigative packet", cover_text)
+            self.assertNotIn("Investigative Packet", cover_text)
             self.assertIn(
-                "Investigative packet",
+                "Investigative Packet",
                 reader.pages[1].extract_text() or "",
             )
             self.assertIn("26-123456", text)
@@ -708,7 +750,7 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("01/02/1985 / M / White", people_page_text)
             self.assertIn("123 Example Street, Portland, OR 97201", normalized_text)
             self.assertIn("2024 Toyota Camry", text)
-            self.assertIn("Vehicle-specific checklist", normalized_text)
+            self.assertIn("Vehicle-Specific Checklist", normalized_text)
             self.assertIn("WARRANT", normalized_text)
             self.assertIn("VEHICLE INSPECTION", normalized_text)
             self.assertIn("NHTSA RECALLS CHECKED", normalized_text)
@@ -728,7 +770,9 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("POLICY NUMBER", normalized_text)
             self.assertIn("Example Mutual", normalized_text)
             self.assertIn("POL-24680", normalized_text)
-            self.assertIn("Insurance claim", normalized_text)
+            self.assertIn("Insurance Claim", normalized_text)
+            self.assertIn("Vehicle Release", normalized_text)
+            self.assertIn("CDR / EDR Notes", normalized_text)
             self.assertIn("CLAIM NUMBER", normalized_text)
             self.assertIn("CLM-97531", normalized_text)
             self.assertIn("ADJUSTER NAME", normalized_text)
@@ -739,13 +783,13 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("avery.adjuster@example.com", normalized_text)
             self.assertIn("Imaging completed without error", normalized_text)
             self.assertIn("Scene scan completed", text)
-            self.assertIn("Investigative journal", text)
+            self.assertIn("Investigative Journal", text)
             self.assertIn("JOURNAL ENTRIES", normalized_text)
             self.assertIn("JOURNAL CONTINUATION", normalized_text)
             self.assertNotIn("Investigative chronology", text)
             self.assertNotIn("CHRONOLOGY CONTINUATION", normalized_text)
             self.assertIn("Review surveillance video", text)
-            self.assertIn("Road and weather conditions", text)
+            self.assertIn("Road and Weather Conditions", text)
             self.assertIn("WEATHER STATION", normalized_text)
             self.assertIn("TIME OF READING", normalized_text)
             self.assertIn("71 F", normalized_text)
@@ -775,7 +819,7 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("Northbound approach sign", normalized_text)
             self.assertIn("Three northbound travel lanes", normalized_text)
             self.assertIn("Stop line at the intersection", normalized_text)
-            self.assertIn("Investigative checklist", text)
+            self.assertIn("Investigative Checklist", text)
             self.assertIn("Toxicology", text)
             self.assertIn("Axon Shared to DA", text)
             self.assertIn("Report Peer Reviewed", text)
@@ -829,15 +873,17 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("LEGACY OUTSIDE CITY VALUE", text)
             self.assertNotIn("LEGACY OUTSIDE MILES VALUE", text)
             self.assertNotIn("LEGACY REFERENCE VALUE", text)
-            self.assertIn("Surface observations", text)
+            self.assertIn("Surface Observations", text)
             self.assertIn("0.48", text)
             self.assertNotIn("LEGACY SINGLE SURFACE VALUE", text)
             self.assertIn("Corrective lenses", text)
             participant_block = normalized_text.split(
-                "Participant and driver details",
+                "Participant and Driver Details",
                 1,
             )[1].split("Vehicles", 1)[0]
             self.assertIn("GENDER / RACE M / White DOB 01/02/1985", participant_block)
+            self.assertIn("Driver Background", participant_block)
+            self.assertIn("Testing Methods", participant_block)
             self.assertLess(
                 participant_block.index("HEIGHT / WEIGHT"),
                 participant_block.index("TRANSPORT"),
@@ -870,7 +916,7 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("Physical condition selections", participant_block)
             self.assertIn("Roof Vault", text)
             self.assertIn("RF tread separation", text)
-            self.assertIn("Motorcycle information and 44-item inspection", text)
+            self.assertIn("Motorcycle Information and 44-Item Inspection", text)
             self.assertIn("FRAME-1", text)
             self.assertIn("20 psi", text)
             self.assertIn("Example Hospital", text)
@@ -879,12 +925,13 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("air bag Unknown; helmet Non-Standard", normalized_text)
             self.assertIn("12,345", text)
             self.assertIn("225/45R18", text)
-            self.assertIn("Witness interviews and contacts", text)
+            self.assertIn("Witness Interviews and Contacts", text)
             witness_block = text[
-                text.index("Witness interviews and contacts"):
-                text.index("Vulnerable road user analysis")
+                text.index("Witness Interviews and Contacts"):
+                text.index("Vulnerable Road User Analysis")
             ]
             self.assertIn("SIGNIFICANCE", witness_block)
+            self.assertIn("Statement Summary", witness_block)
             self.assertIn("observed the entire signal cycle", witness_block)
             self.assertNotIn("OCCUPATION", witness_block)
             self.assertNotIn("FOLLOW-UP", witness_block)
@@ -893,7 +940,7 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("The signal was visible", text)
             self.assertNotIn("LEGACY PERSON PRIMARY PHONE", text)
             self.assertNotIn("LEGACY CONTACT PRIMARY PHONE", text)
-            self.assertIn("Vulnerable road user analysis", text)
+            self.assertIn("Vulnerable Road User Analysis", text)
             self.assertIn("LIGHT METER USED", normalized_text)
             self.assertIn("LIGHT BOARD USED", normalized_text)
             self.assertNotIn("PERCEPTION / RESPONSE", normalized_text)
@@ -915,6 +962,16 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("FULL WORKING PACKET", text)
             self.assertIn("COVER NOTES", text)
             self.assertNotIn("ROUTING UPDATES", text)
+            for retired_heading in (
+                "Driver background",
+                "Testing methods",
+                "Insurance claim",
+                "Vehicle-specific checklist",
+                "Vehicle release",
+                "CDR / EDR notes",
+                "Statement summary",
+            ):
+                self.assertNotIn(retired_heading, normalized_text)
             self.assertIn(f"Page 1 of {len(reader.pages)}", text)
             self.assertTrue(all("CASE 26-123456" in (page.extract_text() or "") for page in reader.pages))
 
@@ -946,7 +1003,7 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("ROADWAY / TAG", normalized_compact_text)
             self.assertIn("North Example Street - northbound", normalized_compact_text)
             self.assertIn("Example Avenue - westbound", normalized_compact_text)
-            self.assertIn("Motorcycle information and 44-item inspection", compact_text)
+            self.assertIn("Motorcycle Information and 44-Item Inspection", compact_text)
             self.assertGreaterEqual(compact_text.count("MOTORCYCLE INSPECTION"), 2)
             self.assertNotIn("Related files and records", compact_text)
             self.assertNotIn("LEGACY FILE REFERENCE TITLE", compact_text)
