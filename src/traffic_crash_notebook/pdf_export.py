@@ -582,6 +582,10 @@ def _packet_cover(
     location: str = "",
 ) -> list[object]:
     generated = datetime.now().astimezone().strftime("%m/%d/%Y at %I:%M %p")
+    crash_date_time = " / ".join(value for value in (
+        format_date_for_display(case.crash_date),
+        format_time_for_display(case.crash_time),
+    ) if value)
     title_content = [
         Paragraph(AGENCY_UNIT_HEADING, styles["Label"]),
         Paragraph("TRAFFIC CRASH INVESTIGATION PACKET", styles["CoverTitle"]),
@@ -616,13 +620,12 @@ def _packet_cover(
 
     story.extend([
         _cover_detail_table(
-            ("CRASH DATE", "CRASH TIME", "CASE STATUS"),
+            ("CRASH DATE / TIME", "CASE STATUS"),
             (
-                format_date_for_display(case.crash_date),
-                format_time_for_display(case.crash_time),
+                crash_date_time,
                 case.status,
             ),
-            [2.2 * inch, 2.2 * inch, 2.2 * inch],
+            [3.3 * inch, 3.3 * inch],
             styles,
         ),
         Spacer(1, 0.07 * inch),

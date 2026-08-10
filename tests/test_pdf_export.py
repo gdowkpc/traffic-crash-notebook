@@ -413,6 +413,7 @@ class PdfExportTest(unittest.TestCase):
             repository = CaseRepository(root / "test.sqlite3")
             case = repository.create_case("26-123456", "Garrett Dow")
             case.crash_date = "2026-08-04"
+            case.crash_time = "14:35"
             case.location = "North Example Street"
             case.assigned_officer_dpsst = "123456"
             case.assignment = "Traffic Investigations Unit"
@@ -636,6 +637,9 @@ class PdfExportTest(unittest.TestCase):
             self.assertGreaterEqual(len(reader.pages), 3)
             self.assertIn("TRAFFIC CRASH INVESTIGATION PACKET", cover_text)
             self.assertIn("CASE 26-123456", cover_text)
+            self.assertIn("CRASH DATE / TIME", cover_text)
+            self.assertNotIn("CRASH TIME", cover_text)
+            self.assertIn("08/04/2026 / 02:35 PM", normalized_cover_text)
             self.assertIn("123456", cover_text)
             self.assertIn(
                 "PORTLAND POLICE BUREAU - TRAFFIC INVESTIGATIONS UNIT",
