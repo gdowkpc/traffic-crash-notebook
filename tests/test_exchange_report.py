@@ -142,6 +142,18 @@ class ExchangeReportPdfTest(unittest.TestCase):
                 cell_phone="971-555-5001",
                 roles=["Bicyclist"],
             ))
+            repository.save_person(Person(
+                id="",
+                case_id=case.id,
+                first_name="Morgan",
+                last_name="Motorcyclist",
+                address="312 Motorcycle Way",
+                city="Portland",
+                state="OR",
+                zip_code="97212",
+                cell_phone="971-555-5002",
+                roles=["Motorcyclist"],
+            ))
 
             path = export_exchange_report_pdf(
                 repository,
@@ -169,7 +181,9 @@ class ExchangeReportPdfTest(unittest.TestCase):
             self.assertIn("PEDESTRIAN", text)
             self.assertIn("Bicyclist, Blair", text)
             self.assertIn("BICYCLIST", text)
-            self.assertEqual(text.count("PERSON NAME (LAST, FIRST, MI)"), 11)
+            self.assertIn("Motorcyclist, Morgan", text)
+            self.assertIn("MOTORCYCLIST", text)
+            self.assertEqual(text.count("PERSON NAME (LAST, FIRST, MI)"), 12)
             self.assertIn("1 / 3", page_texts[0])
             self.assertIn("2 / 3", page_texts[1])
             self.assertIn("3 / 3", page_texts[2])

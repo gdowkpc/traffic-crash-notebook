@@ -21,9 +21,9 @@ agency endorsement is implied.
 - Open Settings from the case header to review or change the data location and save the investigator's name, numeric DPSST, and assignment as defaults for new cases.
 - Automatically check the official public GitHub release manifest at most once every 24 hours, or check immediately from **Help > Check for Updates**; approved downloads are size- and SHA-256-verified before being kept.
 - Record the case overview, assigned officer, numeric DPSST, assignment, crash summary, and general notes; display crash times with AM/PM.
-- Enter a person once and assign multiple roles such as driver, passenger, pedestrian, witness, or victim.
+- Enter a person once and assign multiple roles such as driver, passenger, pedestrian, bicyclist, motorcyclist, witness, or victim.
 - Create unlimited vehicles and link existing people as drivers or owners.
-- Preview, print through the standard Windows printer dialog, and export a Traffic Crash Exchange Report from existing case records without duplicate data entry. It preserves linked and unambiguous legacy drivers; includes every saved passenger, witness, pedestrian, and bicyclist; maps DPSST and Assignment into the footer; creates continuation pages as needed; and appends a searchable text information/responsibilities page last.
+- Preview, print through the standard Windows printer dialog, and export a Traffic Crash Exchange Report from existing case records without duplicate data entry. It preserves linked and unambiguous legacy drivers; includes every saved passenger, witness, pedestrian, bicyclist, and motorcyclist; maps DPSST and Assignment into the footer; creates continuation pages as needed; and appends a searchable text information/responsibilities page last.
 - Maintain an automatically sorted investigative Journal for dated actions, decisions, requests, findings, and follow-up.
 - Maintain a separate Evidence workspace with unlimited property receipts, property owners, lodging classifications and locations, lodging dates, and automatically numbered descriptive items under each receipt.
 - Track open, waiting, completed, and unnecessary investigative tasks in a dedicated Tasks workspace.
@@ -44,7 +44,7 @@ agency endorsement is implied.
 - Display the Traffic Investigations Unit logo in the application and generated PDF.
 - Maintain structured witness interview summaries, credibility notes, significance, and follow-up.
 - Link unlimited family, next-of-kin, medical, attorney, insurance, employer, and other contacts directly to one person.
-- Organize pedestrian and bicyclist visibility workups, motion/throw information, and whether a light meter or light board was used.
+- Organize pedestrian, bicyclist, and motorcyclist visibility workups, motion/throw information, and whether a light meter or light board was used.
 - Verify a finished portable build without opening the GUI or touching the normal case database.
 
 ## Running from source
@@ -159,7 +159,7 @@ entered text to a network service.
 - **Full Working Packet** preserves the complete section order and adds ruled areas for handwritten updates after printing. It is the intended attorney-folder copy. Print one-sided when practical so every ruled area remains easy to use.
 - **Compact Packet** includes the complete entered record but omits unused sections and dedicated handwriting areas.
 - **Export Quick Review** creates a concise briefing copy rather than the complete packet.
-- **Exchange Report preview / export** creates a searchable, template-style information-exchange form from existing case data. It preserves drivers, dynamically packs existing vehicles plus pedestrian and bicyclist participants, adds numbered continuation pages as needed, and appends a selectable-text information/responsibilities page last.
+- **Exchange Report preview / export** creates a searchable, template-style information-exchange form from existing case data. It preserves drivers, dynamically packs existing vehicles plus pedestrian, bicyclist, and motorcyclist participants, adds numbered continuation pages as needed, and appends a selectable-text information/responsibilities page last.
 
 All four PDFs use US Letter pages. The packet PDFs keep primary content below
 the top-hole area, and every export carries case identity and page numbering.

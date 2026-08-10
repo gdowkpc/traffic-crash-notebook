@@ -1048,7 +1048,7 @@ class MainWindow(QMainWindow):
 
     def _build_vru_tab(self):
         tab, self.vru_table = self._table_tab(
-            ["Pedestrian / Bicyclist", "Vehicle", "Position / Movement", "Night Visibility Equipment", "Notes"],
+            ["Vulnerable Road User", "Vehicle", "Position / Movement", "Night Visibility Equipment", "Notes"],
             self.add_vru_analysis, self.edit_vru_analysis, self.delete_vru_analysis,
         )
         self.vru_table.setColumnWidth(0, 190)
@@ -1168,8 +1168,9 @@ class MainWindow(QMainWindow):
         guidance = QLabel(
             "This is a read-only preview generated from the existing Overview, People, "
             "Driver Background, Participant / Medical, and Vehicle records. Make changes "
-            "in those case areas, then refresh this preview. Every saved Passenger and "
-            "Witness is included as an involved-person block, with additional pages added "
+            "in those case areas, then refresh this preview. Every saved Passenger, "
+            "Witness, Pedestrian, Bicyclist, and Motorcyclist is included as an "
+            "involved-person block, with additional pages added "
             "as needed. The PDF prints only records that exist and always places the "
             "information / responsibilities page last."
         )
@@ -2522,6 +2523,7 @@ class MainWindow(QMainWindow):
         witness_count = sum("Witness" in person.roles for person in exchange_people)
         pedestrian_count = sum("Pedestrian" in person.roles for person in exchange_people)
         bicyclist_count = sum("Bicyclist" in person.roles for person in exchange_people)
+        motorcyclist_count = sum("Motorcyclist" in person.roles for person in exchange_people)
         officer_missing = []
         if not self.current_case.investigator:
             officer_missing.append("assigned officer")
@@ -2536,7 +2538,8 @@ class MainWindow(QMainWindow):
         self.exchange_readiness_label.setText(
             f"Preview content: {len(vehicles)} vehicle(s), {len(exchange_people)} additional "
             f"person(s) ({passenger_count} passenger, {witness_count} witness, "
-            f"{pedestrian_count} pedestrian, {bicyclist_count} bicyclist). "
+            f"{pedestrian_count} pedestrian, {bicyclist_count} bicyclist, "
+            f"{motorcyclist_count} motorcyclist). "
             f"Complete records: {complete_vehicles} vehicle block(s) and "
             f"{complete_people} person block(s). The PDF has {len(page_plan)} dynamic "
             f"front page(s) plus the required information page; unused record blocks "

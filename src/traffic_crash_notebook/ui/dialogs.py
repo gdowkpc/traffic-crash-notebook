@@ -2067,7 +2067,7 @@ class VRUAnalysisDialog(RecordDialog):
         form = QFormLayout(subject)
         self.person_id = _related_person_combo(people, self.analysis.person_id, "No VRU selected")
         self.vehicle_id = _related_vehicle_combo(vehicles, self.analysis.vehicle_id)
-        form.addRow("Pedestrian / bicyclist", self.person_id)
+        form.addRow("Vulnerable road user", self.person_id)
         form.addRow("Involved vehicle", self.vehicle_id)
         for attribute, label in (
             ("upper_clothing", "Upper clothing"), ("lower_clothing", "Lower clothing"),
@@ -2135,7 +2135,11 @@ class VRUAnalysisDialog(RecordDialog):
 
     def _validate_and_accept(self) -> None:
         if not self.person_id.currentData():
-            QMessageBox.warning(self, "VRU required", "Select the pedestrian or bicyclist being analyzed.")
+            QMessageBox.warning(
+                self,
+                "VRU required",
+                "Select the pedestrian, bicyclist, or motorcyclist being analyzed.",
+            )
             return
         super()._validate_and_accept()
 

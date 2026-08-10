@@ -5,11 +5,17 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
+VRU_PERSON_ROLES = (
+    "Pedestrian",
+    "Bicyclist",
+    "Motorcyclist",
+)
+
+
 PERSON_ROLES = (
     "Driver",
     "Passenger",
-    "Pedestrian",
-    "Bicyclist",
+    *VRU_PERSON_ROLES,
     "Witness",
     "Suspect",
     "Victim",

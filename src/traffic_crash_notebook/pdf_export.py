@@ -349,7 +349,7 @@ def export_case_pdf(
     elif working_copy:
         story.extend(_empty_working_section(
             "Vulnerable road user analysis",
-            "Use when pedestrian, bicycle, or other vulnerable-road-user facts are developed.",
+            "Use when pedestrian, bicyclist, motorcyclist, or other vulnerable-road-user facts are developed.",
             styles,
             lines=5,
         ))

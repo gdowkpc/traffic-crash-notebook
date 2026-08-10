@@ -185,13 +185,15 @@ class AddRecordWorkflowTest(unittest.TestCase):
             dialog.state.setText("OR")
             dialog.zip_code.setText("97201-1234")
             dialog.role_boxes["Driver"].setChecked(True)
+            self.assertIn("Motorcyclist", dialog.role_boxes)
+            dialog.role_boxes["Motorcyclist"].setChecked(True)
 
         self._complete_modal_dialog(self.window.add_person, PersonDialog, configure)
 
         people = self.repository.list_people(self.case.id)
         self.assertEqual(len(people), 1)
         self.assertEqual(people[0].display_name, "Alex Tester")
-        self.assertEqual(people[0].roles, ["Driver"])
+        self.assertEqual(people[0].roles, ["Driver", "Motorcyclist"])
         self.assertEqual(people[0].dob, "1985-08-05")
         self.assertEqual(people[0].address, "123 Example Street")
         self.assertEqual(people[0].zip_code, "97201-1234")
@@ -2345,6 +2347,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
         )
 
         def configure_vru(dialog: VRUAnalysisDialog) -> None:
+            subject_form = dialog.findChild(QTabWidget).widget(0).layout()
+            self.assertEqual(
+                subject_form.labelForField(dialog.person_id).text(),
+                "Vulnerable road user",
+            )
             dialog.person_id.setCurrentIndex(dialog.person_id.findData(person.id))
             dialog.projection_boxes["Roof Vault"].setChecked(True)
             dialog.light_meter_used.setChecked(True)
@@ -2437,6 +2444,10 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertTrue(analysis.light_meter_used)
         self.assertTrue(analysis.light_board_used)
         self.assertEqual(self.window.vru_table.item(0, 3).text(), "Light meter, Light board")
+        self.assertEqual(
+            self.window.vru_table.horizontalHeaderItem(0).text(),
+            "Vulnerable Road User",
+        )
         self.assertEqual(
             self.repository.list_surface_observations(self.case.id)[0].friction_value,
             "0.48",

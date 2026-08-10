@@ -79,7 +79,7 @@ short briefing copy and is not a substitute for the complete packet.
 
 Export Exchange Report creates a searchable traffic-crash information exchange
 form from the case's shared people, driver-license, vehicle, and insurance data.
-It preserves drivers, includes pedestrian and bicyclist participants, adds numbered
+It preserves drivers, includes pedestrian, bicyclist, and motorcyclist participants, adds numbered
 continuation pages as needed, maps DPSST and Assignment into the footer, and appends
 the selectable-text information/responsibilities page.
 

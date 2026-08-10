@@ -1,6 +1,7 @@
 ## Unreleased
 
 - Adds Non-Standard as an explicit Helmet choice and preserves it in saved participant details and packet output.
+- Treats Motorcyclist as a vulnerable-road-user role in person entry, calculated VRU counts, VRU analysis, packet output, and exchange-report output.
 
 ## Traffic Crash Notebook 0.5.6
 

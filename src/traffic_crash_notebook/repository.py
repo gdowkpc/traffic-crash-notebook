@@ -1914,7 +1914,8 @@ class CaseRepository:
                 "vru": connection.execute(
                     """SELECT COUNT(DISTINCT p.id) FROM people p
                        JOIN person_roles pr ON pr.person_id=p.id
-                       WHERE p.case_id=? AND pr.role IN ('Pedestrian', 'Bicyclist')""",
+                       WHERE p.case_id=?
+                         AND pr.role IN ('Pedestrian', 'Bicyclist', 'Motorcyclist')""",
                     (case_id,),
                 ).fetchone()[0],
             }

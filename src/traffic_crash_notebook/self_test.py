@@ -345,6 +345,15 @@ def run_self_test(output_directory: str | Path) -> Path:
         address="300 Verification Ride", city="Portland", state="OR",
         zip_code="97203", cell_phone="503-555-0300", roles=["Bicyclist"],
     ))
+    motorcyclist = repository.save_person(Person(
+        id=new_id(), case_id=case.id, first_name="Portable", last_name="Motorcyclist",
+        address="400 Verification Road", city="Portland", state="OR",
+        zip_code="97204", cell_phone="503-555-0400", roles=["Motorcyclist"],
+    ))
+    if repository.case_counts(case.id)["vru"] != 3:
+        raise RuntimeError(
+            "The calculated VRU count did not include the motorcyclist."
+        )
     repository.save_driver_profile(DriverProfile(
         person_id=pedestrian.id,
         license_number="PEDESTRIAN-DL",
@@ -561,6 +570,7 @@ def run_self_test(output_directory: str | Path) -> Path:
         "Pending",
         "Not Started",
         "helmet Non-Standard",
+        "Motorcyclist",
         "Participant background",
         "Property receipt SELF-TEST-PR-1",
         "Portable Verification Owner",
@@ -601,6 +611,8 @@ def run_self_test(output_directory: str | Path) -> Path:
         person_name_last_first(person),
         person_name_last_first(pedestrian),
         person_name_last_first(bicyclist),
+        person_name_last_first(motorcyclist),
+        "MOTORCYCLIST",
         "12345",
         "Verification Precinct",
     ):
@@ -645,11 +657,12 @@ def run_self_test(output_directory: str | Path) -> Path:
             "Per-vehicle checklist, towing, release, insurance, and claim persistence: PASS",
             "Video-source address and Axon upload status persistence: PASS",
             "VRU light-meter and light-board persistence: PASS",
+            "Motorcyclist role and calculated VRU count: PASS",
             "Hit-and-run overview, evidence, lead, and confirmed-record links: PASS",
             "Property receipt hierarchy and numbered item persistence: PASS",
             "Assigned-officer DPSST and assignment persistence: PASS",
             "Data-folder user defaults and new-case prefill: PASS",
-            "Driver, pedestrian, and bicyclist exchange-report inclusion: PASS",
+            "Driver, pedestrian, bicyclist, and motorcyclist exchange-report inclusion: PASS",
             "Dynamic exchange-report data, time formatting, and searchable information page: PASS",
             "Embedded PDF preview components: PASS",
             "TIU application and taskbar icon: PASS",

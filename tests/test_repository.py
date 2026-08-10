@@ -88,7 +88,7 @@ class RepositoryTest(unittest.TestCase):
 
         person = Person(
             id=new_id(), case_id=self.case.id, first_name="Alex", last_name="Smith",
-            roles=["Driver", "Victim"],
+            roles=["Driver", "Motorcyclist", "Victim"],
         )
         self.repository.save_person(person)
         self.repository.save_vehicle(Vehicle(
@@ -108,10 +108,13 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(loaded.location, "Test Road at Example Avenue")
         self.assertEqual(loaded.assigned_officer_dpsst, "54321")
         self.assertEqual(loaded.assignment, "Traffic Division")
-        self.assertEqual(self.repository.get_person(person.id).roles, ["Driver", "Vehicle Owner", "Victim"])
+        self.assertEqual(
+            self.repository.get_person(person.id).roles,
+            ["Driver", "Motorcyclist", "Vehicle Owner", "Victim"],
+        )
         self.assertEqual(self.repository.case_counts(self.case.id), {
             "people": 1, "vehicles": 1, "chronology": 1, "open_tasks": 1,
-            "injured": 0, "fatal": 0, "vru": 0,
+            "injured": 0, "fatal": 0, "vru": 1,
         })
         self.repository.save_participant_details(ParticipantDetails(
             person_id=person.id,
