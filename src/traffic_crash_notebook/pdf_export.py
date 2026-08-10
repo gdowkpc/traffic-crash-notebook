@@ -4,6 +4,7 @@ from dataclasses import asdict
 from datetime import datetime
 from functools import partial
 from pathlib import Path
+from urllib.parse import quote
 from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
@@ -150,6 +151,25 @@ def _field_cell(label: object, value: object, styles) -> list[Paragraph]:
     return [
         Paragraph(_text(label), styles["Label"]),
         Paragraph(_text(value), styles["Cell"]),
+    ]
+
+
+def _coordinates_field_cell(details: CrashDetails, styles) -> list[Paragraph]:
+    """Render coordinates as a Google Maps link when both values are available."""
+    latitude = details.latitude.strip()
+    longitude = details.longitude.strip()
+    coordinates = ", ".join(value for value in (latitude, longitude) if value)
+    value = _text(coordinates)
+    if latitude and longitude:
+        query = quote(f"{latitude},{longitude}", safe=",.-")
+        maps_url = f"https://www.google.com/maps/search/?api=1&query={query}"
+        value = (
+            f'<link href="{escape(maps_url)}" color="#2E6F95">'
+            f"<u>{_text(coordinates)}</u></link>"
+        )
+    return [
+        Paragraph("COORDINATES", styles["Label"]),
+        Paragraph(value, styles["Cell"]),
     ]
 
 
@@ -964,9 +984,7 @@ def _packet_case_section(
          ) if value), styles)],
         [_field_cell("LOCATION", location or case.location, styles),
          _field_cell("NOT AT INTERSECTION", non_intersection, styles)],
-        [_field_cell("COORDINATES", ", ".join(value for value in (
-            details.latitude, details.longitude,
-        ) if value), styles),
+        [_coordinates_field_cell(details, styles),
          _field_cell("JURISDICTION", details.road_jurisdiction, styles)],
         [_field_cell("TEAM NOTIFIED", " ".join(value for value in (
             format_date_for_display(details.team_notified_date),

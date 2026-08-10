@@ -1698,7 +1698,10 @@ class MainWindow(QMainWindow):
 
     def _case_item_text(self, case: CrashCase) -> str:
         title = case.case_number or "Untitled Case"
-        detail = format_date_for_display(case.crash_date) or case.location or "No crash date"
+        detail = "  |  ".join(value for value in (
+            case.location,
+            format_date_for_display(case.crash_date),
+        ) if value) or "No incident location"
         return f"{title}\n{detail}  -  {case.status}"
 
     def _update_case_item(self, case: CrashCase) -> None:

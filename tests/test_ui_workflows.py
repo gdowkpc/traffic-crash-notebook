@@ -129,6 +129,25 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertIn("QListWidget::item:selected:!active", style_sheet)
         self.assertIn("background: #2e6f95; color: #ffffff", style_sheet)
 
+    def test_case_picker_displays_incident_location_before_date_and_status(self):
+        case = self.window.current_case
+        self.assertIsNotNone(case)
+        case.crash_date = "2026-08-05"
+        case.location = "East Burnside Street / 122nd Avenue"
+        self.repository.save_case(case)
+        self.window._update_case_item(case)
+
+        item = next(
+            self.window.case_list.item(index)
+            for index in range(self.window.case_list.count())
+            if self.window.case_list.item(index).data(Qt.ItemDataRole.UserRole)
+            == self.case.id
+        )
+        self.assertEqual(
+            item.text(),
+            "UI-TEST\nEast Burnside Street / 122nd Avenue  |  08/05/2026  -  Active",
+        )
+
     def tearDown(self):
         self.window.loading = True
         self.window.autosave_timer.stop()

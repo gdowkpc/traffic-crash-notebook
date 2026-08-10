@@ -256,6 +256,7 @@ def run_self_test(output_directory: str | Path) -> Path:
     ))
     repository.save_crash_details(CrashDetails(
         case_id=case.id, road_name="Example Road", intersection_road="Sample Avenue",
+        latitude="45.5152", longitude="-122.6784",
         sergeant="Verification Sergeant", medical_examiner_on_scene="Verification MDI",
         scene_evidence=["Investigator Photos", "Uploaded to Axon", "FARO"],
     ))
@@ -540,6 +541,7 @@ def run_self_test(output_directory: str | Path) -> Path:
         "29.94 inHg",
         "0.02 in",
         "8 mi",
+        "45.5152, -122.6784",
         "RELEASED",
         "08/05/2026",
         "Released to verification owner with receipt",

@@ -599,6 +599,7 @@ class PdfExportTest(unittest.TestCase):
                 outside_city_direction="East",
                 non_intersection_feet="250", non_intersection_direction="North",
                 non_intersection_reference="LEGACY REFERENCE VALUE",
+                latitude="45.5152", longitude="-122.6784",
                 sergeant="Taylor Example", medical_examiner_on_scene="Morgan Example",
                 criminalist_on_scene="LEGACY CRIMINALIST VALUE",
                 road_jurisdiction="City", team_notified_date="2026-08-04",
@@ -870,6 +871,17 @@ class PdfExportTest(unittest.TestCase):
             )
             self.assertIn("UPLOADED TO AXON", text)
             self.assertIn("North Example Street / Example Avenue", normalized_text)
+            self.assertIn("45.5152, -122.6784", normalized_text)
+            coordinate_links = [
+                str(annotation.get_object()["/A"]["/URI"])
+                for page in reader.pages
+                for annotation in page.get("/Annots", [])
+                if annotation.get_object().get("/A", {}).get("/URI")
+            ]
+            self.assertIn(
+                "https://www.google.com/maps/search/?api=1&query=45.5152,-122.6784",
+                coordinate_links,
+            )
             self.assertIn("NOT AT INTERSECTION", normalized_text)
             self.assertIn("250 ft North of intersection", normalized_text)
             self.assertIn("MCT Sergeant: Taylor Example", normalized_text)
