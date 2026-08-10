@@ -5,6 +5,7 @@
 - Standardizes full and compact packet section and subsection headings to title capitalization, including Participant and Driver Details.
 - Reflows Familiarity and Driving History in the participant/driver packet as two wide cells with each value beneath its label.
 - Standardizes packet field grids so each label and its value stay together in the same cell; multi-record tables retain their column headers.
+- Changes evidence Property Owner entry to a case-people selector while preserving legacy owner text when an existing receipt is edited.
 
 ## Traffic Crash Notebook 0.5.6
 

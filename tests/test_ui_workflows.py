@@ -535,6 +535,13 @@ class AddRecordWorkflowTest(unittest.TestCase):
             "Remove Item",
         }.issubset(button_labels))
         self.assertFalse(self.window.add_property_receipt_item_button.isEnabled())
+        owner = self.repository.save_person(Person(
+            id="",
+            case_id=self.case.id,
+            first_name="Jordan",
+            last_name="Property Owner",
+        ))
+        self.window.refresh_people()
 
         def configure_receipt(dialog: PropertyReceiptDialog) -> None:
             self.assertEqual(
@@ -549,8 +556,15 @@ class AddRecordWorkflowTest(unittest.TestCase):
                     "Safe Keeping",
                 ],
             )
+            self.assertEqual(
+                [
+                    dialog.property_owner.itemText(index)
+                    for index in range(dialog.property_owner.count())
+                ],
+                ["No property owner selected", owner.display_name],
+            )
             dialog.receipt_number.setText("PR-13579")
-            dialog.property_owner.setText("Jordan Property Owner")
+            dialog.property_owner.setCurrentText(owner.display_name)
             dialog.lodging_type.setCurrentText("Safe Keeping")
             dialog.lodged_location.setText("Central Property Room")
             dialog.lodged_date.setText("08/06/2026")
@@ -564,7 +578,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(len(receipts), 1)
         receipt = receipts[0]
         self.assertEqual(receipt.receipt_number, "PR-13579")
-        self.assertEqual(receipt.property_owner, "Jordan Property Owner")
+        self.assertEqual(receipt.property_owner, owner.display_name)
         self.assertEqual(receipt.lodging_type, "Safe Keeping")
         self.assertEqual(receipt.lodged_location, "Central Property Room")
         self.assertEqual(receipt.lodged_date, "2026-08-06")
@@ -1763,6 +1777,52 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.window.refresh_tasks()
         self.assertEqual(self.window.chronology_table.item(0, 0).text(), "02/13/2026")
         self.assertEqual(self.window.tasks_table.item(0, 3).text(), "03/14/2026")
+
+    def test_property_receipt_owner_selector_uses_people_and_preserves_legacy_owner(self):
+        owner = Person(
+            id="person-owner",
+            case_id=self.case.id,
+            first_name="Alex",
+            last_name="Example",
+        )
+        receipt = PropertyReceipt(
+            id="receipt-legacy-owner",
+            case_id=self.case.id,
+            receipt_number="PR-LEGACY",
+            property_owner="Legacy Property Owner",
+        )
+
+        dialog = PropertyReceiptDialog(
+            self.case.id,
+            receipt,
+            people=[owner],
+        )
+
+        self.assertFalse(dialog.property_owner.isEditable())
+        self.assertEqual(
+            [
+                dialog.property_owner.itemText(index)
+                for index in range(dialog.property_owner.count())
+            ],
+            [
+                "No property owner selected",
+                owner.display_name,
+                "Legacy owner: Legacy Property Owner",
+            ],
+        )
+        self.assertEqual(
+            dialog.property_owner.currentData(),
+            "Legacy Property Owner",
+        )
+        self.assertEqual(
+            dialog.result_record().property_owner,
+            "Legacy Property Owner",
+        )
+        dialog.property_owner.setCurrentText(owner.display_name)
+        self.assertEqual(
+            dialog.result_record().property_owner,
+            owner.display_name,
+        )
 
     def test_weather_subtab_links_to_wunderground_history(self):
         weather_history_url = "https://www.wunderground.com/history"

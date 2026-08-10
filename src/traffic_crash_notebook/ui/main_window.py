@@ -3297,7 +3297,11 @@ class MainWindow(QMainWindow):
     def add_property_receipt(self) -> None:
         if not self.current_case:
             return
-        dialog = PropertyReceiptDialog(self.current_case.id, parent=self)
+        dialog = PropertyReceiptDialog(
+            self.current_case.id,
+            parent=self,
+            people=self.repository.list_people(self.current_case.id),
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             receipt = self.repository.save_property_receipt(
                 dialog.result_record()
@@ -3312,7 +3316,12 @@ class MainWindow(QMainWindow):
         receipt = self.repository.get_property_receipt(receipt_id)
         if not receipt:
             return
-        dialog = PropertyReceiptDialog(receipt.case_id, receipt, self)
+        dialog = PropertyReceiptDialog(
+            receipt.case_id,
+            receipt,
+            self,
+            people=self.repository.list_people(receipt.case_id),
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted:
             saved = self.repository.save_property_receipt(dialog.result_record())
             self.refresh_property_receipts(saved.id)

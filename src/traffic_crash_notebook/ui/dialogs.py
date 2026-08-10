@@ -542,6 +542,8 @@ class PropertyReceiptDialog(RecordDialog):
         case_id: str,
         receipt: PropertyReceipt | None = None,
         parent=None,
+        *,
+        people: list[Person] | None = None,
     ):
         super().__init__(
             "Edit Property Receipt" if receipt else "Add Property Receipt",
@@ -554,8 +556,20 @@ class PropertyReceiptDialog(RecordDialog):
             self.receipt.receipt_number,
             "Property receipt number",
         )
-        self.property_owner = SpellCheckedLineEdit(self.receipt.property_owner)
-        self.property_owner.setPlaceholderText("Person, business, agency, or other owner")
+        self.property_owner = QComboBox()
+        self.property_owner.addItem("No property owner selected", "")
+        for person in people or []:
+            self.property_owner.addItem(person.display_name, person.display_name)
+        current_owner = self.receipt.property_owner.strip()
+        if current_owner:
+            owner_index = self.property_owner.findData(current_owner)
+            if owner_index < 0:
+                self.property_owner.addItem(
+                    f"Legacy owner: {current_owner}",
+                    current_owner,
+                )
+                owner_index = self.property_owner.count() - 1
+            self.property_owner.setCurrentIndex(owner_index)
         self.lodging_type = _combo(
             PROPERTY_LODGING_TYPES,
             self.receipt.lodging_type,
@@ -585,7 +599,7 @@ class PropertyReceiptDialog(RecordDialog):
 
     def result_record(self) -> PropertyReceipt:
         self.receipt.receipt_number = self.receipt_number.text().strip()
-        self.receipt.property_owner = self.property_owner.text().strip()
+        self.receipt.property_owner = str(self.property_owner.currentData() or "").strip()
         self.receipt.lodging_type = self.lodging_type.currentText().strip()
         self.receipt.lodged_location = self.lodged_location.text().strip()
         self.receipt.lodged_date = normalize_date_for_storage(
