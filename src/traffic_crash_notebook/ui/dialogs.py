@@ -73,6 +73,7 @@ from .spellcheck_text_edit import SpellCheckedLineEdit, SpellCheckedTextEdit
 
 
 YES_NO_UNKNOWN = ("Unknown", "Yes", "No")
+YES_NO_NOT_APPLICABLE = ("Yes", "No", "Not Applicable")
 
 
 def _line(text: str = "", placeholder: str = "") -> QLineEdit:
@@ -983,6 +984,7 @@ class ParticipantDetailsDialog(RecordDialog):
         self.seatbelt_installed = _combo(YES_NO_UNKNOWN, details.seatbelt_installed)
         self.seatbelt_used = _combo(YES_NO_UNKNOWN, details.seatbelt_used)
         self.airbag_deployed = _combo(YES_NO_UNKNOWN, details.airbag_deployed)
+        self.helmet = _combo(YES_NO_NOT_APPLICABLE, details.helmet)
         self.ejected = _combo(YES_NO_UNKNOWN, details.ejected)
         self.extracted = _combo(YES_NO_UNKNOWN, details.extracted)
         form.addRow("Associated vehicle", self.vehicle)
@@ -997,6 +999,7 @@ class ParticipantDetailsDialog(RecordDialog):
         form.addRow("Seat belt installed", self.seatbelt_installed)
         form.addRow("Seat belt used", self.seatbelt_used)
         form.addRow("Air bag deployed", self.airbag_deployed)
+        form.addRow("Helmet", self.helmet)
         form.addRow("Ejected", self.ejected)
         form.addRow("Extracted", self.extracted)
         tabs.addTab(participant_tab, "Participant")
@@ -1059,7 +1062,7 @@ class ParticipantDetailsDialog(RecordDialog):
         self.details.height = self.height_value.text().strip()
         self.details.weight = self.weight_value.text().strip()
         for attribute in (
-            "transported", "seatbelt_installed", "seatbelt_used", "airbag_deployed", "ejected",
+            "transported", "seatbelt_installed", "seatbelt_used", "airbag_deployed", "helmet", "ejected",
             "extracted",
             "autopsy_performed", "next_of_kin_notified",
         ):

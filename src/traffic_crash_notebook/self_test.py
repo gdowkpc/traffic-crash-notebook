@@ -236,14 +236,21 @@ def run_self_test(output_directory: str | Path) -> Path:
             "Crash Diagram Completed",
             "Axon Shared to DA",
             "Report Peer Reviewed",
-            "Report Sgt Reviewed",
-            "Submitted to DA",
         ],
+        peer_review_status="Complete",
+        sergeant_review_status="Pending",
+        submitted_to_da_status="Not Started",
         peer_review_date="2026-08-01",
-        sergeant_review_date="2026-08-02",
-        submitted_to_da_date="2026-08-03",
         assigned_dda="Verification DDA",
     ))
+    loaded_checklist = repository.get_investigative_checklist(case.id)
+    if (
+        loaded_checklist.peer_review_status != "Complete"
+        or loaded_checklist.sergeant_review_status != "Pending"
+        or loaded_checklist.submitted_to_da_status != "Not Started"
+        or loaded_checklist.peer_review_date != "2026-08-01"
+    ):
+        raise RuntimeError("Review and DA routing status persistence failed.")
     repository.save_charge_disposition(ChargeDisposition(
         id="", case_id=case.id, charge="Verification charge", disposition="Test only",
     ))
@@ -295,11 +302,14 @@ def run_self_test(output_directory: str | Path) -> Path:
     ))
     repository.save_participant_details(ParticipantDetails(
         person_id=person.id, vehicle_id=vehicle.id, height="70 in", weight="180 lb",
-        injury_status="Not injured", ejected="No", extracted="Yes",
+        injury_status="Not injured", helmet="Yes", ejected="No", extracted="Yes",
         evidence_items="Clothing",
     ))
-    if repository.get_participant_details(person.id).extracted != "Yes":
-        raise RuntimeError("The participant extracted status could not be saved and reloaded.")
+    loaded_participant = repository.get_participant_details(person.id)
+    if loaded_participant.extracted != "Yes" or loaded_participant.helmet != "Yes":
+        raise RuntimeError(
+            "The participant extracted and helmet statuses could not be saved and reloaded."
+        )
     repository.save_driver_profile(DriverProfile(
         person_id=person.id, physical_condition_types="Vision",
         testing_methods="SFST",
@@ -544,6 +554,10 @@ def run_self_test(output_directory: str | Path) -> Path:
         "Corrective lenses",
         "DRIVING HISTORY",
         "Verification driving history.",
+        "Complete - 08/01/2026",
+        "Pending",
+        "Not Started",
+        "helmet Yes",
         "Participant background",
         "Property receipt SELF-TEST-PR-1",
         "Portable Verification Owner",
@@ -621,7 +635,8 @@ def run_self_test(output_directory: str | Path) -> Path:
             f"Quick-review PDF bytes: {summary_pdf.stat().st_size}",
             f"Exchange-report PDF bytes: {exchange_pdf.stat().st_size}",
             "Person ZIP code persistence: PASS",
-            "Participant extracted status persistence: PASS",
+            "Participant extracted and helmet status persistence: PASS",
+            "Review and DA routing statuses and completion dates: PASS",
             "Driver-license dates, ordering data, and driving history persistence: PASS",
             "Role-aware non-driver packet background suppression: PASS",
             "Per-vehicle checklist, towing, release, insurance, and claim persistence: PASS",

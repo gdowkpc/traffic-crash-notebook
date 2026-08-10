@@ -1,3 +1,12 @@
+## Traffic Crash Notebook 0.5.6
+
+- Adds a participant Helmet field immediately after Air Bag Deployed with explicit Yes, No, and Not Applicable choices, safe migration of existing cases, and packet output.
+- Changes the formal packet heading to "PORTLAND POLICE BUREAU - TRAFFIC INVESTIGATIONS UNIT" while retaining the TIU logo.
+- Removes the printed Full Working Packet label, retains only the "Not an official report" footer disclaimer, and simplifies the handwriting area heading to Cover Notes.
+- Consolidates the packet-cover Crash Date and Crash Time fields into one Crash Date / Time field using MM/DD/YYYY and AM/PM display.
+- Replaces the Peer Review, MCT Sergeant Review, and Submitted to DA completion checkboxes with Not Started, Pending, and Complete workflow statuses; completion dates are available only for completed milestones.
+- Migrates existing checked or dated review and DA-routing milestones to Complete and prints the selected statuses consistently on both the cover and investigative checklist.
+
 ## Traffic Crash Notebook 0.5.5
 
 - Separates Evidence, Tasks, and Journal into dedicated workspaces and adds unlimited property receipts with owners, lodging classifications, lodging locations/dates, and automatically numbered evidence-item descriptions.

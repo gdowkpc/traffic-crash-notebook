@@ -648,7 +648,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
             page.extract_text() or ""
             for page in PdfReader(full_preview_path).pages
         )
-        self.assertIn("FULL WORKING PACKET", full_text)
+        self.assertNotIn("FULL WORKING PACKET", full_text)
         self.assertIn(
             "Preview ready - Full Working Packet",
             self.window.packet_preview_status.text(),
@@ -1536,7 +1536,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(self.window.packet_widgets["nearest_city"].text(), "Gresham")
         self.assertTrue(self.window.scene_evidence_boxes["FARO"].isChecked())
 
-    def test_reporting_checklist_uses_new_items_and_persists_dates(self):
+    def test_reporting_checklist_uses_routing_statuses_and_completion_dates(self):
         self.assertNotIn("DIMS CD Ordered", self.window.checklist_boxes)
         self.assertIn("Toxicology", self.window.checklist_boxes)
         for retired_vehicle_item in (
@@ -1552,48 +1552,96 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertNotIn("Release", self.window.checklist_boxes)
         self.assertIn("Crash Diagram Completed", self.window.checklist_boxes)
         self.assertIn("Axon Shared to DA", self.window.checklist_boxes)
+        for item in (
+            "Report Peer Reviewed",
+            "Report Sgt Reviewed",
+            "Submitted to DA",
+        ):
+            self.assertNotIn(item, self.window.checklist_boxes)
+            self.assertIn(item, self.window.checklist_status_widgets)
         self.assertEqual(
-            list(self.window.checklist_boxes)[-1],
+            list(self.window.checklist_status_widgets)[-1],
             "Submitted to DA",
         )
         self.assertNotIn("submitted_to_da_date", self.window.checklist_widgets)
 
-        dated_items = {
-            "Report Peer Reviewed": "08/01/2026",
-            "Report Sgt Reviewed": "08/02/2026",
-            "Submitted to DA": "08/03/2026",
-        }
+        routing_items = (
+            "Report Peer Reviewed",
+            "Report Sgt Reviewed",
+            "Submitted to DA",
+        )
         self.window.checklist_boxes["Crash Diagram Completed"].setChecked(True)
         self.window.checklist_boxes["Axon Shared to DA"].setChecked(True)
-        for item, completion_date in dated_items.items():
+        for item in routing_items:
+            status_widget = self.window.checklist_status_widgets[item]
             date_widget = self.window.checklist_date_widgets[item]
+            self.assertEqual(
+                [
+                    status_widget.itemText(index)
+                    for index in range(status_widget.count())
+                ],
+                ["Not Started", "Pending", "Complete"],
+            )
+            self.assertEqual(status_widget.currentText(), "Not Started")
             self.assertFalse(date_widget.isEnabled())
             self.assertEqual(date_widget.placeholderText(), "MM/DD/YYYY")
-            self.window.checklist_boxes[item].setChecked(True)
-            self.assertTrue(date_widget.isEnabled())
-            date_widget.setText(completion_date)
+            status_widget.setCurrentText("Pending")
+            self.assertFalse(date_widget.isEnabled())
+
+        self.window.checklist_status_widgets["Report Peer Reviewed"].setCurrentText(
+            "Complete"
+        )
+        peer_review_date = self.window.checklist_date_widgets["Report Peer Reviewed"]
+        self.assertTrue(peer_review_date.isEnabled())
+        peer_review_date.setText("08/01/2026")
+        self.window.checklist_status_widgets["Submitted to DA"].setCurrentText(
+            "Complete"
+        )
+        submitted_date = self.window.checklist_date_widgets["Submitted to DA"]
+        self.assertTrue(submitted_date.isEnabled())
+        submitted_date.setText("08/03/2026")
+        self.window.checklist_status_widgets["Submitted to DA"].setCurrentText(
+            "Not Started"
+        )
+        self.assertFalse(submitted_date.isEnabled())
+        self.assertEqual(submitted_date.text(), "")
 
         self.window.save_overview()
         checklist = self.repository.get_investigative_checklist(self.case.id)
         self.assertIn("Crash Diagram Completed", checklist.completed_items)
         self.assertIn("Axon Shared to DA", checklist.completed_items)
         self.assertIn("Report Peer Reviewed", checklist.completed_items)
-        self.assertIn("Report Sgt Reviewed", checklist.completed_items)
-        self.assertIn("Submitted to DA", checklist.completed_items)
+        self.assertNotIn("Report Sgt Reviewed", checklist.completed_items)
+        self.assertNotIn("Submitted to DA", checklist.completed_items)
+        self.assertEqual(checklist.peer_review_status, "Complete")
+        self.assertEqual(checklist.sergeant_review_status, "Pending")
+        self.assertEqual(checklist.submitted_to_da_status, "Not Started")
         self.assertEqual(checklist.peer_review_date, "2026-08-01")
-        self.assertEqual(checklist.sergeant_review_date, "2026-08-02")
-        self.assertEqual(checklist.submitted_to_da_date, "2026-08-03")
+        self.assertEqual(checklist.sergeant_review_date, "")
+        self.assertEqual(checklist.submitted_to_da_date, "")
 
         self.window.load_case(self.repository.get_case(self.case.id))
         self.assertTrue(
             self.window.checklist_boxes["Crash Diagram Completed"].isChecked()
         )
-        for item, completion_date in dated_items.items():
-            self.assertTrue(self.window.checklist_boxes[item].isChecked())
-            self.assertEqual(
-                self.window.checklist_date_widgets[item].text(),
-                completion_date,
-            )
+        self.assertEqual(
+            self.window.checklist_status_widgets["Report Peer Reviewed"].currentText(),
+            "Complete",
+        )
+        self.assertEqual(peer_review_date.text(), "08/01/2026")
+        self.assertTrue(peer_review_date.isEnabled())
+        self.assertEqual(
+            self.window.checklist_status_widgets["Report Sgt Reviewed"].currentText(),
+            "Pending",
+        )
+        self.assertFalse(
+            self.window.checklist_date_widgets["Report Sgt Reviewed"].isEnabled()
+        )
+        self.assertEqual(
+            self.window.checklist_status_widgets["Submitted to DA"].currentText(),
+            "Not Started",
+        )
+        self.assertFalse(submitted_date.isEnabled())
 
     def test_all_record_date_editors_display_us_dates_and_store_iso(self):
         person = Person(
@@ -2200,6 +2248,21 @@ class AddRecordWorkflowTest(unittest.TestCase):
             dialog.height_value.setText("70 in")
             dialog.weight_value.setText("180 lb")
             dialog.hospital.setText("OHSU")
+            participant_form = dialog.findChild(QTabWidget).widget(0).layout()
+            self.assertEqual(
+                participant_form.labelForField(dialog.helmet).text(),
+                "Helmet",
+            )
+            self.assertEqual(
+                participant_form.getWidgetPosition(dialog.helmet)[0],
+                participant_form.getWidgetPosition(dialog.airbag_deployed)[0] + 1,
+            )
+            self.assertEqual(
+                [dialog.helmet.itemText(index) for index in range(dialog.helmet.count())],
+                ["Yes", "No", "Not Applicable"],
+            )
+            self.assertEqual(dialog.helmet.currentText(), "Not Applicable")
+            dialog.helmet.setCurrentText("Yes")
             dialog.ejected.setCurrentText("No")
             dialog.extracted.setCurrentText("Yes")
             dialog.injury_code_boxes["1 - Laceration"].setChecked(True)
@@ -2346,6 +2409,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(details.height, "70 in")
         self.assertEqual(details.ejected, "No")
         self.assertEqual(details.extracted, "Yes")
+        self.assertEqual(details.helmet, "Yes")
         self.assertIn("Laceration", details.injury_codes)
         profile = self.repository.get_driver_profile(person.id)
         self.assertEqual(profile.license_restricted, "Yes")

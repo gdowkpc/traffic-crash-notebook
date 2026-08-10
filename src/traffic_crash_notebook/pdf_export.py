@@ -28,6 +28,7 @@ from .date_format import format_date_for_display, format_time_for_display, weekd
 from .models import (
     CaseTask,
     CHECKLIST_DATE_FIELDS,
+    CHECKLIST_STATUS_FIELDS,
     ChargeDisposition,
     ChronologyEntry,
     ContactRelationship,
@@ -48,6 +49,7 @@ from .models import (
     PropertyReceiptItem,
     RoadConditions,
     RoadwayRecord,
+    ROUTING_STATUS_OPTIONS,
     SurfaceObservation,
     TireInspection,
     Vehicle,
@@ -72,6 +74,7 @@ GRAY = colors.HexColor("#5D6870")
 LIGHT_GRAY = colors.HexColor("#E4E8EB")
 WARNING = colors.HexColor("#FFF3CD")
 DECEASED_RED = "#B00020"
+AGENCY_UNIT_HEADING = "PORTLAND POLICE BUREAU - TRAFFIC INVESTIGATIONS UNIT"
 
 
 class _PacketCanvas(pdf_canvas.Canvas):
@@ -208,10 +211,16 @@ def export_case_pdf(
 
     styles = _styles()
     packet_name = "Full Working Packet" if working_copy else "Compact Completed-Case Packet"
+    cover_print_mode = "" if working_copy else packet_name.upper()
     footer_label = (
-        "Full working packet - not an official report"
+        "Not an official report"
         if working_copy
         else "Compact completed-case packet - not an official report"
+    )
+    document_title = (
+        f"Traffic Crash Investigation Packet - {case.case_number or 'Untitled Case'}"
+        if working_copy
+        else f"Traffic Crash Notebook {packet_name} - {case.case_number or 'Untitled Case'}"
     )
     document = SimpleDocTemplate(
         str(destination),
@@ -220,7 +229,7 @@ def export_case_pdf(
         leftMargin=0.65 * inch,
         topMargin=1.15 * inch,
         bottomMargin=0.7 * inch,
-        title=f"Traffic Crash Notebook {packet_name} - {case.case_number or 'Untitled Case'}",
+        title=document_title,
         author=case.investigator or "Traffic Crash Notebook",
         subject="Personal investigative working notes",
     )
@@ -236,12 +245,12 @@ def export_case_pdf(
             counts,
             checklist,
             styles,
-            packet_name.upper(),
+            cover_print_mode,
             overview_location,
         )
     )
     if working_copy:
-        story.extend(_write_in_area("Cover notes / routing updates", styles, lines=5))
+        story.extend(_write_in_area("Cover notes", styles, lines=5))
     story.append(PageBreak())
     story.extend(_packet_case_section(
         case, checklist, charge_dispositions, crash_details, video_sources, counts, styles
@@ -559,11 +568,28 @@ def _cover_milestone(
     date_attribute: str,
 ) -> str:
     completion_date = getattr(checklist, date_attribute)
-    if completion_date:
+    status = _checklist_item_status(checklist, item)
+    if status == "Complete" and completion_date:
         return f"Complete - {format_date_for_display(completion_date)}"
-    if item in checklist.completed_items:
+    return status
+
+
+def _checklist_item_status(
+    checklist: InvestigativeChecklist,
+    item: str,
+) -> str:
+    status_attribute = CHECKLIST_STATUS_FIELDS.get(item)
+    if not status_attribute:
+        return "Complete" if item in checklist.completed_items else "Open"
+    status = getattr(checklist, status_attribute)
+    if status not in ROUTING_STATUS_OPTIONS:
+        status = "Not Started"
+    date_attribute = CHECKLIST_DATE_FIELDS[item]
+    if status == "Not Started" and (
+        item in checklist.completed_items or getattr(checklist, date_attribute)
+    ):
         return "Complete"
-    return "Open"
+    return status
 
 
 def _packet_cover(
@@ -575,19 +601,24 @@ def _packet_cover(
     location: str = "",
 ) -> list[object]:
     generated = datetime.now().astimezone().strftime("%m/%d/%Y at %I:%M %p")
+    crash_date_time = " / ".join(value for value in (
+        format_date_for_display(case.crash_date),
+        format_time_for_display(case.crash_time),
+    ) if value)
     title_content = [
-        Paragraph("TRAFFIC INVESTIGATIONS UNIT", styles["Label"]),
+        Paragraph(AGENCY_UNIT_HEADING, styles["Label"]),
         Paragraph("TRAFFIC CRASH INVESTIGATION PACKET", styles["CoverTitle"]),
         Paragraph(
             f"CASE {_text(case.case_number or 'Untitled Case')}",
             styles["CoverCaseNumber"],
         ),
-        Paragraph(_text(print_mode), styles["PrintMode"]),
-        Paragraph(
-            f"Traffic Crash Notebook v{__version__} - generated {_text(generated)}",
-            styles["CaseSubtitle"],
-        ),
     ]
+    if print_mode:
+        title_content.append(Paragraph(_text(print_mode), styles["PrintMode"]))
+    title_content.append(Paragraph(
+        f"Traffic Crash Notebook v{__version__} - generated {_text(generated)}",
+        styles["CaseSubtitle"],
+    ))
     logo_path = tiu_logo_path()
     if logo_path.exists():
         logo = Image(str(logo_path), width=0.9 * inch, height=0.87 * inch)
@@ -608,13 +639,12 @@ def _packet_cover(
 
     story.extend([
         _cover_detail_table(
-            ("CRASH DATE", "CRASH TIME", "CASE STATUS"),
+            ("CRASH DATE / TIME", "CASE STATUS"),
             (
-                format_date_for_display(case.crash_date),
-                format_time_for_display(case.crash_time),
+                crash_date_time,
                 case.status,
             ),
-            [2.2 * inch, 2.2 * inch, 2.2 * inch],
+            [3.3 * inch, 3.3 * inch],
             styles,
         ),
         Spacer(1, 0.07 * inch),
@@ -718,7 +748,7 @@ def _case_overview(
 ) -> list[object]:
     generated = datetime.now().astimezone().strftime("%m/%d/%Y at %I:%M %p")
     title_content = [
-        Paragraph("TRAFFIC INVESTIGATIONS UNIT", styles["Label"]),
+        Paragraph(AGENCY_UNIT_HEADING, styles["Label"]),
         Paragraph(_text(case.case_number or "Untitled Case"), styles["CaseTitle"]),
         Paragraph(_text(print_mode), styles["PrintMode"]),
         Paragraph(f"Traffic Crash Notebook v{__version__} - generated {_text(generated)}", styles["CaseSubtitle"]),
@@ -837,7 +867,6 @@ def _packet_case_section(
     story: list[object] = [Paragraph("Investigative packet", styles["Section"])]
     day_of_week = weekday_name(case.crash_date)
 
-    completed = set(checklist.completed_items)
     checklist_rows: list[list[Paragraph]] = [[
         Paragraph("AREA", styles["Label"]),
         Paragraph("MILESTONE", styles["Label"]),
@@ -856,7 +885,7 @@ def _packet_case_section(
                 Paragraph(_text(group), styles["Cell"]),
                 Paragraph(_text(item), styles["Cell"]),
                 Paragraph(
-                    "Complete" if item in completed or completion_date else "Open",
+                    _checklist_item_status(checklist, item),
                     styles["Cell"],
                 ),
                 Paragraph(
@@ -1522,7 +1551,10 @@ def _participant_sections(
                      value for value in (details.hospital, details.medical_records_status) if value
                  )), styles["Cell"])],
                 [Paragraph("RESTRAINT / AIR BAG", styles["Label"]),
-                 Paragraph(_text(f"Installed {details.seatbelt_installed}; used {details.seatbelt_used}; air bag {details.airbag_deployed}"), styles["Cell"]),
+                 Paragraph(_text(
+                     f"Installed {details.seatbelt_installed}; used {details.seatbelt_used}; "
+                     f"air bag {details.airbag_deployed}; helmet {details.helmet}"
+                 ), styles["Cell"]),
                  Paragraph("EJECTED / EXTRACTED", styles["Label"]),
                  Paragraph(_text(
                      f"Ejected {details.ejected}; extracted {details.extracted}"

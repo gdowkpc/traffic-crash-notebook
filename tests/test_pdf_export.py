@@ -125,14 +125,21 @@ class PdfExportTest(unittest.TestCase):
             compact_text = "\n".join(page.extract_text() or "" for page in compact_reader.pages)
 
             for reader, mode in (
-                (working_reader, "FULL WORKING PACKET"),
+                (working_reader, None),
                 (compact_reader, "COMPACT COMPLETED-CASE PACKET"),
             ):
                 cover_text = reader.pages[0].extract_text() or ""
                 second_page_text = reader.pages[1].extract_text() or ""
+                self.assertIn(
+                    "PORTLAND POLICE BUREAU - TRAFFIC INVESTIGATIONS UNIT",
+                    cover_text,
+                )
                 self.assertIn("TRAFFIC CRASH INVESTIGATION PACKET", cover_text)
                 self.assertIn("CASE 26-EMPTY", cover_text)
-                self.assertIn(mode, cover_text)
+                if mode:
+                    self.assertIn(mode, cover_text)
+                else:
+                    self.assertNotIn("FULL WORKING PACKET", cover_text)
                 self.assertIn("ASSIGNED INVESTIGATOR", cover_text)
                 self.assertIn("DPSST", cover_text)
                 self.assertIn("ASSIGNMENT", cover_text)
@@ -146,7 +153,7 @@ class PdfExportTest(unittest.TestCase):
                 self.assertIn("Investigative packet", second_page_text)
 
             self.assertGreater(len(working_reader.pages), len(compact_reader.pages))
-            self.assertIn("FULL WORKING PACKET", working_text)
+            self.assertNotIn("FULL WORKING PACKET", working_text)
             self.assertIn("Participant and driver details", working_text)
             self.assertIn("Witness interviews and contacts", working_text)
             self.assertIn("Vulnerable road user analysis", working_text)
@@ -161,6 +168,37 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("GENERAL HANDWRITTEN CONTINUATION", compact_text)
             self.assertNotIn("Hit & Run Investigation", working_text)
             self.assertNotIn("Hit & Run Investigation", compact_text)
+
+    def test_review_and_da_routing_supports_all_three_statuses(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = CaseRepository(root / "routing.sqlite3")
+            case = repository.create_case("26-ROUTING", "Routing Test")
+            repository.save_investigative_checklist(InvestigativeChecklist(
+                case_id=case.id,
+                completed_items=["Report Peer Reviewed"],
+                peer_review_status="Complete",
+                sergeant_review_status="Pending",
+                submitted_to_da_status="Not Started",
+                peer_review_date="2026-08-01",
+            ))
+
+            reader = PdfReader(export_case_pdf(
+                repository,
+                case.id,
+                root / "routing.pdf",
+            ))
+            cover_text = " ".join((reader.pages[0].extract_text() or "").split())
+            packet_text = " ".join(
+                " ".join((page.extract_text() or "").split())
+                for page in reader.pages
+            )
+            self.assertIn("Complete - 08/01/2026", cover_text)
+            self.assertIn("Pending", cover_text)
+            self.assertIn("Not Started", cover_text)
+            self.assertIn("Report Peer Reviewed Complete 08/01/2026", packet_text)
+            self.assertIn("Report Sgt Reviewed Pending", packet_text)
+            self.assertIn("Submitted to DA Not Started", packet_text)
 
     def test_packet_prints_property_receipts_items_before_tasks_and_journal(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -406,6 +444,7 @@ class PdfExportTest(unittest.TestCase):
             repository = CaseRepository(root / "test.sqlite3")
             case = repository.create_case("26-123456", "Garrett Dow")
             case.crash_date = "2026-08-04"
+            case.crash_time = "14:35"
             case.location = "North Example Street"
             case.assigned_officer_dpsst = "123456"
             case.assignment = "Traffic Investigations Unit"
@@ -495,6 +534,9 @@ class PdfExportTest(unittest.TestCase):
                     "Submitted to DA",
                     "Crash Diagram Completed",
                 ],
+                peer_review_status="Complete",
+                sergeant_review_status="Complete",
+                submitted_to_da_status="Complete",
                 peer_review_date="2026-08-06",
                 sergeant_review_date="2026-08-07",
                 submitted_to_da_date="2026-08-08",
@@ -530,7 +572,8 @@ class PdfExportTest(unittest.TestCase):
             repository.save_participant_details(ParticipantDetails(
                 person_id=person.id, vehicle_id=vehicle.id, injury_status="Injured",
                 transported="Yes", transported_to="Example Hospital", hospital="OHSU",
-                height="70 in", weight="180 lb", ejected="No", extracted="Yes",
+                height="70 in", weight="180 lb", helmet="Yes",
+                ejected="No", extracted="Yes",
                 injury_codes="1 - Laceration",
                 evidence_items="Blood; Clothing",
                 date_of_death="2026-08-09",
@@ -628,8 +671,14 @@ class PdfExportTest(unittest.TestCase):
             self.assertGreaterEqual(len(reader.pages), 3)
             self.assertIn("TRAFFIC CRASH INVESTIGATION PACKET", cover_text)
             self.assertIn("CASE 26-123456", cover_text)
+            self.assertIn("CRASH DATE / TIME", cover_text)
+            self.assertNotIn("CRASH TIME", cover_text)
+            self.assertIn("08/04/2026 / 02:35 PM", normalized_cover_text)
             self.assertIn("123456", cover_text)
-            self.assertIn("Traffic Investigations Unit", cover_text)
+            self.assertIn(
+                "PORTLAND POLICE BUREAU - TRAFFIC INVESTIGATIONS UNIT",
+                cover_text,
+            )
             self.assertIn("Complete - 08/06/2026", normalized_cover_text)
             self.assertIn("Complete - 08/07/2026", normalized_cover_text)
             self.assertIn("Complete - 08/08/2026", normalized_cover_text)
@@ -827,6 +876,7 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("Example Hospital", text)
             self.assertIn("EJECTED / EXTRACTED", normalized_text)
             self.assertIn("Ejected No; extracted Yes", normalized_text)
+            self.assertIn("air bag Unknown; helmet Yes", normalized_text)
             self.assertIn("12,345", text)
             self.assertIn("225/45R18", text)
             self.assertIn("Witness interviews and contacts", text)
@@ -861,9 +911,10 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("LEGACY DIAGRAM RECORD TITLE", text)
             self.assertNotIn("LEGACY DIAGRAM RECORD NOTES", text)
             self.assertIn("Crash Diagram Completed", text)
-            self.assertIn("not an official report", text)
-            self.assertIn("FULL WORKING PACKET", text)
-            self.assertIn("COVER NOTES / ROUTING UPDATES", text)
+            self.assertIn("not an official report", text.lower())
+            self.assertNotIn("FULL WORKING PACKET", text)
+            self.assertIn("COVER NOTES", text)
+            self.assertNotIn("ROUTING UPDATES", text)
             self.assertIn(f"Page 1 of {len(reader.pages)}", text)
             self.assertTrue(all("CASE 26-123456" in (page.extract_text() or "") for page in reader.pages))
 
@@ -872,7 +923,7 @@ class PdfExportTest(unittest.TestCase):
             compact_text = "\n".join(page.extract_text() or "" for page in compact_reader.pages)
             self.assertLess(len(compact_reader.pages), len(reader.pages))
             self.assertIn("COMPACT COMPLETED-CASE PACKET", compact_text)
-            self.assertNotIn("COVER NOTES / ROUTING UPDATES", compact_text)
+            self.assertNotIn("COVER NOTES", compact_text)
             self.assertIn("Morgan Lee", compact_text)
             self.assertIn("KPDX ASOS", compact_text)
             self.assertIn("71 F", compact_text)
@@ -910,6 +961,10 @@ class PdfExportTest(unittest.TestCase):
             summary_reader = PdfReader(summary_path)
             summary_text = "\n".join(page.extract_text() or "" for page in summary_reader.pages)
             self.assertLess(len(summary_reader.pages), len(reader.pages))
+            self.assertIn(
+                "PORTLAND POLICE BUREAU - TRAFFIC INVESTIGATIONS UNIT",
+                summary_text,
+            )
             self.assertIn("26-123456", summary_text)
             self.assertIn("Scene scan completed", summary_text)
             self.assertIn("Quick review", summary_text)
