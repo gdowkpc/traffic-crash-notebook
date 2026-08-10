@@ -913,7 +913,8 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("Crash Diagram Completed", text)
             self.assertIn("not an official report", text.lower())
             self.assertNotIn("FULL WORKING PACKET", text)
-            self.assertIn("COVER NOTES / ROUTING UPDATES", text)
+            self.assertIn("COVER NOTES", text)
+            self.assertNotIn("ROUTING UPDATES", text)
             self.assertIn(f"Page 1 of {len(reader.pages)}", text)
             self.assertTrue(all("CASE 26-123456" in (page.extract_text() or "") for page in reader.pages))
 
@@ -922,7 +923,7 @@ class PdfExportTest(unittest.TestCase):
             compact_text = "\n".join(page.extract_text() or "" for page in compact_reader.pages)
             self.assertLess(len(compact_reader.pages), len(reader.pages))
             self.assertIn("COMPACT COMPLETED-CASE PACKET", compact_text)
-            self.assertNotIn("COVER NOTES / ROUTING UPDATES", compact_text)
+            self.assertNotIn("COVER NOTES", compact_text)
             self.assertIn("Morgan Lee", compact_text)
             self.assertIn("KPDX ASOS", compact_text)
             self.assertIn("71 F", compact_text)

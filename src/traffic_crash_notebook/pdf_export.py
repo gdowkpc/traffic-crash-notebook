@@ -250,7 +250,7 @@ def export_case_pdf(
         )
     )
     if working_copy:
-        story.extend(_write_in_area("Cover notes / routing updates", styles, lines=5))
+        story.extend(_write_in_area("Cover notes", styles, lines=5))
     story.append(PageBreak())
     story.extend(_packet_case_section(
         case, checklist, charge_dispositions, crash_details, video_sources, counts, styles
