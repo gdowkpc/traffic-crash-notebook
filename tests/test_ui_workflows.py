@@ -2200,6 +2200,21 @@ class AddRecordWorkflowTest(unittest.TestCase):
             dialog.height_value.setText("70 in")
             dialog.weight_value.setText("180 lb")
             dialog.hospital.setText("OHSU")
+            participant_form = dialog.findChild(QTabWidget).widget(0).layout()
+            self.assertEqual(
+                participant_form.labelForField(dialog.helmet).text(),
+                "Helmet",
+            )
+            self.assertEqual(
+                participant_form.getWidgetPosition(dialog.helmet)[0],
+                participant_form.getWidgetPosition(dialog.airbag_deployed)[0] + 1,
+            )
+            self.assertEqual(
+                [dialog.helmet.itemText(index) for index in range(dialog.helmet.count())],
+                ["Yes", "No", "Not Applicable"],
+            )
+            self.assertEqual(dialog.helmet.currentText(), "Not Applicable")
+            dialog.helmet.setCurrentText("Yes")
             dialog.ejected.setCurrentText("No")
             dialog.extracted.setCurrentText("Yes")
             dialog.injury_code_boxes["1 - Laceration"].setChecked(True)
@@ -2346,6 +2361,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(details.height, "70 in")
         self.assertEqual(details.ejected, "No")
         self.assertEqual(details.extracted, "Yes")
+        self.assertEqual(details.helmet, "Yes")
         self.assertIn("Laceration", details.injury_codes)
         profile = self.repository.get_driver_profile(person.id)
         self.assertEqual(profile.license_restricted, "Yes")

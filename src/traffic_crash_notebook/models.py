@@ -751,6 +751,7 @@ class ParticipantDetails:
     seatbelt_installed: str = "Unknown"
     seatbelt_used: str = "Unknown"
     airbag_deployed: str = "Unknown"
+    helmet: str = "Not Applicable"
     ejected: str = "Unknown"
     extracted: str = "Unknown"
     autopsy_performed: str = "Unknown"

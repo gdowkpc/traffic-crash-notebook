@@ -254,6 +254,49 @@ class RepositoryTest(unittest.TestCase):
                 SCHEMA_VERSION,
             )
 
+    def test_schema_28_participant_receives_helmet_without_data_loss(self):
+        person = self.repository.save_person(Person(
+            id="",
+            case_id=self.case.id,
+            first_name="Legacy",
+            last_name="Participant",
+            roles=["Passenger"],
+        ))
+        self.repository.save_participant_details(ParticipantDetails(
+            person_id=person.id,
+            airbag_deployed="No",
+            ejected="No",
+            notes="Preserve this participant record.",
+        ))
+        with self.repository._connect() as connection:
+            connection.execute("ALTER TABLE participant_details DROP COLUMN helmet")
+            connection.execute("PRAGMA user_version = 28")
+
+        migrated = CaseRepository(self.database)
+        details = migrated.get_participant_details(person.id)
+        self.assertEqual(details.airbag_deployed, "No")
+        self.assertEqual(details.ejected, "No")
+        self.assertEqual(details.notes, "Preserve this participant record.")
+        self.assertEqual(details.helmet, "Not Applicable")
+        details.helmet = "Yes"
+        migrated.save_participant_details(details)
+        self.assertEqual(
+            migrated.get_participant_details(person.id).helmet,
+            "Yes",
+        )
+        with migrated._connect() as connection:
+            columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info(participant_details)"
+                ).fetchall()
+            }
+            self.assertIn("helmet", columns)
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                SCHEMA_VERSION,
+            )
+
     def test_legacy_dims_scene_evidence_is_normalized_to_axon(self):
         self.repository.save_crash_details(CrashDetails(case_id=self.case.id))
         with closing(sqlite3.connect(self.database)) as connection:
@@ -854,6 +897,7 @@ class RepositoryTest(unittest.TestCase):
         participant = ParticipantDetails(
             person_id=person.id, vehicle_id=vehicle.id, occupant_position="Driver",
             injury_status="Injured", transported="Yes", transported_to="Example Hospital",
+            helmet="Yes",
         )
         driver = DriverProfile(
             person_id=person.id, trip_from="Home", trip_to="Work",
@@ -892,6 +936,7 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(loaded_conditions.moonset, "11:28")
         self.assertEqual(loaded_conditions.moon_phase, "Waxing gibbous")
         self.assertEqual(self.repository.get_participant_details(person.id).transported_to, "Example Hospital")
+        self.assertEqual(self.repository.get_participant_details(person.id).helmet, "Yes")
         self.assertEqual(self.repository.get_driver_profile(person.id).hours_asleep, "7.5")
         self.assertEqual(
             self.repository.get_driver_profile(person.id).endorsements,
@@ -1452,7 +1497,7 @@ class RepositoryTest(unittest.TestCase):
         ))
         participant = self.repository.save_participant_details(ParticipantDetails(
             person_id=person.id, height="70 in", weight="180 lb", hospital="OHSU",
-            ejected="No", extracted="Yes",
+            helmet="No", ejected="No", extracted="Yes",
             injury_codes="1 - Laceration; 3 - Contusion",
             evidence_items="Blood; Clothing",
         ))
@@ -1506,6 +1551,10 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(
             self.repository.get_participant_details(person.id).extracted,
             "Yes",
+        )
+        self.assertEqual(
+            self.repository.get_participant_details(person.id).helmet,
+            "No",
         )
         self.assertEqual(
             self.repository.get_driver_profile(person.id).license_restriction_explanation,

@@ -1522,7 +1522,10 @@ def _participant_sections(
                      value for value in (details.hospital, details.medical_records_status) if value
                  )), styles["Cell"])],
                 [Paragraph("RESTRAINT / AIR BAG", styles["Label"]),
-                 Paragraph(_text(f"Installed {details.seatbelt_installed}; used {details.seatbelt_used}; air bag {details.airbag_deployed}"), styles["Cell"]),
+                 Paragraph(_text(
+                     f"Installed {details.seatbelt_installed}; used {details.seatbelt_used}; "
+                     f"air bag {details.airbag_deployed}; helmet {details.helmet}"
+                 ), styles["Cell"]),
                  Paragraph("EJECTED / EXTRACTED", styles["Label"]),
                  Paragraph(_text(
                      f"Ejected {details.ejected}; extracted {details.extracted}"

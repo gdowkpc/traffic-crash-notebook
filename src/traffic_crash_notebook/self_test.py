@@ -295,11 +295,14 @@ def run_self_test(output_directory: str | Path) -> Path:
     ))
     repository.save_participant_details(ParticipantDetails(
         person_id=person.id, vehicle_id=vehicle.id, height="70 in", weight="180 lb",
-        injury_status="Not injured", ejected="No", extracted="Yes",
+        injury_status="Not injured", helmet="Yes", ejected="No", extracted="Yes",
         evidence_items="Clothing",
     ))
-    if repository.get_participant_details(person.id).extracted != "Yes":
-        raise RuntimeError("The participant extracted status could not be saved and reloaded.")
+    loaded_participant = repository.get_participant_details(person.id)
+    if loaded_participant.extracted != "Yes" or loaded_participant.helmet != "Yes":
+        raise RuntimeError(
+            "The participant extracted and helmet statuses could not be saved and reloaded."
+        )
     repository.save_driver_profile(DriverProfile(
         person_id=person.id, physical_condition_types="Vision",
         testing_methods="SFST",
@@ -544,6 +547,7 @@ def run_self_test(output_directory: str | Path) -> Path:
         "Corrective lenses",
         "DRIVING HISTORY",
         "Verification driving history.",
+        "helmet Yes",
         "Participant background",
         "Property receipt SELF-TEST-PR-1",
         "Portable Verification Owner",
@@ -621,7 +625,7 @@ def run_self_test(output_directory: str | Path) -> Path:
             f"Quick-review PDF bytes: {summary_pdf.stat().st_size}",
             f"Exchange-report PDF bytes: {exchange_pdf.stat().st_size}",
             "Person ZIP code persistence: PASS",
-            "Participant extracted status persistence: PASS",
+            "Participant extracted and helmet status persistence: PASS",
             "Driver-license dates, ordering data, and driving history persistence: PASS",
             "Role-aware non-driver packet background suppression: PASS",
             "Per-vehicle checklist, towing, release, insurance, and claim persistence: PASS",

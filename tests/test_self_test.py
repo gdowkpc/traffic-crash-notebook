@@ -39,7 +39,10 @@ class PortableSelfTestTest(unittest.TestCase):
                 log_text,
             )
             self.assertIn("Person ZIP code persistence: PASS", log_text)
-            self.assertIn("Participant extracted status persistence: PASS", log_text)
+            self.assertIn(
+                "Participant extracted and helmet status persistence: PASS",
+                log_text,
+            )
             self.assertIn(
                 "Per-vehicle checklist, towing, release, insurance, and claim persistence: PASS",
                 log_text,

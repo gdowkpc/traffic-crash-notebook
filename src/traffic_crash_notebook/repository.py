@@ -57,7 +57,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 28
+SCHEMA_VERSION = 29
 
 
 SCHEMA = """
@@ -324,6 +324,7 @@ CREATE TABLE IF NOT EXISTS participant_details (
     height TEXT NOT NULL DEFAULT '', weight TEXT NOT NULL DEFAULT '',
     seatbelt_installed TEXT NOT NULL DEFAULT 'Unknown',
     seatbelt_used TEXT NOT NULL DEFAULT 'Unknown', airbag_deployed TEXT NOT NULL DEFAULT 'Unknown',
+    helmet TEXT NOT NULL DEFAULT 'Not Applicable',
     ejected TEXT NOT NULL DEFAULT 'Unknown', extracted TEXT NOT NULL DEFAULT 'Unknown',
     autopsy_performed TEXT NOT NULL DEFAULT 'Unknown',
     autopsy_by TEXT NOT NULL DEFAULT '', date_of_death TEXT NOT NULL DEFAULT '',
@@ -606,7 +607,7 @@ CREATE INDEX IF NOT EXISTS idx_hit_run_evidence_case
     ON hit_run_evidence_items(case_id, evidence_number, created_at);
 CREATE INDEX IF NOT EXISTS idx_hit_run_person_leads_case
     ON hit_run_person_leads(case_id, lead_number, created_at);
-PRAGMA user_version = 28;
+PRAGMA user_version = 29;
 """
 
 
@@ -632,10 +633,10 @@ class CaseRepository:
         with self._connect() as connection:
             previous_version = connection.execute("PRAGMA user_version").fetchone()[0]
             connection.executescript(SCHEMA)
-            self._migrate_schema_28(connection, previous_version)
+            self._migrate_schema_29(connection, previous_version)
 
     @staticmethod
-    def _migrate_schema_28(
+    def _migrate_schema_29(
         connection: sqlite3.Connection,
         previous_version: int,
     ) -> None:
@@ -695,6 +696,7 @@ class CaseRepository:
                 "injury_codes": "TEXT NOT NULL DEFAULT ''",
                 "evidence_items": "TEXT NOT NULL DEFAULT ''",
                 "extracted": "TEXT NOT NULL DEFAULT 'Unknown'",
+                "helmet": "TEXT NOT NULL DEFAULT 'Not Applicable'",
             },
             "driver_profiles": {
                 "physical_condition_types": "TEXT NOT NULL DEFAULT ''",
@@ -965,7 +967,7 @@ class CaseRepository:
                 )
                 """
             )
-        connection.execute("PRAGMA user_version = 28")
+        connection.execute("PRAGMA user_version = 29")
 
     def get_user_defaults(self) -> UserDefaults:
         with self._connect() as connection:
