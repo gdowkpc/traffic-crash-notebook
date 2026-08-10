@@ -169,6 +169,37 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("Hit & Run Investigation", working_text)
             self.assertNotIn("Hit & Run Investigation", compact_text)
 
+    def test_review_and_da_routing_supports_all_three_statuses(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = CaseRepository(root / "routing.sqlite3")
+            case = repository.create_case("26-ROUTING", "Routing Test")
+            repository.save_investigative_checklist(InvestigativeChecklist(
+                case_id=case.id,
+                completed_items=["Report Peer Reviewed"],
+                peer_review_status="Complete",
+                sergeant_review_status="Pending",
+                submitted_to_da_status="Not Started",
+                peer_review_date="2026-08-01",
+            ))
+
+            reader = PdfReader(export_case_pdf(
+                repository,
+                case.id,
+                root / "routing.pdf",
+            ))
+            cover_text = " ".join((reader.pages[0].extract_text() or "").split())
+            packet_text = " ".join(
+                " ".join((page.extract_text() or "").split())
+                for page in reader.pages
+            )
+            self.assertIn("Complete - 08/01/2026", cover_text)
+            self.assertIn("Pending", cover_text)
+            self.assertIn("Not Started", cover_text)
+            self.assertIn("Report Peer Reviewed Complete 08/01/2026", packet_text)
+            self.assertIn("Report Sgt Reviewed Pending", packet_text)
+            self.assertIn("Submitted to DA Not Started", packet_text)
+
     def test_packet_prints_property_receipts_items_before_tasks_and_journal(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -503,6 +534,9 @@ class PdfExportTest(unittest.TestCase):
                     "Submitted to DA",
                     "Crash Diagram Completed",
                 ],
+                peer_review_status="Complete",
+                sergeant_review_status="Complete",
+                submitted_to_da_status="Complete",
                 peer_review_date="2026-08-06",
                 sergeant_review_date="2026-08-07",
                 submitted_to_da_date="2026-08-08",

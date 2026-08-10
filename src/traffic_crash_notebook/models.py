@@ -100,6 +100,14 @@ CHECKLIST_DATE_FIELDS = {
     "Submitted to DA": "submitted_to_da_date",
 }
 
+ROUTING_STATUS_OPTIONS = ("Not Started", "Pending", "Complete")
+
+CHECKLIST_STATUS_FIELDS = {
+    "Report Peer Reviewed": "peer_review_status",
+    "Report Sgt Reviewed": "sergeant_review_status",
+    "Submitted to DA": "submitted_to_da_status",
+}
+
 VEHICLE_WORKFLOW_FIELDS = (
     ("warrant_obtained", "Warrant"),
     ("vehicle_inspection_completed", "Vehicle Inspection"),
@@ -598,6 +606,9 @@ class PropertyReceiptItem:
 class InvestigativeChecklist:
     case_id: str
     completed_items: list[str] = field(default_factory=list)
+    peer_review_status: str = "Not Started"
+    sergeant_review_status: str = "Not Started"
+    submitted_to_da_status: str = "Not Started"
     peer_review_date: str = ""
     sergeant_review_date: str = ""
     submitted_to_da_date: str = ""

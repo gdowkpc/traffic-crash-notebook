@@ -297,6 +297,62 @@ class RepositoryTest(unittest.TestCase):
                 SCHEMA_VERSION,
             )
 
+    def test_schema_29_checklist_receives_routing_statuses_without_data_loss(self):
+        self.repository.save_investigative_checklist(InvestigativeChecklist(
+            case_id=self.case.id,
+            completed_items=["Report Peer Reviewed", "Report Sgt Reviewed"],
+            peer_review_date="2026-08-01",
+            assigned_dda="Preserved DDA",
+        ))
+        with self.repository._connect() as connection:
+            connection.execute(
+                "ALTER TABLE investigative_checklists DROP COLUMN peer_review_status"
+            )
+            connection.execute(
+                "ALTER TABLE investigative_checklists DROP COLUMN sergeant_review_status"
+            )
+            connection.execute(
+                "ALTER TABLE investigative_checklists DROP COLUMN submitted_to_da_status"
+            )
+            connection.execute("PRAGMA user_version = 29")
+
+        migrated = CaseRepository(self.database)
+        checklist = migrated.get_investigative_checklist(self.case.id)
+        self.assertEqual(checklist.peer_review_status, "Complete")
+        self.assertEqual(checklist.sergeant_review_status, "Complete")
+        self.assertEqual(checklist.submitted_to_da_status, "Not Started")
+        self.assertEqual(checklist.peer_review_date, "2026-08-01")
+        self.assertEqual(checklist.assigned_dda, "Preserved DDA")
+
+        checklist.completed_items = ["Submitted to DA"]
+        checklist.peer_review_status = "Pending"
+        checklist.sergeant_review_status = "Not Started"
+        checklist.submitted_to_da_status = "Complete"
+        checklist.peer_review_date = ""
+        checklist.submitted_to_da_date = "2026-08-02"
+        migrated.save_investigative_checklist(checklist)
+        reloaded = migrated.get_investigative_checklist(self.case.id)
+        self.assertEqual(reloaded.peer_review_status, "Pending")
+        self.assertEqual(reloaded.sergeant_review_status, "Not Started")
+        self.assertEqual(reloaded.submitted_to_da_status, "Complete")
+        self.assertEqual(reloaded.submitted_to_da_date, "2026-08-02")
+        with migrated._connect() as connection:
+            columns = {
+                row[1]
+                for row in connection.execute(
+                    "PRAGMA table_info(investigative_checklists)"
+                ).fetchall()
+            }
+            self.assertTrue({
+                "peer_review_status",
+                "sergeant_review_status",
+                "submitted_to_da_status",
+            }.issubset(columns))
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                SCHEMA_VERSION,
+            )
+
     def test_legacy_dims_scene_evidence_is_normalized_to_axon(self):
         self.repository.save_crash_details(CrashDetails(case_id=self.case.id))
         with closing(sqlite3.connect(self.database)) as connection:
@@ -1440,11 +1496,12 @@ class RepositoryTest(unittest.TestCase):
                 "Weather Obtained",
                 "Axon Shared to DA",
                 "Report Peer Reviewed",
-                "Report Sgt Reviewed",
                 "Submitted to DA",
             ],
+            peer_review_status="Complete",
+            sergeant_review_status="Pending",
+            submitted_to_da_status="Complete",
             peer_review_date="2026-08-02",
-            sergeant_review_date="2026-08-03",
             submitted_to_da_date="2026-08-04",
             assigned_dda="Example DDA",
             da_case_number="DA-123",
@@ -1472,7 +1529,10 @@ class RepositoryTest(unittest.TestCase):
         loaded_checklist = self.repository.get_investigative_checklist(self.case.id)
         self.assertEqual(loaded_checklist.completed_items, checklist.completed_items)
         self.assertEqual(loaded_checklist.peer_review_date, "2026-08-02")
-        self.assertEqual(loaded_checklist.sergeant_review_date, "2026-08-03")
+        self.assertEqual(loaded_checklist.peer_review_status, "Complete")
+        self.assertEqual(loaded_checklist.sergeant_review_status, "Pending")
+        self.assertEqual(loaded_checklist.submitted_to_da_status, "Complete")
+        self.assertEqual(loaded_checklist.sergeant_review_date, "")
         self.assertEqual(loaded_checklist.submitted_to_da_date, "2026-08-04")
         self.assertEqual(loaded_checklist.da_case_number, "DA-123")
         self.assertEqual(loaded_checklist.court_case_number, "COURT-456")

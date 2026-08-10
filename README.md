@@ -38,7 +38,7 @@ agency endorsement is implied.
 - Record vehicle weights, brakes, safety equipment, lighting, tire contribution, individual tire measurements, a per-vehicle NHTSA recall-check confirmation, towing status and destination, release status/date/details, and insurance claim number plus adjuster name, phone, and email.
 - Record structured equipped/operable states, switch positions, body/glass/restraint observations, identity checks, and unlimited tire positions.
 - Complete the original packet's 44-item motorcycle inspection with ratings, measurements, comments, and inspection metadata.
-- Track the investigative checklist, crash-diagram completion, Axon sharing, dated peer/sergeant/DA submission milestones, unlimited charges/dispositions, crash-team response details, and unlimited video sources with location addresses and Axon upload status.
+- Track the investigative checklist, crash-diagram completion, Axon sharing, peer/sergeant/DA routing milestones with Not Started, Pending, or Complete status and completion dates, unlimited charges/dispositions, crash-team response details, and unlimited video sources with location addresses and Axon upload status.
 - Add, edit, and remove multiple roadway-surface records from a dedicated Surface subtab, with roadway/location, composition, condition, friction/drag factor, and notes.
 - Store separate cell, home, and work numbers plus city, state, occupation, and business address data for people and contacts, with ZIP codes on person addresses.
 - Display the Traffic Investigations Unit logo in the application and generated PDF.

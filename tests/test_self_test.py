@@ -44,6 +44,10 @@ class PortableSelfTestTest(unittest.TestCase):
                 log_text,
             )
             self.assertIn(
+                "Review and DA routing statuses and completion dates: PASS",
+                log_text,
+            )
+            self.assertIn(
                 "Per-vehicle checklist, towing, release, insurance, and claim persistence: PASS",
                 log_text,
             )

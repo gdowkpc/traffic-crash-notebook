@@ -57,7 +57,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 29
+SCHEMA_VERSION = 30
 
 
 SCHEMA = """
@@ -480,6 +480,9 @@ CREATE TABLE IF NOT EXISTS diagram_records (
 CREATE TABLE IF NOT EXISTS investigative_checklists (
     case_id TEXT PRIMARY KEY REFERENCES cases(id) ON DELETE CASCADE,
     completed_items_json TEXT NOT NULL DEFAULT '[]',
+    peer_review_status TEXT NOT NULL DEFAULT 'Not Started',
+    sergeant_review_status TEXT NOT NULL DEFAULT 'Not Started',
+    submitted_to_da_status TEXT NOT NULL DEFAULT 'Not Started',
     peer_review_date TEXT NOT NULL DEFAULT '',
     sergeant_review_date TEXT NOT NULL DEFAULT '',
     submitted_to_da_date TEXT NOT NULL DEFAULT '',
@@ -607,7 +610,7 @@ CREATE INDEX IF NOT EXISTS idx_hit_run_evidence_case
     ON hit_run_evidence_items(case_id, evidence_number, created_at);
 CREATE INDEX IF NOT EXISTS idx_hit_run_person_leads_case
     ON hit_run_person_leads(case_id, lead_number, created_at);
-PRAGMA user_version = 29;
+PRAGMA user_version = 30;
 """
 
 
@@ -633,10 +636,10 @@ class CaseRepository:
         with self._connect() as connection:
             previous_version = connection.execute("PRAGMA user_version").fetchone()[0]
             connection.executescript(SCHEMA)
-            self._migrate_schema_29(connection, previous_version)
+            self._migrate_schema_30(connection, previous_version)
 
     @staticmethod
-    def _migrate_schema_29(
+    def _migrate_schema_30(
         connection: sqlite3.Connection,
         previous_version: int,
     ) -> None:
@@ -722,6 +725,9 @@ class CaseRepository:
                 "light_board_used": "INTEGER NOT NULL DEFAULT 0",
             },
             "investigative_checklists": {
+                "peer_review_status": "TEXT NOT NULL DEFAULT 'Not Started'",
+                "sergeant_review_status": "TEXT NOT NULL DEFAULT 'Not Started'",
+                "submitted_to_da_status": "TEXT NOT NULL DEFAULT 'Not Started'",
                 "peer_review_date": "TEXT NOT NULL DEFAULT ''",
                 "sergeant_review_date": "TEXT NOT NULL DEFAULT ''",
                 "court_case_number": "TEXT NOT NULL DEFAULT ''",
@@ -778,6 +784,21 @@ class CaseRepository:
             for column, declaration in columns.items():
                 if column not in existing:
                     connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+        if previous_version < 30:
+            for status_column, date_column, item in (
+                ("peer_review_status", "peer_review_date", "Report Peer Reviewed"),
+                ("sergeant_review_status", "sergeant_review_date", "Report Sgt Reviewed"),
+                ("submitted_to_da_status", "submitted_to_da_date", "Submitted to DA"),
+            ):
+                connection.execute(
+                    f"""
+                    UPDATE investigative_checklists
+                    SET {status_column} = 'Complete'
+                    WHERE TRIM({date_column}) <> ''
+                       OR INSTR(completed_items_json, ?) > 0
+                    """,
+                    (f'"{item}"',),
+                )
         if previous_version < 24:
             connection.execute(
                 """
@@ -967,7 +988,7 @@ class CaseRepository:
                 )
                 """
             )
-        connection.execute("PRAGMA user_version = 29")
+        connection.execute("PRAGMA user_version = 30")
 
     def get_user_defaults(self) -> UserDefaults:
         with self._connect() as connection:
@@ -1442,14 +1463,20 @@ class CaseRepository:
         with self._connect() as connection:
             connection.execute(
                 """INSERT INTO investigative_checklists
-                (case_id, completed_items_json, peer_review_date, sergeant_review_date,
-                 submitted_to_da_date, assigned_dda, da_case_number, court_case_number,
-                 updated_at)
-                VALUES (:case_id, :completed_items_json, :peer_review_date,
-                        :sergeant_review_date, :submitted_to_da_date, :assigned_dda,
-                        :da_case_number, :court_case_number, :updated_at)
+                (case_id, completed_items_json, peer_review_status,
+                 sergeant_review_status, submitted_to_da_status, peer_review_date,
+                 sergeant_review_date, submitted_to_da_date, assigned_dda,
+                 da_case_number, court_case_number, updated_at)
+                VALUES (:case_id, :completed_items_json, :peer_review_status,
+                        :sergeant_review_status, :submitted_to_da_status,
+                        :peer_review_date, :sergeant_review_date,
+                        :submitted_to_da_date, :assigned_dda, :da_case_number,
+                        :court_case_number, :updated_at)
                 ON CONFLICT(case_id) DO UPDATE SET
                   completed_items_json=excluded.completed_items_json,
+                  peer_review_status=excluded.peer_review_status,
+                  sergeant_review_status=excluded.sergeant_review_status,
+                  submitted_to_da_status=excluded.submitted_to_da_status,
                   peer_review_date=excluded.peer_review_date,
                   sergeant_review_date=excluded.sergeant_review_date,
                   submitted_to_da_date=excluded.submitted_to_da_date,

@@ -32,8 +32,8 @@ presentation controls.
 
 | Page(s) | Packet section | Required semantic data | v0.5.5 implementation |
 |---|---|---|---|
-| 1 | Packet cover | Case number, crash date/time/location/status, assigned investigator, DPSST, assignment, calculated people/vehicle/injury/fatal/VRU/Journal/task totals, peer and MCT sergeant review, DA submission, assigned DDA, DA case number, court case number, summary, and writable routing notes | Complete as a dedicated first page in the full and compact packet PDFs |
-| 2 | Investigative checklist | Evidence collection, vehicle work, crash-diagram completion, Axon sharing, dated peer review, sergeant review, and DA submission milestones, assigned DDA, DA case number, court case number, unlimited charge/disposition rows | Complete |
+| 1 | Packet cover | Case number, crash date/time/location/status, assigned investigator, DPSST, assignment, calculated people/vehicle/injury/fatal/VRU/Journal/task totals, peer review, MCT sergeant review, and DA submission with Not Started/Pending/Complete status and completion dates, assigned DDA, DA case number, court case number, summary, and writable routing notes | Complete as a dedicated first page in the full and compact packet PDFs |
+| 2 | Investigative checklist | Evidence collection, vehicle work, crash-diagram completion, Axon sharing, peer review, sergeant review, and DA submission milestones with Not Started/Pending/Complete status and completion dates, assigned DDA, DA case number, court case number, unlimited charge/disposition rows | Complete |
 | 3-4 | Investigative journal | Unlimited dated/timed journal entries with category, summary, and detail | Complete |
 | Generated continuation | Evidence | Unlimited property receipts with owner, Evidence/Found Property/Prison Property/Safe Keeping classification, lodging location/date, and unlimited numbered descriptive items | Complete |
 | Generated continuation | Tasks | Unlimited open, waiting, completed, and not-needed investigative tasks with category, due/completed dates, and notes | Complete |

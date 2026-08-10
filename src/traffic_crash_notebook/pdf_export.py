@@ -28,6 +28,7 @@ from .date_format import format_date_for_display, format_time_for_display, weekd
 from .models import (
     CaseTask,
     CHECKLIST_DATE_FIELDS,
+    CHECKLIST_STATUS_FIELDS,
     ChargeDisposition,
     ChronologyEntry,
     ContactRelationship,
@@ -48,6 +49,7 @@ from .models import (
     PropertyReceiptItem,
     RoadConditions,
     RoadwayRecord,
+    ROUTING_STATUS_OPTIONS,
     SurfaceObservation,
     TireInspection,
     Vehicle,
@@ -566,11 +568,28 @@ def _cover_milestone(
     date_attribute: str,
 ) -> str:
     completion_date = getattr(checklist, date_attribute)
-    if completion_date:
+    status = _checklist_item_status(checklist, item)
+    if status == "Complete" and completion_date:
         return f"Complete - {format_date_for_display(completion_date)}"
-    if item in checklist.completed_items:
+    return status
+
+
+def _checklist_item_status(
+    checklist: InvestigativeChecklist,
+    item: str,
+) -> str:
+    status_attribute = CHECKLIST_STATUS_FIELDS.get(item)
+    if not status_attribute:
+        return "Complete" if item in checklist.completed_items else "Open"
+    status = getattr(checklist, status_attribute)
+    if status not in ROUTING_STATUS_OPTIONS:
+        status = "Not Started"
+    date_attribute = CHECKLIST_DATE_FIELDS[item]
+    if status == "Not Started" and (
+        item in checklist.completed_items or getattr(checklist, date_attribute)
+    ):
         return "Complete"
-    return "Open"
+    return status
 
 
 def _packet_cover(
@@ -848,7 +867,6 @@ def _packet_case_section(
     story: list[object] = [Paragraph("Investigative packet", styles["Section"])]
     day_of_week = weekday_name(case.crash_date)
 
-    completed = set(checklist.completed_items)
     checklist_rows: list[list[Paragraph]] = [[
         Paragraph("AREA", styles["Label"]),
         Paragraph("MILESTONE", styles["Label"]),
@@ -867,7 +885,7 @@ def _packet_case_section(
                 Paragraph(_text(group), styles["Cell"]),
                 Paragraph(_text(item), styles["Cell"]),
                 Paragraph(
-                    "Complete" if item in completed or completion_date else "Open",
+                    _checklist_item_status(checklist, item),
                     styles["Cell"],
                 ),
                 Paragraph(

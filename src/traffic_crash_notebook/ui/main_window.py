@@ -89,9 +89,11 @@ from ..models import (
     CARDINAL_DIRECTIONS,
     CASE_STATUSES,
     CHECKLIST_DATE_FIELDS,
+    CHECKLIST_STATUS_FIELDS,
     HIT_RUN_INVESTIGATION_STATUSES,
     INVESTIGATIVE_CHECKLIST_GROUPS,
     ROAD_AREA_OPTIONS,
+    ROUTING_STATUS_OPTIONS,
     SCENE_EVIDENCE_METHODS,
     SURVEILLANCE_VIDEO_EVIDENCE,
     WEATHER_DISPLAY_UNITS,
@@ -596,6 +598,7 @@ class MainWindow(QMainWindow):
         self.packet_widgets: dict[str, QWidget] = {}
         self.checklist_widgets: dict[str, QLineEdit] = {}
         self.checklist_boxes: dict[str, QCheckBox] = {}
+        self.checklist_status_widgets: dict[str, QComboBox] = {}
         self.checklist_date_widgets: dict[str, QLineEdit] = {}
         self.scene_evidence_boxes: dict[str, QCheckBox] = {}
 
@@ -619,28 +622,34 @@ class MainWindow(QMainWindow):
             group = QGroupBox(group_name)
             group_layout = QVBoxLayout(group)
             for item in items:
-                box = QCheckBox(item)
-                box.toggled.connect(self.schedule_autosave)
-                self.checklist_boxes[item] = box
-                if item in CHECKLIST_DATE_FIELDS:
+                if item in CHECKLIST_STATUS_FIELDS:
                     row = QWidget()
                     row_layout = QHBoxLayout(row)
                     row_layout.setContentsMargins(0, 0, 0, 0)
-                    row_layout.addWidget(box, 1)
+                    row_layout.addWidget(QLabel(item), 1)
+                    status_widget = QComboBox()
+                    status_widget.addItems(ROUTING_STATUS_OPTIONS)
+                    status_widget.setMaximumWidth(105)
+                    status_widget.currentTextChanged.connect(self.schedule_autosave)
+                    self.checklist_status_widgets[item] = status_widget
+                    row_layout.addWidget(status_widget)
                     date_widget = _date_line()
                     date_widget.setToolTip(f"Completion date for {item}")
-                    date_widget.setMaximumWidth(110)
+                    date_widget.setMaximumWidth(105)
                     date_widget.setEnabled(False)
                     date_widget.textChanged.connect(self.schedule_autosave)
                     self.checklist_date_widgets[item] = date_widget
-                    box.toggled.connect(
-                        lambda checked, checklist_item=item:
-                        self._sync_checklist_date_availability(checklist_item, checked)
+                    status_widget.currentTextChanged.connect(
+                        lambda status, checklist_item=item:
+                        self._sync_checklist_date_availability(checklist_item, status)
                     )
                     row_layout.addWidget(date_widget)
                     group_layout.addWidget(row)
-                else:
-                    group_layout.addWidget(box)
+                    continue
+                box = QCheckBox(item)
+                box.toggled.connect(self.schedule_autosave)
+                self.checklist_boxes[item] = box
+                group_layout.addWidget(box)
             group_layout.addStretch(1)
             milestones_layout.addWidget(group, 1)
         tabs.addTab(_scrollable(milestones), "Checklist")
@@ -1534,12 +1543,13 @@ class MainWindow(QMainWindow):
         if not investigator_photos_checked:
             self.axon_upload_checkbox.setChecked(False)
 
-    def _sync_checklist_date_availability(self, item: str, checked: bool) -> None:
+    def _sync_checklist_date_availability(self, item: str, status: str) -> None:
         date_widget = self.checklist_date_widgets.get(item)
         if not date_widget:
             return
-        date_widget.setEnabled(checked)
-        if not checked and not self.loading:
+        complete = status == "Complete"
+        date_widget.setEnabled(complete)
+        if not complete and not self.loading:
             date_widget.clear()
 
     def save_overview(self) -> bool:
@@ -1632,16 +1642,23 @@ class MainWindow(QMainWindow):
             or not self.crash_details
         ):
             return
-        self.checklist.completed_items = [
+        completed_items = [
             item for item, checkbox in self.checklist_boxes.items() if checkbox.isChecked()
         ]
+        for item, widget in self.checklist_status_widgets.items():
+            status = widget.currentText()
+            setattr(self.checklist, CHECKLIST_STATUS_FIELDS[item], status)
+            if status == "Complete":
+                completed_items.append(item)
+        self.checklist.completed_items = completed_items
         for name, widget in self.checklist_widgets.items():
             setattr(self.checklist, name, widget.text().strip())
         for item, widget in self.checklist_date_widgets.items():
+            status = getattr(self.checklist, CHECKLIST_STATUS_FIELDS[item])
             setattr(
                 self.checklist,
                 CHECKLIST_DATE_FIELDS[item],
-                normalize_date_for_storage(widget.text()),
+                normalize_date_for_storage(widget.text()) if status == "Complete" else "",
             )
         self.repository.save_investigative_checklist(self.checklist)
 
@@ -1733,17 +1750,20 @@ class MainWindow(QMainWindow):
                 getattr(self.checklist, CHECKLIST_DATE_FIELDS[item])
             ))
         completed_items = set(self.checklist.completed_items)
+        for item, widget in self.checklist_status_widgets.items():
+            status_attribute = CHECKLIST_STATUS_FIELDS[item]
+            date_attribute = CHECKLIST_DATE_FIELDS[item]
+            status = getattr(self.checklist, status_attribute)
+            if status not in ROUTING_STATUS_OPTIONS:
+                status = "Not Started"
+            if status == "Not Started" and (
+                item in completed_items or getattr(self.checklist, date_attribute)
+            ):
+                status = "Complete"
+            widget.setCurrentText(status)
+            self._sync_checklist_date_availability(item, status)
         for item, checkbox in self.checklist_boxes.items():
-            date_attribute = CHECKLIST_DATE_FIELDS.get(item)
-            has_date = bool(
-                date_attribute and getattr(self.checklist, date_attribute)
-            )
-            checkbox.setChecked(item in completed_items or has_date)
-            if date_attribute:
-                self._sync_checklist_date_availability(
-                    item,
-                    checkbox.isChecked(),
-                )
+            checkbox.setChecked(item in completed_items)
 
         self.crash_details = self.repository.get_crash_details(case.id)
         if not format_crash_location(
