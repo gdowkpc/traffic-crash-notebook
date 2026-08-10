@@ -72,6 +72,7 @@ GRAY = colors.HexColor("#5D6870")
 LIGHT_GRAY = colors.HexColor("#E4E8EB")
 WARNING = colors.HexColor("#FFF3CD")
 DECEASED_RED = "#B00020"
+AGENCY_UNIT_HEADING = "PORTLAND POLICE BUREAU - TRAFFIC INVESTIGATIONS UNIT"
 
 
 class _PacketCanvas(pdf_canvas.Canvas):
@@ -576,7 +577,7 @@ def _packet_cover(
 ) -> list[object]:
     generated = datetime.now().astimezone().strftime("%m/%d/%Y at %I:%M %p")
     title_content = [
-        Paragraph("TRAFFIC INVESTIGATIONS UNIT", styles["Label"]),
+        Paragraph(AGENCY_UNIT_HEADING, styles["Label"]),
         Paragraph("TRAFFIC CRASH INVESTIGATION PACKET", styles["CoverTitle"]),
         Paragraph(
             f"CASE {_text(case.case_number or 'Untitled Case')}",
@@ -718,7 +719,7 @@ def _case_overview(
 ) -> list[object]:
     generated = datetime.now().astimezone().strftime("%m/%d/%Y at %I:%M %p")
     title_content = [
-        Paragraph("TRAFFIC INVESTIGATIONS UNIT", styles["Label"]),
+        Paragraph(AGENCY_UNIT_HEADING, styles["Label"]),
         Paragraph(_text(case.case_number or "Untitled Case"), styles["CaseTitle"]),
         Paragraph(_text(print_mode), styles["PrintMode"]),
         Paragraph(f"Traffic Crash Notebook v{__version__} - generated {_text(generated)}", styles["CaseSubtitle"]),

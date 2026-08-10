@@ -130,6 +130,10 @@ class PdfExportTest(unittest.TestCase):
             ):
                 cover_text = reader.pages[0].extract_text() or ""
                 second_page_text = reader.pages[1].extract_text() or ""
+                self.assertIn(
+                    "PORTLAND POLICE BUREAU - TRAFFIC INVESTIGATIONS UNIT",
+                    cover_text,
+                )
                 self.assertIn("TRAFFIC CRASH INVESTIGATION PACKET", cover_text)
                 self.assertIn("CASE 26-EMPTY", cover_text)
                 self.assertIn(mode, cover_text)
@@ -630,7 +634,10 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("TRAFFIC CRASH INVESTIGATION PACKET", cover_text)
             self.assertIn("CASE 26-123456", cover_text)
             self.assertIn("123456", cover_text)
-            self.assertIn("Traffic Investigations Unit", cover_text)
+            self.assertIn(
+                "PORTLAND POLICE BUREAU - TRAFFIC INVESTIGATIONS UNIT",
+                cover_text,
+            )
             self.assertIn("Complete - 08/06/2026", normalized_cover_text)
             self.assertIn("Complete - 08/07/2026", normalized_cover_text)
             self.assertIn("Complete - 08/08/2026", normalized_cover_text)
@@ -912,6 +919,10 @@ class PdfExportTest(unittest.TestCase):
             summary_reader = PdfReader(summary_path)
             summary_text = "\n".join(page.extract_text() or "" for page in summary_reader.pages)
             self.assertLess(len(summary_reader.pages), len(reader.pages))
+            self.assertIn(
+                "PORTLAND POLICE BUREAU - TRAFFIC INVESTIGATIONS UNIT",
+                summary_text,
+            )
             self.assertIn("26-123456", summary_text)
             self.assertIn("Scene scan completed", summary_text)
             self.assertIn("Quick review", summary_text)
