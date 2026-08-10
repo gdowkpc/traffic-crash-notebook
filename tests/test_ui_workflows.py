@@ -725,24 +725,31 @@ class AddRecordWorkflowTest(unittest.TestCase):
             self.window.tabs.tabText(index)
             for index in range(self.window.tabs.count())
         ]
-        self.assertIn("Packet Preview", tab_labels)
+        self.assertNotIn("Packet Preview", tab_labels)
+        toolbar = self.window.findChild(QToolBar)
+        toolbar_actions = [action.text() for action in toolbar.actions()]
         self.assertEqual(
-            self.window.packet_preview_tab_index,
-            self.window.exchange_report_tab_index - 1,
+            toolbar_actions,
+            [
+                "New Case",
+                "Save",
+                "Export Full Working Packet",
+                "Export Compact Packet",
+                "Packet Preview",
+                "Export Quick Review",
+                "Back Up",
+                "Data Folder",
+            ],
         )
 
         self.window.show_packet_preview()
         self.app.processEvents()
-        self.assertEqual(
-            self.window.tabs.currentIndex(),
-            self.window.packet_preview_tab_index,
-        )
-        packet_preview_tab = self.window.tabs.widget(
-            self.window.packet_preview_tab_index
-        )
+        self.assertTrue(self.window.packet_preview_dialog.isVisible())
+        self.assertTrue(self.window.packet_preview_dialog.isWindow())
+        self.assertTrue(self.window.packet_preview_dialog.isSizeGripEnabled())
         button_labels = {
             button.text()
-            for button in packet_preview_tab.findChildren(QPushButton)
+            for button in self.window.packet_preview_dialog.findChildren(QPushButton)
         }
         self.assertEqual(
             button_labels,
@@ -876,7 +883,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
             self.window.tabs.count() - 1,
         )
         toolbar = self.window.findChild(QToolBar)
-        self.assertIn(
+        self.assertNotIn(
             "Export Exchange Report",
             [action.text() for action in toolbar.actions()],
         )
@@ -2661,13 +2668,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
     def test_packet_forms_scroll_in_compact_main_window(self):
         self.window.resize(900, 560)
         self.app.processEvents()
-        self.assertEqual(
-            self.window.tabs.tabText(self.window.packet_preview_tab_index),
+        toolbar = self.window.findChild(QToolBar)
+        self.assertIn(
             "Packet Preview",
+            [action.text() for action in toolbar.actions()],
         )
-        self.window.tabs.setCurrentIndex(self.window.packet_preview_tab_index)
-        self.app.processEvents()
-        self.assertTrue(self.window.tabs.currentWidget().isVisible())
         self.window.tabs.setCurrentIndex(1)
         packet_tab = self.window.tabs.currentWidget()
         nested_tabs = packet_tab.findChild(QTabWidget)

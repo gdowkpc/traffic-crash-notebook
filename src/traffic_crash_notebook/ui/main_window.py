@@ -414,10 +414,9 @@ class MainWindow(QMainWindow):
         actions = (
             ("New Case", self.new_case),
             ("Save", self.save_overview),
-            ("Packet Preview", self.show_packet_preview),
             ("Export Full Working Packet", self.export_pdf),
             ("Export Compact Packet", self.export_compact_pdf),
-            ("Export Exchange Report", self.export_exchange_report),
+            ("Packet Preview", self.show_packet_preview),
             ("Export Quick Review", self.export_summary_pdf),
             ("Back Up", self.backup_database),
             ("Data Folder", self.open_data_folder),
@@ -507,6 +506,7 @@ class MainWindow(QMainWindow):
         self.about_button.setToolTip("Show the exact version, build date, and executable location")
         header.addWidget(self.about_button)
         layout.addLayout(header)
+        self.packet_preview_dialog = self._build_packet_preview_dialog()
         self.tabs = QTabWidget()
         self.tabs.addTab(self._build_overview_tab(), "Overview")
         self.tabs.addTab(self._build_packet_tab(), "Packet")
@@ -518,10 +518,6 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self._build_evidence_tab(), "Evidence")
         self.tabs.addTab(self._build_tasks_tab(), "Tasks")
         self.tabs.addTab(self._build_chronology_tab(), "Journal")
-        self.packet_preview_tab_index = self.tabs.addTab(
-            self._build_packet_preview_panel(),
-            "Packet Preview",
-        )
         self.exchange_report_tab_index = self.tabs.addTab(
             self._build_exchange_report_tab(),
             "Exchange Report",
@@ -529,6 +525,19 @@ class MainWindow(QMainWindow):
         self.tabs.currentChanged.connect(self._case_tab_changed)
         layout.addWidget(self.tabs, 1)
         return container
+
+    def _build_packet_preview_dialog(self) -> QDialog:
+        dialog = QDialog(self)
+        dialog.setObjectName("packetPreviewDialog")
+        dialog.setWindowTitle("Case Packet Preview")
+        dialog.setModal(False)
+        dialog.setMinimumSize(760, 540)
+        dialog.resize(1100, 800)
+        dialog.setSizeGripEnabled(True)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self._build_packet_preview_panel())
+        return dialog
 
     def _build_overview_tab(self) -> QWidget:
         tab = QWidget()
@@ -1122,7 +1131,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(actions)
 
         self.packet_preview_status = QLabel(
-            "Open this tab or choose Refresh Preview."
+            "Choose Packet Preview from the toolbar or choose Refresh Preview."
         )
         self.packet_preview_status.setStyleSheet("color: #5d6870;")
         layout.addWidget(self.packet_preview_status)
@@ -2314,8 +2323,6 @@ class MainWindow(QMainWindow):
             return
         if self.current_case and not self.save_overview():
             return
-        if index == self.packet_preview_tab_index:
-            self.refresh_case_packet_preview(force_preview=True)
         if index == self.exchange_report_tab_index:
             self.refresh_exchange_report(force_preview=True)
 
@@ -2340,10 +2347,12 @@ class MainWindow(QMainWindow):
                 "Select or create a case before opening the packet preview.",
             )
             return
-        previous_index = self.tabs.currentIndex()
-        self.tabs.setCurrentIndex(self.packet_preview_tab_index)
-        if previous_index == self.packet_preview_tab_index:
-            self.preview_case_packet()
+        if not self.save_overview():
+            return
+        self.packet_preview_dialog.show()
+        self.packet_preview_dialog.raise_()
+        self.packet_preview_dialog.activateWindow()
+        self.refresh_case_packet_preview(force_preview=True)
 
     def preview_case_packet(self, *_args) -> None:
         if not self.current_case or not self.save_overview():
@@ -2358,8 +2367,8 @@ class MainWindow(QMainWindow):
         if not self.current_case:
             return
         preview_is_visible = (
-            hasattr(self, "tabs")
-            and self.tabs.currentIndex() == self.packet_preview_tab_index
+            hasattr(self, "packet_preview_dialog")
+            and self.packet_preview_dialog.isVisible()
         )
         if not force_preview and not preview_is_visible:
             return
@@ -2411,8 +2420,8 @@ class MainWindow(QMainWindow):
         self.packet_pdf_document = next_document
         self.packet_pdf_buffer = next_buffer
         self.packet_preview_path = next_preview_path
-        # A preview may have been hidden while another workspace tab was
-        # active. Explicitly show it after replacing the document.
+        # The preview panel is created while its dialog is hidden. Explicitly
+        # show it after replacing the document.
         self.packet_pdf_view.show()
         previous_document.close()
         previous_document.deleteLater()
