@@ -125,7 +125,7 @@ class PdfExportTest(unittest.TestCase):
             compact_text = "\n".join(page.extract_text() or "" for page in compact_reader.pages)
 
             for reader, mode in (
-                (working_reader, "FULL WORKING PACKET"),
+                (working_reader, None),
                 (compact_reader, "COMPACT COMPLETED-CASE PACKET"),
             ):
                 cover_text = reader.pages[0].extract_text() or ""
@@ -136,7 +136,10 @@ class PdfExportTest(unittest.TestCase):
                 )
                 self.assertIn("TRAFFIC CRASH INVESTIGATION PACKET", cover_text)
                 self.assertIn("CASE 26-EMPTY", cover_text)
-                self.assertIn(mode, cover_text)
+                if mode:
+                    self.assertIn(mode, cover_text)
+                else:
+                    self.assertNotIn("FULL WORKING PACKET", cover_text)
                 self.assertIn("ASSIGNED INVESTIGATOR", cover_text)
                 self.assertIn("DPSST", cover_text)
                 self.assertIn("ASSIGNMENT", cover_text)
@@ -150,7 +153,7 @@ class PdfExportTest(unittest.TestCase):
                 self.assertIn("Investigative packet", second_page_text)
 
             self.assertGreater(len(working_reader.pages), len(compact_reader.pages))
-            self.assertIn("FULL WORKING PACKET", working_text)
+            self.assertNotIn("FULL WORKING PACKET", working_text)
             self.assertIn("Participant and driver details", working_text)
             self.assertIn("Witness interviews and contacts", working_text)
             self.assertIn("Vulnerable road user analysis", working_text)
@@ -870,8 +873,8 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("LEGACY DIAGRAM RECORD TITLE", text)
             self.assertNotIn("LEGACY DIAGRAM RECORD NOTES", text)
             self.assertIn("Crash Diagram Completed", text)
-            self.assertIn("not an official report", text)
-            self.assertIn("FULL WORKING PACKET", text)
+            self.assertIn("not an official report", text.lower())
+            self.assertNotIn("FULL WORKING PACKET", text)
             self.assertIn("COVER NOTES / ROUTING UPDATES", text)
             self.assertIn(f"Page 1 of {len(reader.pages)}", text)
             self.assertTrue(all("CASE 26-123456" in (page.extract_text() or "") for page in reader.pages))

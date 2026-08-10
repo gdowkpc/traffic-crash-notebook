@@ -648,7 +648,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
             page.extract_text() or ""
             for page in PdfReader(full_preview_path).pages
         )
-        self.assertIn("FULL WORKING PACKET", full_text)
+        self.assertNotIn("FULL WORKING PACKET", full_text)
         self.assertIn(
             "Preview ready - Full Working Packet",
             self.window.packet_preview_status.text(),

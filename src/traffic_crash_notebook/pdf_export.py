@@ -209,10 +209,16 @@ def export_case_pdf(
 
     styles = _styles()
     packet_name = "Full Working Packet" if working_copy else "Compact Completed-Case Packet"
+    cover_print_mode = "" if working_copy else packet_name.upper()
     footer_label = (
-        "Full working packet - not an official report"
+        "Not an official report"
         if working_copy
         else "Compact completed-case packet - not an official report"
+    )
+    document_title = (
+        f"Traffic Crash Investigation Packet - {case.case_number or 'Untitled Case'}"
+        if working_copy
+        else f"Traffic Crash Notebook {packet_name} - {case.case_number or 'Untitled Case'}"
     )
     document = SimpleDocTemplate(
         str(destination),
@@ -221,7 +227,7 @@ def export_case_pdf(
         leftMargin=0.65 * inch,
         topMargin=1.15 * inch,
         bottomMargin=0.7 * inch,
-        title=f"Traffic Crash Notebook {packet_name} - {case.case_number or 'Untitled Case'}",
+        title=document_title,
         author=case.investigator or "Traffic Crash Notebook",
         subject="Personal investigative working notes",
     )
@@ -237,7 +243,7 @@ def export_case_pdf(
             counts,
             checklist,
             styles,
-            packet_name.upper(),
+            cover_print_mode,
             overview_location,
         )
     )
@@ -583,12 +589,13 @@ def _packet_cover(
             f"CASE {_text(case.case_number or 'Untitled Case')}",
             styles["CoverCaseNumber"],
         ),
-        Paragraph(_text(print_mode), styles["PrintMode"]),
-        Paragraph(
-            f"Traffic Crash Notebook v{__version__} - generated {_text(generated)}",
-            styles["CaseSubtitle"],
-        ),
     ]
+    if print_mode:
+        title_content.append(Paragraph(_text(print_mode), styles["PrintMode"]))
+    title_content.append(Paragraph(
+        f"Traffic Crash Notebook v{__version__} - generated {_text(generated)}",
+        styles["CaseSubtitle"],
+    ))
     logo_path = tiu_logo_path()
     if logo_path.exists():
         logo = Image(str(logo_path), width=0.9 * inch, height=0.87 * inch)
