@@ -947,7 +947,7 @@ class RepositoryTest(unittest.TestCase):
 
         conditions = RoadConditions(
             case_id=self.case.id, temperature="72 F", weather_condition="Clear",
-            weather_station="KPDX ASOS", weather_time="14:35 PDT",
+            visibility="0.5", weather_station="KPDX ASOS", weather_time="14:35 PDT",
             lighting_conditions="Daylight", speed_limit="35", chord="82.67",
             sunrise="05:59", sunset="20:31",
             civil_twilight_morning="05:27", civil_twilight_evening="21:03",
@@ -987,6 +987,7 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(loaded_conditions.chord, "82.67")
         self.assertEqual(loaded_conditions.weather_station, "KPDX ASOS")
         self.assertEqual(loaded_conditions.weather_time, "14:35 PDT")
+        self.assertEqual(loaded_conditions.visibility, "0.5")
         self.assertEqual(loaded_conditions.sunrise, "05:59")
         self.assertEqual(loaded_conditions.sunset, "20:31")
         self.assertEqual(loaded_conditions.civil_twilight_morning, "05:27")
@@ -1031,6 +1032,34 @@ class RepositoryTest(unittest.TestCase):
         reopened.save_road_conditions(RoadConditions(case_id=self.case.id, temperature="60 F"))
         self.assertEqual(reopened.get_road_conditions(self.case.id).temperature, "60 F")
         self.assertEqual(reopened.get_witness_details("missing").interviewed, "Unknown")
+
+    def test_schema_30_receives_weather_visibility_field(self):
+        self.repository.save_road_conditions(RoadConditions(
+            case_id=self.case.id,
+            temperature="60 F",
+            weather_station="KPDX",
+        ))
+        with closing(sqlite3.connect(self.database)) as connection:
+            connection.execute("ALTER TABLE road_conditions DROP COLUMN visibility")
+            connection.execute("PRAGMA user_version = 30")
+
+        migrated = CaseRepository(self.database)
+        conditions = migrated.get_road_conditions(self.case.id)
+        self.assertEqual(conditions.temperature, "60 F")
+        self.assertEqual(conditions.weather_station, "KPDX")
+        self.assertEqual(conditions.visibility, "")
+
+        conditions.visibility = "0.25"
+        migrated.save_road_conditions(conditions)
+        self.assertEqual(
+            migrated.get_road_conditions(self.case.id).visibility,
+            "0.25",
+        )
+        with closing(sqlite3.connect(self.database)) as connection:
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                SCHEMA_VERSION,
+            )
 
     def test_schema_25_vehicle_receives_insurance_claim_fields(self):
         vehicle = self.repository.save_vehicle(Vehicle(

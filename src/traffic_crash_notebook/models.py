@@ -174,6 +174,7 @@ WEATHER_DISPLAY_UNITS = {
     "humidity": "%",
     "pressure": "inHg",
     "precipitation": "in",
+    "visibility": "mi",
 }
 
 _WEATHER_UNIT_PATTERNS = {
@@ -196,6 +197,10 @@ _WEATHER_UNIT_PATTERNS = {
     ),
     "precipitation": re.compile(
         r"\b(?:in(?:ch(?:es)?)?|mm|cm)\b|[\"″]",
+        re.IGNORECASE,
+    ),
+    "visibility": re.compile(
+        r"\b(?:mi(?:les)?|km|kilometers?|m)\b",
         re.IGNORECASE,
     ),
 }
@@ -702,6 +707,7 @@ class RoadConditions:
     weather_condition: str = ""
     pressure: str = ""
     precipitation: str = ""
+    visibility: str = ""
     weather_station: str = ""
     weather_time: str = ""
     other_weather: str = ""

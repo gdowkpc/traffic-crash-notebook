@@ -842,8 +842,12 @@ class MainWindow(QMainWindow):
                 ("precipitation", "Precipitation", "Numeric total or None"),
             ),
             (
+                ("visibility", "Visibility", "Distance in miles"),
                 ("weather_station", "Weather station", "Station name or identifier"),
+            ),
+            (
                 ("weather_time", "Time of reading", "HH:MM; include time zone if known"),
+                ("weather_condition", "Condition", "Clear, rain, fog..."),
             ),
         )
         for row, pair in enumerate(weather_pairs):
@@ -862,18 +866,6 @@ class MainWindow(QMainWindow):
                     field_column + 1,
                 )
 
-        condition_label = QLabel("Condition")
-        condition_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        self.weather_fields_grid.addWidget(condition_label, 4, 0)
-        self.weather_fields_grid.addWidget(
-            line("weather_condition", "Clear, rain, fog..."),
-            4,
-            1,
-            1,
-            3,
-        )
         self.weather_fields_grid.setColumnStretch(1, 1)
         self.weather_fields_grid.setColumnStretch(3, 1)
         weather_layout.addLayout(self.weather_fields_grid)
@@ -882,7 +874,7 @@ class MainWindow(QMainWindow):
         weather_layout.addWidget(QLabel("Other weather information"))
         weather_layout.addWidget(other_weather)
         weather_layout.addStretch(1)
-        tabs.addTab(_scrollable(weather), "Weather")
+        weather_tab = _scrollable(weather)
 
         surfaces_tab, self.surface_observations_table = self._table_tab(
             ["Roadway / Location", "Composition", "Condition", "Friction / Drag Factor", "Notes"],
@@ -904,7 +896,6 @@ class MainWindow(QMainWindow):
         self.surface_observations_table.setColumnWidth(1, 150)
         self.surface_observations_table.setColumnWidth(2, 130)
         self.surface_observations_table.setColumnWidth(3, 145)
-        tabs.addTab(surfaces_tab, "Surface")
 
         lighting = QWidget()
         lighting_form = QFormLayout(lighting)
@@ -944,7 +935,7 @@ class MainWindow(QMainWindow):
             self.area_type_boxes[option] = box
         area_layout.addStretch(1)
         lighting_form.addRow(area_group)
-        tabs.addTab(_scrollable(lighting), "Lighting / Visibility")
+        visibility_tab = _scrollable(lighting)
 
         roadways_tab, self.roadways_table = self._table_tab(
             [
@@ -964,7 +955,6 @@ class MainWindow(QMainWindow):
         self.roadways_table.setColumnWidth(2, 75)
         self.roadways_table.setColumnWidth(3, 180)
         self.roadways_table.setColumnWidth(4, 190)
-        tabs.addTab(roadways_tab, "Roadways")
 
         analysis = QWidget()
         analysis_layout = QFormLayout(analysis)
@@ -974,6 +964,10 @@ class MainWindow(QMainWindow):
         skid.setMaximumHeight(210)
         analysis_layout.addRow("Initial point of collision", impact)
         analysis_layout.addRow("Skid test / drag sled notes", skid)
+        tabs.addTab(roadways_tab, "Roadways")
+        tabs.addTab(surfaces_tab, "Surface")
+        tabs.addTab(visibility_tab, "Visibility")
+        tabs.addTab(weather_tab, "Weather")
         tabs.addTab(_scrollable(analysis), "Scene Analysis")
         outer.addWidget(tabs, 1)
         return container

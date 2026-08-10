@@ -1242,8 +1242,10 @@ class AddRecordWorkflowTest(unittest.TestCase):
             self.window.conditions_tabs.tabText(index)
             for index in range(self.window.conditions_tabs.count())
         ]
-        self.assertIn("Weather", subtab_names)
-        self.assertIn("Surface", subtab_names)
+        self.assertEqual(
+            subtab_names,
+            ["Roadways", "Surface", "Visibility", "Weather", "Scene Analysis"],
+        )
         self.assertNotIn("Weather / Surface", subtab_names)
         self.assertNotIn("Multiple Surfaces", subtab_names)
         for retired_field in (
@@ -1851,7 +1853,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
             weather_history_url,
         )
 
-    def test_weather_station_time_and_celestial_lighting_fields_persist(self):
+    def test_weather_visibility_station_time_and_celestial_lighting_fields_persist(self):
         expected_values = {
             "temperature": "71",
             "dew_point": "54",
@@ -1859,6 +1861,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
             "humidity": "43",
             "pressure": "29.92",
             "precipitation": "0.04",
+            "visibility": "0.5",
             "weather_station": "KPDX ASOS",
             "weather_time": "14:35 PDT",
             "sunrise": "05:59",
@@ -1878,6 +1881,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertIn("Humidity (%)", labels)
         self.assertIn("Pressure (inHg)", labels)
         self.assertIn("Precipitation (in)", labels)
+        self.assertIn("Visibility (mi)", labels)
         self.assertEqual(self.window.weather_fields_grid.rowCount(), 5)
         self.assertEqual(self.window.weather_fields_grid.verticalSpacing(), 5)
         self.assertEqual(self.window.weather_fields_grid.horizontalSpacing(), 10)

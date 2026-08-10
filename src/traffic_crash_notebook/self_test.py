@@ -273,7 +273,7 @@ def run_self_test(output_directory: str | Path) -> Path:
         raise RuntimeError("Video-source address and Axon upload status persistence failed.")
     repository.save_road_conditions(RoadConditions(
         case_id=case.id, temperature="68", dew_point="51", winds="NW 7",
-        humidity="48", pressure="29.94", precipitation="0.02",
+        humidity="48", pressure="29.94", precipitation="0.02", visibility="8",
         weather_condition="Clear",
         weather_station="KPDX", weather_time="08:53 PDT",
         area_classifications="Business; Interstate",
@@ -539,6 +539,7 @@ def run_self_test(output_directory: str | Path) -> Path:
         "48%",
         "29.94 inHg",
         "0.02 in",
+        "8 mi",
         "RELEASED",
         "08/05/2026",
         "Released to verification owner with receipt",

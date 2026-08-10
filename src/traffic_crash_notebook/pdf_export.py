@@ -1332,11 +1332,13 @@ def _conditions_section(
         "precipitation",
         conditions.precipitation,
     )
+    visibility = format_weather_measurement("visibility", conditions.visibility)
     data = [
         [_field_cell("TEMPERATURE", temperature, styles),
          _field_cell("WEATHER", conditions.weather_condition, styles)],
         [_field_cell("WEATHER STATION", conditions.weather_station, styles),
          _field_cell("TIME OF READING", conditions.weather_time, styles)],
+        [_field_cell("VISIBILITY", visibility, styles), ""],
         [_field_cell("WINDS", winds, styles),
          _field_cell("PRECIPITATION", precipitation, styles)],
         [_field_cell("HUMIDITY / DEW POINT", " / ".join(
@@ -1347,6 +1349,7 @@ def _conditions_section(
     ]
     table = Table(data, colWidths=[3.3 * inch, 3.3 * inch])
     table.setStyle(_standard_table_style())
+    table.setStyle(TableStyle([("SPAN", (0, 2), (1, 2))]))
     story.append(table)
     if conditions.other_weather:
         story.extend([

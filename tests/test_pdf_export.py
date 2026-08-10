@@ -74,6 +74,8 @@ class PdfExportTest(unittest.TestCase):
         self.assertEqual(format_weather_measurement("pressure", "1013 hPa"), "1013 hPa")
         self.assertEqual(format_weather_measurement("precipitation", "0.04"), "0.04 in")
         self.assertEqual(format_weather_measurement("precipitation", "Trace"), "Trace")
+        self.assertEqual(format_weather_measurement("visibility", "0.5"), "0.5 mi")
+        self.assertEqual(format_weather_measurement("visibility", "0.5 mi"), "0.5 mi")
 
     def test_scene_evidence_filters_retired_values_and_derives_surveillance_video(self):
         selected = [
@@ -532,7 +534,7 @@ class PdfExportTest(unittest.TestCase):
             repository.save_road_conditions(RoadConditions(
                 case_id=case.id, temperature="71", dew_point="54",
                 winds="NW 6", humidity="43", pressure="29.92",
-                precipitation="0.04",
+                precipitation="0.04", visibility="0.5",
                 surface_condition="LEGACY SINGLE SURFACE VALUE",
                 weather_station="KPDX ASOS", weather_time="14:35 PDT",
                 lighting_conditions="Daylight", speed_limit="35",
@@ -808,6 +810,8 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("43%", normalized_text)
             self.assertIn("29.92 inHg", normalized_text)
             self.assertIn("0.04 in", normalized_text)
+            self.assertIn("VISIBILITY", normalized_text)
+            self.assertIn("0.5 mi", normalized_text)
             self.assertIn("KPDX ASOS", text)
             self.assertIn("14:35 PDT", text)
             self.assertIn("MORNING CIVIL TWILIGHT", normalized_text)
