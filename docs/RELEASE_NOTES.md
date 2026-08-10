@@ -4,6 +4,7 @@
 - Treats Motorcyclist as a vulnerable-road-user role in person entry, calculated VRU counts, VRU analysis, packet output, and exchange-report output.
 - Standardizes full and compact packet section and subsection headings to title capitalization, including Participant and Driver Details.
 - Reflows Familiarity and Driving History in the participant/driver packet as two wide cells with each value beneath its label.
+- Standardizes packet field grids so each label and its value stay together in the same cell; multi-record tables retain their column headers.
 
 ## Traffic Crash Notebook 0.5.6
 

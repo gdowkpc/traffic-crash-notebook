@@ -737,6 +737,15 @@ class PdfExportTest(unittest.TestCase):
             )
             self.assertIn("26-123456", text)
             self.assertIn("Morgan Lee", text)
+            for combined_field_cell in (
+                "DATE / DAY / TIME\n08/04/2026 / Tuesday / 02:35 PM",
+                "WEATHER STATION\nKPDX ASOS",
+                "GENDER / RACE\nM / White",
+                "LICENSE NUMBER\nDL-24680",
+                "CLAIM NUMBER\nCLM-97531",
+                "LIGHT METER USED\nYes",
+            ):
+                self.assertIn(combined_field_cell, text)
             people_page_text = next(
                 page.extract_text() or ""
                 for page in reader.pages
