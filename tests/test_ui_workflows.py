@@ -423,6 +423,47 @@ class AddRecordWorkflowTest(unittest.TestCase):
             dialog.reject()
         self.assertFalse(dialog.isVisible())
 
+    def test_vehicle_driver_selector_only_includes_people_marked_driver(self):
+        driver = Person(
+            id="driver",
+            case_id=self.case.id,
+            first_name="Dana",
+            last_name="Driver",
+            roles=["Driver"],
+        )
+        passenger = Person(
+            id="passenger",
+            case_id=self.case.id,
+            first_name="Pat",
+            last_name="Passenger",
+            roles=["Passenger"],
+        )
+        dialog = VehicleDialog(self.case.id, [driver, passenger], parent=self.window)
+        self.assertEqual(
+            [dialog.driver.itemData(index) for index in range(dialog.driver.count())],
+            [None, "driver"],
+        )
+        self.assertEqual(
+            [dialog.owner.itemData(index) for index in range(dialog.owner.count())],
+            [None, "driver", "passenger"],
+        )
+        dialog.reject()
+
+        legacy_vehicle = Vehicle(
+            id="vehicle",
+            case_id=self.case.id,
+            driver_person_id="passenger",
+        )
+        legacy_dialog = VehicleDialog(
+            self.case.id,
+            [driver, passenger],
+            legacy_vehicle,
+            parent=self.window,
+        )
+        self.assertEqual(legacy_dialog.driver.currentData(), "passenger")
+        self.assertIn("legacy; not marked Driver", legacy_dialog.driver.currentText())
+        legacy_dialog.reject()
+
     def test_vehicle_save_failure_is_visible_and_keeps_the_draft(self):
         vehicle = Vehicle(
             id="",

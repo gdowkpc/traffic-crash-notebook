@@ -316,7 +316,10 @@ class VehicleDialog(RecordDialog):
         self.vin = _line(self.vehicle.vin)
         self.plate = _line(self.vehicle.plate)
         self.plate_state = _line(self.vehicle.plate_state)
-        self.driver = self._person_combo(self.vehicle.driver_person_id)
+        self.driver = self._person_combo(
+            self.vehicle.driver_person_id,
+            required_role="Driver",
+        )
         self.owner = self._person_combo(self.vehicle.owner_person_id)
         self.insurance_company = _line(
             self.vehicle.insurance_company or self.vehicle.insurance
@@ -409,11 +412,22 @@ class VehicleDialog(RecordDialog):
         self.root.addWidget(self.notes, 1)
         self.finish_layout()
 
-    def _person_combo(self, selected_id: str | None) -> QComboBox:
+    def _person_combo(
+        self,
+        selected_id: str | None,
+        *,
+        required_role: str | None = None,
+    ) -> QComboBox:
         combo = QComboBox()
         combo.addItem("Not assigned", None)
         for person in self.people:
-            combo.addItem(person.display_name, person.id)
+            is_selected = person.id == selected_id
+            if required_role and required_role not in person.roles and not is_selected:
+                continue
+            label = person.display_name
+            if required_role and required_role not in person.roles and is_selected:
+                label = f"{label} (legacy; not marked {required_role})"
+            combo.addItem(label, person.id)
             if person.id == selected_id:
                 combo.setCurrentIndex(combo.count() - 1)
         return combo
