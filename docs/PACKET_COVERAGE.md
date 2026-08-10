@@ -30,7 +30,7 @@ presentation controls.
 
 ## Page-by-page coverage
 
-| Page(s) | Packet section | Required semantic data | v0.5.6 implementation |
+| Page(s) | Packet section | Required semantic data | v0.5.7 implementation |
 |---|---|---|---|
 | 1 | Packet cover | Case number, crash date/time/location/status, assigned investigator, DPSST, assignment, calculated people/vehicle/injury/fatal/VRU/Journal/task totals, peer review, MCT sergeant review, and DA submission with Not Started/Pending/Complete status and completion dates, assigned DDA, DA case number, court case number, summary, and writable routing notes | Complete as a dedicated first page in the full and compact packet PDFs |
 | 2 | Investigative checklist | Evidence collection, vehicle work, crash-diagram completion, Axon sharing, peer review, sergeant review, and DA submission milestones with Not Started/Pending/Complete status and completion dates, assigned DDA, DA case number, court case number, unlimited charge/disposition rows | Complete |
