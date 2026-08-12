@@ -1568,8 +1568,14 @@ def _participant_sections(
     for person in qualifying:
         details = participant_details[person.id]
         profile = driver_profiles[person.id]
+        person_type = "; ".join(
+            role.strip() for role in person.roles if role and role.strip()
+        ) or "Not specified"
         story.append(CondPageBreak(3.0 * inch))
-        story.append(Paragraph(_text(person.display_name), styles["Subsection"]))
+        story.append(Paragraph(
+            f"{_text(person.display_name)} - Person Type: {_text(person_type)}",
+            styles["Subsection"],
+        ))
         if _has_detail(details, {"person_id", "updated_at"}):
             participant_data = [
                 [_field_cell("GENDER / RACE", " / ".join(

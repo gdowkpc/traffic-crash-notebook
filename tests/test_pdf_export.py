@@ -339,6 +339,7 @@ class PdfExportTest(unittest.TestCase):
                 "Participant and Driver Details",
                 1,
             )[1]
+            self.assertIn("Person Type: Pedestrian", participant_block)
             self.assertIn("Participant Background", participant_block)
             self.assertNotIn("Driver Background", participant_block)
             self.assertIn("LICENSE NUMBER NONDRIVER-DL", participant_block)
