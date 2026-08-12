@@ -1,3 +1,10 @@
+## Traffic Crash Notebook 0.5.8
+
+- Adds vehicle identification details, automatic date and time separators, first harmful event, duplicate-case prevention, and safe case deletion.
+- Clarifies person types in packet Participant and Driver Details and suppresses injury/death fields for people marked not injured.
+- Places witness statement summaries in a full-width table row and changes evidence receipt wording to Lodged As.
+- Replaces the update-available prompt with a screen-bounded dialog that keeps Download Verified ZIP, Open Release Page, and Later visible while long release notes scroll.
+
 ## Traffic Crash Notebook 0.5.7
 
 - Adds Non-Standard as an explicit Helmet choice and preserves it in saved participant details and packet output.
