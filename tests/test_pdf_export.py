@@ -162,6 +162,7 @@ class PdfExportTest(unittest.TestCase):
                 "Investigative Checklist",
                 "District Attorney / Charges",
                 "Crash Information",
+                "First Harmful Event",
                 "Crash Summary",
                 "Road and Weather Conditions",
                 "People",
@@ -492,6 +493,7 @@ class PdfExportTest(unittest.TestCase):
             case.location = "North Example Street"
             case.assigned_officer_dpsst = "123456"
             case.assignment = "Traffic Investigations Unit"
+            case.first_harmful_event = "Vehicle one struck a pedestrian in the crosswalk."
             case.summary = "A detailed but unofficial investigative working summary."
             repository.save_case(case)
             person = Person(

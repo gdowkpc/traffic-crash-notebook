@@ -83,6 +83,7 @@ class RepositoryTest(unittest.TestCase):
         self.case.location = "Test Road at Example Avenue"
         self.case.assigned_officer_dpsst = "54321"
         self.case.assignment = "Traffic Division"
+        self.case.first_harmful_event = "Vehicle one struck the pedestrian."
         self.case.summary = "Working summary"
         self.repository.save_case(self.case)
 
@@ -108,6 +109,7 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(loaded.location, "Test Road at Example Avenue")
         self.assertEqual(loaded.assigned_officer_dpsst, "54321")
         self.assertEqual(loaded.assignment, "Traffic Division")
+        self.assertEqual(loaded.first_harmful_event, "Vehicle one struck the pedestrian.")
         self.assertEqual(
             self.repository.get_person(person.id).roles,
             ["Driver", "Motorcyclist", "Vehicle Owner", "Victim"],
@@ -1054,6 +1056,30 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(
             migrated.get_road_conditions(self.case.id).visibility,
             "0.25",
+        )
+        with closing(sqlite3.connect(self.database)) as connection:
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                SCHEMA_VERSION,
+            )
+
+    def test_schema_31_receives_first_harmful_event_without_data_loss(self):
+        self.case.summary = "Existing case summary"
+        self.repository.save_case(self.case)
+        with closing(sqlite3.connect(self.database)) as connection:
+            connection.execute("ALTER TABLE cases DROP COLUMN first_harmful_event")
+            connection.execute("PRAGMA user_version = 31")
+
+        migrated = CaseRepository(self.database)
+        loaded = migrated.get_case(self.case.id)
+        self.assertEqual(loaded.summary, "Existing case summary")
+        self.assertEqual(loaded.first_harmful_event, "")
+
+        loaded.first_harmful_event = "Vehicle one struck a fixed object."
+        migrated.save_case(loaded)
+        self.assertEqual(
+            migrated.get_case(self.case.id).first_harmful_event,
+            "Vehicle one struck a fixed object.",
         )
         with closing(sqlite3.connect(self.database)) as connection:
             self.assertEqual(

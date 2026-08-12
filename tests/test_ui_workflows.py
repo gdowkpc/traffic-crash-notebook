@@ -370,6 +370,16 @@ class AddRecordWorkflowTest(unittest.TestCase):
         )
         self.assertFalse(self.window.overview_dirty)
 
+        self.window.first_harmful_event.setText("Vehicle one struck a curb.")
+        self.window.autosave_timer.stop()
+        self.assertTrue(self.window.overview_dirty)
+        self.window._autosave_if_dirty()
+        self.assertEqual(
+            self.repository.get_case(self.case.id).first_harmful_event,
+            "Vehicle one struck a curb.",
+        )
+        self.assertFalse(self.window.overview_dirty)
+
         road_weather_index = next(
             index
             for index in range(self.window.tabs.count())

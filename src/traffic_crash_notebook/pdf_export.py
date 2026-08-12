@@ -763,6 +763,7 @@ def _packet_cover(
         Spacer(1, 0.07 * inch),
         da_routing,
     ])
+    story.extend(_narrative_block("First Harmful Event", case.first_harmful_event, styles))
     story.extend(_narrative_block("Crash Summary", case.summary, styles))
     return story
 
@@ -832,6 +833,7 @@ def _case_overview(
         ("TOPPADDING", (0, 0), (-1, 0), 10), ("BOTTOMPADDING", (0, 1), (-1, 1), 8),
     ]))
     story.append(metrics)
+    story.extend(_narrative_block("First Harmful Event", case.first_harmful_event, styles))
     story.extend(_narrative_block("Crash summary", case.summary, styles))
     return story
 

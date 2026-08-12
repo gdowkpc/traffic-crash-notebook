@@ -57,7 +57,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 31
+SCHEMA_VERSION = 32
 
 
 SCHEMA = """
@@ -83,6 +83,7 @@ CREATE TABLE IF NOT EXISTS cases (
     assigned_officer_dpsst TEXT NOT NULL DEFAULT '',
     assignment TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'Active',
+    first_harmful_event TEXT NOT NULL DEFAULT '',
     summary TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
@@ -611,7 +612,7 @@ CREATE INDEX IF NOT EXISTS idx_hit_run_evidence_case
     ON hit_run_evidence_items(case_id, evidence_number, created_at);
 CREATE INDEX IF NOT EXISTS idx_hit_run_person_leads_case
     ON hit_run_person_leads(case_id, lead_number, created_at);
-PRAGMA user_version = 31;
+PRAGMA user_version = 32;
 """
 
 
@@ -637,10 +638,10 @@ class CaseRepository:
         with self._connect() as connection:
             previous_version = connection.execute("PRAGMA user_version").fetchone()[0]
             connection.executescript(SCHEMA)
-            self._migrate_schema_31(connection, previous_version)
+            self._migrate_schema_32(connection, previous_version)
 
     @staticmethod
-    def _migrate_schema_31(
+    def _migrate_schema_32(
         connection: sqlite3.Connection,
         previous_version: int,
     ) -> None:
@@ -652,6 +653,7 @@ class CaseRepository:
             "cases": {
                 "assigned_officer_dpsst": "TEXT NOT NULL DEFAULT ''",
                 "assignment": "TEXT NOT NULL DEFAULT ''",
+                "first_harmful_event": "TEXT NOT NULL DEFAULT ''",
             },
             "vehicles": {
                 "insurance_company": "TEXT NOT NULL DEFAULT ''",
@@ -990,7 +992,7 @@ class CaseRepository:
                 )
                 """
             )
-        connection.execute("PRAGMA user_version = 31")
+        connection.execute("PRAGMA user_version = 32")
 
     def get_user_defaults(self) -> UserDefaults:
         with self._connect() as connection:
@@ -1055,10 +1057,10 @@ class CaseRepository:
             connection.execute(
                 """INSERT INTO cases
                 (id, case_number, crash_date, crash_time, location, investigator,
-                 assigned_officer_dpsst, assignment, status, summary, notes,
+                 assigned_officer_dpsst, assignment, status, first_harmful_event, summary, notes,
                  created_at, updated_at)
                 VALUES (:id, :case_number, :crash_date, :crash_time, :location, :investigator,
-                        :assigned_officer_dpsst, :assignment, :status, :summary, :notes,
+                        :assigned_officer_dpsst, :assignment, :status, :first_harmful_event, :summary, :notes,
                         :created_at, :updated_at)
                 ON CONFLICT(id) DO UPDATE SET
                   case_number=excluded.case_number, crash_date=excluded.crash_date,
@@ -1066,6 +1068,7 @@ class CaseRepository:
                   investigator=excluded.investigator,
                   assigned_officer_dpsst=excluded.assigned_officer_dpsst,
                   assignment=excluded.assignment, status=excluded.status,
+                  first_harmful_event=excluded.first_harmful_event,
                   summary=excluded.summary, notes=excluded.notes,
                   updated_at=excluded.updated_at""",
                 values,

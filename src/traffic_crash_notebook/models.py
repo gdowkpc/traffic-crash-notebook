@@ -342,6 +342,7 @@ class CrashCase:
     assigned_officer_dpsst: str = ""
     assignment: str = ""
     status: str = "Active"
+    first_harmful_event: str = ""
     summary: str = ""
     notes: str = ""
     created_at: str = ""

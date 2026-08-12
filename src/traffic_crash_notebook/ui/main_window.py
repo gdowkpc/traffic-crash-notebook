@@ -147,7 +147,7 @@ from .dialogs import (
     VRUAnalysisDialog,
     WitnessDetailsDialog,
 )
-from .spellcheck_text_edit import SpellCheckedTextEdit
+from .spellcheck_text_edit import SpellCheckedLineEdit, SpellCheckedTextEdit
 from .storage_setup import run_storage_setup
 from .update_support import UpdateCheckThread, UpdateDownloadThread
 
@@ -572,11 +572,16 @@ class MainWindow(QMainWindow):
         form.addRow("Assignment", self.assignment)
         form.addRow("Status", self.status)
         layout.addLayout(form)
+        self.first_harmful_event = SpellCheckedLineEdit()
+        self.first_harmful_event.setPlaceholderText(
+            "Describe the first harmful event in the crash sequence"
+        )
         self.summary = SpellCheckedTextEdit()
         self.summary.setPlaceholderText("Brief description of the crash and the present investigative picture")
         self.general_notes = SpellCheckedTextEdit()
         self.general_notes.setPlaceholderText("General working notes")
         for label, widget in (
+            ("First Harmful Event", self.first_harmful_event),
             ("Crash summary", self.summary),
             ("General investigative notes", self.general_notes),
         ):
@@ -592,6 +597,7 @@ class MainWindow(QMainWindow):
         ):
             widget.textChanged.connect(self.schedule_autosave)
         self.status.currentTextChanged.connect(self.schedule_autosave)
+        self.first_harmful_event.textChanged.connect(self.schedule_autosave)
         self.summary.textChanged.connect(self.schedule_autosave)
         self.general_notes.textChanged.connect(self.schedule_autosave)
         return tab
@@ -1574,6 +1580,7 @@ class MainWindow(QMainWindow):
         case.assigned_officer_dpsst = self.assigned_officer_dpsst.text().strip()
         case.assignment = self.assignment.text().strip()
         case.status = self.status.currentText()
+        case.first_harmful_event = self.first_harmful_event.text().strip()
         case.summary = self.summary.toPlainText().strip()
         case.notes = self.general_notes.toPlainText().strip()
         self.save_conditions()
@@ -1730,6 +1737,7 @@ class MainWindow(QMainWindow):
         self.assignment.setText(case.assignment)
         index = self.status.findText(case.status)
         self.status.setCurrentIndex(max(0, index))
+        self.first_harmful_event.setText(case.first_harmful_event)
         self.summary.setPlainText(case.summary)
         self.general_notes.setPlainText(case.notes)
         self.checklist = self.repository.get_investigative_checklist(case.id)

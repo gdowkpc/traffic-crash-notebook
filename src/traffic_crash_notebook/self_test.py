@@ -154,14 +154,18 @@ def run_self_test(output_directory: str | Path) -> Path:
     case.assigned_officer_dpsst = "12345"
     case.assignment = "Verification Precinct"
     case.summary = "Fictional record generated automatically to verify this portable build."
+    case.first_harmful_event = "Verification vehicle struck the test barrier."
     repository.save_case(case)
     loaded_case = repository.get_case(case.id)
     if (
         not loaded_case
         or loaded_case.assigned_officer_dpsst != "12345"
         or loaded_case.assignment != "Verification Precinct"
+        or loaded_case.first_harmful_event != "Verification vehicle struck the test barrier."
     ):
-        raise RuntimeError("Assigned-officer DPSST and assignment persistence failed.")
+        raise RuntimeError(
+            "Assigned-officer DPSST, assignment, or first harmful event persistence failed."
+        )
 
     person = repository.save_person(Person(
         id=new_id(), case_id=case.id, first_name="Test", last_name="Record",
@@ -532,6 +536,7 @@ def run_self_test(output_directory: str | Path) -> Path:
     normalized_packet_text = " ".join(packet_text.split())
     for required_text in (
         "NHTSA RECALLS CHECKED",
+        "Verification vehicle struck the test barrier.",
         "TOWED / TO",
         "Yes - Verification Tow Yard",
         "68 F",
@@ -664,6 +669,7 @@ def run_self_test(output_directory: str | Path) -> Path:
             "Hit-and-run overview, evidence, lead, and confirmed-record links: PASS",
             "Property receipt hierarchy and numbered item persistence: PASS",
             "Assigned-officer DPSST and assignment persistence: PASS",
+            "First harmful event persistence and packet output: PASS",
             "Data-folder user defaults and new-case prefill: PASS",
             "Driver, pedestrian, bicyclist, and motorcyclist exchange-report inclusion: PASS",
             "Dynamic exchange-report data, time formatting, and searchable information page: PASS",
