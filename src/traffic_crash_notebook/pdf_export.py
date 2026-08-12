@@ -2077,16 +2077,22 @@ def _witness_contact_sections(
              ), styles)],
             [_field_cell("SIGNIFICANCE", details.significance, styles), ""],
         ]
+        statement_row = None
+        if details.statement_summary:
+            statement_row = len(data)
+            data.append([
+                _field_cell("STATEMENT SUMMARY", details.statement_summary, styles),
+                "",
+            ])
         table = Table(data, colWidths=[3.3 * inch, 3.3 * inch])
         witness_style = _standard_table_style()
         witness_style.add("SPAN", (0, 1), (1, 1))
         witness_style.add("SPAN", (0, 3), (1, 3))
+        if statement_row is not None:
+            witness_style.add("SPAN", (0, statement_row), (1, statement_row))
         table.setStyle(witness_style)
         story.append(table)
-        for title, value in (
-            ("Statement Summary", details.statement_summary),
-            ("Credibility / Consistency", details.credibility_notes),
-        ):
+        for title, value in (("Credibility / Consistency", details.credibility_notes),):
             if value:
                 story.extend([Paragraph(title, styles["Label"]), Paragraph(_text(value), styles["BodySmall"])])
     if contacts:

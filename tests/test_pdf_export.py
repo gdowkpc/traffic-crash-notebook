@@ -1033,7 +1033,7 @@ class PdfExportTest(unittest.TestCase):
                 text.index("Vulnerable Road User Analysis")
             ]
             self.assertIn("SIGNIFICANCE", witness_block)
-            self.assertIn("Statement Summary", witness_block)
+            self.assertIn("STATEMENT SUMMARY", witness_block)
             self.assertIn("observed the entire signal cycle", witness_block)
             self.assertNotIn("OCCUPATION", witness_block)
             self.assertNotIn("FOLLOW-UP", witness_block)
