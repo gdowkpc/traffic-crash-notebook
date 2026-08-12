@@ -805,6 +805,21 @@ def participant_is_deceased(details: ParticipantDetails) -> bool:
     )
 
 
+def participant_has_injury_or_death(details: ParticipantDetails) -> bool:
+    """Return whether injury and death fields belong in printed output."""
+    if participant_is_deceased(details):
+        return True
+    status = details.injury_status.strip().casefold()
+    if (
+        status in {"", "unknown", "none"}
+        or any(marker in status for marker in (
+            "not injur", "uninjur", "no injur", "no apparent injury",
+        ))
+    ):
+        return False
+    return "injur" in status
+
+
 @dataclass(slots=True)
 class DriverProfile:
     person_id: str

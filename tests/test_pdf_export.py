@@ -36,6 +36,7 @@ from traffic_crash_notebook.models import (
     VRUAnalysis,
     WitnessDetails,
     format_weather_measurement,
+    participant_has_injury_or_death,
     participant_is_deceased,
     scene_evidence_for_output,
 )
@@ -60,6 +61,24 @@ class PdfExportTest(unittest.TestCase):
             person_id="injured",
             injury_status="Injured",
         )))
+
+    def test_injury_or_death_status_excludes_not_injured_people(self):
+        self.assertTrue(participant_has_injury_or_death(ParticipantDetails(
+            person_id="injured",
+            injury_status="Serious injury",
+        )))
+        self.assertTrue(participant_has_injury_or_death(ParticipantDetails(
+            person_id="deceased",
+            injury_status="Fatal injury",
+        )))
+        for status in (
+            "", "Unknown", "Not injured", "Uninjured", "No injury",
+            "No apparent injury",
+        ):
+            self.assertFalse(participant_has_injury_or_death(ParticipantDetails(
+                person_id="not-injured",
+                injury_status=status,
+            )))
 
     def test_weather_measurements_add_units_once_and_preserve_descriptions(self):
         self.assertEqual(format_weather_measurement("temperature", "71"), "71 F")
@@ -356,6 +375,50 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("NONDRIVER MEDICAL VALUE", participant_block)
             self.assertNotIn("NONDRIVER SLEEP VALUE", participant_block)
             self.assertNotIn("NONDRIVER AWAKE VALUE", participant_block)
+
+    def test_uninjured_packet_suppresses_injury_and_death_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = CaseRepository(root / "uninjured.sqlite3")
+            case = repository.create_case("26-UNINJURED", "Packet Test")
+            witness = repository.save_person(Person(
+                id="",
+                case_id=case.id,
+                first_name="Jordan",
+                last_name="Witness",
+                roles=["Witness"],
+            ))
+            repository.save_participant_details(ParticipantDetails(
+                person_id=witness.id,
+                injury_status="Not injured",
+                injury_codes="Z00.0",
+                autopsy_performed="Yes",
+                next_of_kin_notified="Yes",
+                occupant_position="On foot",
+                height="5 ft 10 in",
+                weight="175 lb",
+            ))
+
+            reader = PdfReader(export_case_compact_pdf(
+                repository,
+                case.id,
+                root / "uninjured-packet.pdf",
+            ))
+            text = " ".join(
+                page.extract_text() or "" for page in reader.pages
+            )
+            participant_block = " ".join(text.split(
+                "Participant and Driver Details", 1
+            )[1].split())
+            for label in (
+                "INJURY STATUS",
+                "INJURY CODES",
+                "DEATH / AUTOPSY",
+                "NEXT OF KIN",
+            ):
+                self.assertNotIn(label, participant_block)
+            self.assertIn("VEHICLE / POSITION On foot", participant_block)
+            self.assertIn("HEIGHT / WEIGHT 5 ft 10 in / 175 lb", participant_block)
 
     def test_hit_run_section_is_conditional_complete_and_has_working_space(self):
         with tempfile.TemporaryDirectory() as directory:

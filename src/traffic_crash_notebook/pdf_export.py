@@ -61,6 +61,7 @@ from .models import (
     WitnessDetails,
     format_crash_location,
     format_weather_measurement,
+    participant_has_injury_or_death,
     participant_is_deceased,
     scene_evidence_for_output,
 )
@@ -1577,21 +1578,39 @@ def _participant_sections(
             styles["Subsection"],
         ))
         if _has_detail(details, {"person_id", "updated_at"}):
+            has_injury_or_death = participant_has_injury_or_death(details)
             participant_data = [
                 [_field_cell("GENDER / RACE", " / ".join(
                     value for value in (person.sex, person.race) if value
                 ), styles), _field_cell(
                     "DOB", format_date_for_display(person.dob), styles
                 )],
-                [_field_cell("VEHICLE / POSITION", "; ".join(
-                    x for x in (
-                        vehicle_names.get(details.vehicle_id, ""),
-                        details.occupant_position,
-                    ) if x
-                ), styles), _field_cell("INJURY STATUS", details.injury_status, styles)],
-                [_field_cell("HEIGHT / WEIGHT", " / ".join(
-                    value for value in (details.height, details.weight) if value
-                ), styles), _field_cell("INJURY CODES", details.injury_codes, styles)],
+            ]
+            if has_injury_or_death:
+                participant_data.extend([
+                    [_field_cell("VEHICLE / POSITION", "; ".join(
+                        x for x in (
+                            vehicle_names.get(details.vehicle_id, ""),
+                            details.occupant_position,
+                        ) if x
+                    ), styles), _field_cell("INJURY STATUS", details.injury_status, styles)],
+                    [_field_cell("HEIGHT / WEIGHT", " / ".join(
+                        value for value in (details.height, details.weight) if value
+                    ), styles), _field_cell("INJURY CODES", details.injury_codes, styles)],
+                ])
+            else:
+                participant_data.append([
+                    _field_cell("VEHICLE / POSITION", "; ".join(
+                        x for x in (
+                            vehicle_names.get(details.vehicle_id, ""),
+                            details.occupant_position,
+                        ) if x
+                    ), styles),
+                    _field_cell("HEIGHT / WEIGHT", " / ".join(
+                        value for value in (details.height, details.weight) if value
+                    ), styles),
+                ])
+            participant_data.extend([
                 [_field_cell("TRANSPORT", (
                     f"{details.transported} - {details.transported_to}"
                     if details.transported_to else details.transported
@@ -1607,18 +1626,21 @@ def _participant_sections(
                 ), styles), _field_cell("EJECTED / EXTRACTED", (
                     f"Ejected {details.ejected}; extracted {details.extracted}"
                 ), styles)],
-                [_field_cell("DEATH / AUTOPSY", "; ".join(x for x in (
-                    format_date_for_display(details.date_of_death),
-                    details.cause_of_death,
-                    f"Autopsy: {details.autopsy_performed}"
-                    if details.autopsy_performed != "Unknown" else "",
-                ) if x), styles), _field_cell("NEXT OF KIN", (
-                    f"{details.next_of_kin_notified}; "
-                    f"by {details.next_of_kin_notified_by}"
-                    if details.next_of_kin_notified_by
-                    else details.next_of_kin_notified
-                ), styles)],
-            ]
+            ])
+            if has_injury_or_death:
+                participant_data.append([
+                    _field_cell("DEATH / AUTOPSY", "; ".join(x for x in (
+                        format_date_for_display(details.date_of_death),
+                        details.cause_of_death,
+                        f"Autopsy: {details.autopsy_performed}"
+                        if details.autopsy_performed != "Unknown" else "",
+                    ) if x), styles), _field_cell("NEXT OF KIN", (
+                        f"{details.next_of_kin_notified}; "
+                        f"by {details.next_of_kin_notified_by}"
+                        if details.next_of_kin_notified_by
+                        else details.next_of_kin_notified
+                    ), styles),
+                ])
             table = Table(participant_data, colWidths=[3.35 * inch, 3.25 * inch])
             table.setStyle(_standard_table_style())
             story.append(table)
