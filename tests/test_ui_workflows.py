@@ -291,6 +291,10 @@ class AddRecordWorkflowTest(unittest.TestCase):
         )
         self.assertEqual(self.window.vehicles_table.rowCount(), 1)
         self.assertEqual(
+            self.window.vehicles_table.horizontalHeaderItem(4).text(),
+            "Vehicle Checklist",
+        )
+        self.assertEqual(
             self.window.vehicles_table.horizontalHeaderItem(7).text(),
             "Insurance / Claim",
         )

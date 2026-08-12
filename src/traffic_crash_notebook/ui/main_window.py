@@ -1062,7 +1062,7 @@ class MainWindow(QMainWindow):
                 "Vehicle",
                 "Driver",
                 "Plate",
-                "Vehicle Workflow",
+                "Vehicle Checklist",
                 "Towing",
                 "Release",
                 "Insurance / Claim",
