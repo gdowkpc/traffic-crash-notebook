@@ -360,8 +360,12 @@ class VehicleDialog(RecordDialog):
         self.year = _line(self.vehicle.year)
         self.make = _line(self.vehicle.make)
         self.model = _line(self.vehicle.model)
+        self.trim = _line(self.vehicle.trim)
         self.body_style = _line(self.vehicle.body_style, "Sedan, SUV, pickup, motorcycle...")
         self.color = _line(self.vehicle.color)
+        self.vehicle_weight = _line(self.vehicle.vehicle_weight, "Curb, registered, or measured weight")
+        self.engine = _line(self.vehicle.engine, "Engine size, fuel, and configuration")
+        self.tire_size = _line(self.vehicle.tire_size, "For example, 225/45R18")
         self.vin = _uppercase_line(self.vehicle.vin, "17-character VIN")
         self.plate = _uppercase_line(self.vehicle.plate)
         self.plate_state = _uppercase_line(self.vehicle.plate_state)
@@ -416,8 +420,12 @@ class VehicleDialog(RecordDialog):
         form.addRow("Year", self.year)
         form.addRow("Make", self.make)
         form.addRow("Model", self.model)
+        form.addRow("Trim", self.trim)
         form.addRow("Body style", self.body_style)
         form.addRow("Color", self.color)
+        form.addRow("Vehicle weight", self.vehicle_weight)
+        form.addRow("Engine", self.engine)
+        form.addRow("Tire size", self.tire_size)
         form.addRow("VIN", self.vin)
         form.addRow("License plate", self.plate)
         form.addRow("Plate state", self.plate_state)
@@ -498,7 +506,8 @@ class VehicleDialog(RecordDialog):
         super()._validate_and_accept()
 
     def result_record(self) -> Vehicle:
-        for attribute in ("vehicle_number", "year", "make", "model", "body_style", "color", "vin", "plate",
+        for attribute in ("vehicle_number", "year", "make", "model", "trim", "body_style", "color",
+                          "vehicle_weight", "engine", "tire_size", "vin", "plate",
                           "plate_state", "insurance_company", "insurance_policy_number",
                           "insurance_claim_number", "insurance_adjuster_name",
                           "insurance_adjuster_phone", "insurance_adjuster_email",

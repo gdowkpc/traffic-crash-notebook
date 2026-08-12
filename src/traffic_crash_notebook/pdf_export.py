@@ -1771,6 +1771,10 @@ def _vehicles_section(
                     x for x in (vehicle.plate_state, vehicle.plate) if x
                 ), styles
             )],
+            [_field_cell("TRIM", vehicle.trim, styles),
+             _field_cell("ENGINE", vehicle.engine, styles)],
+            [_field_cell("VEHICLE WEIGHT", vehicle.vehicle_weight, styles),
+             _field_cell("TIRE SIZE", vehicle.tire_size, styles)],
             [_field_cell("VIN", vehicle.vin, styles),
              _field_cell("TOWED / TO", towing, styles)],
             [_field_cell("DRIVER", _name(vehicle.driver_person_id, people), styles),

@@ -178,7 +178,8 @@ def run_self_test(output_directory: str | Path) -> Path:
     vehicle = repository.save_vehicle(Vehicle(
         id=new_id(), case_id=case.id, vehicle_number="V-1", year="2026",
         make="Example", model="Vehicle", body_style="Four-door SUV",
-        color="Blue", plate="SELFTEST", plate_state="OR",
+        color="Blue", trim="Verification Trim", vehicle_weight="4,250 lb",
+        engine="3.5 L V6", tire_size="255/55R20", plate="SELFTEST", plate_state="OR",
         driver_person_id=person.id,
         insurance_company="Verification Insurance",
         insurance_policy_number="POLICY-123",
@@ -225,9 +226,13 @@ def run_self_test(output_directory: str | Path) -> Path:
         or loaded_vehicle.release_date != "2026-08-05"
         or loaded_vehicle.release_information
         != "Released to verification owner with receipt"
+        or loaded_vehicle.trim != "Verification Trim"
+        or loaded_vehicle.vehicle_weight != "4,250 lb"
+        or loaded_vehicle.engine != "3.5 L V6"
+        or loaded_vehicle.tire_size != "255/55R20"
     ):
         raise RuntimeError(
-            "The vehicle insurance, towing, or release fields could not be saved and reloaded."
+            "The vehicle details, insurance, towing, or release fields could not be saved and reloaded."
         )
     repository.save_witness_details(WitnessDetails(
         person_id=person.id, interviewed="Yes",
@@ -537,6 +542,10 @@ def run_self_test(output_directory: str | Path) -> Path:
     for required_text in (
         "NHTSA RECALLS CHECKED",
         "Verification vehicle struck the test barrier.",
+        "Verification Trim",
+        "4,250 lb",
+        "3.5 L V6",
+        "255/55R20",
         "TOWED / TO",
         "Yes - Verification Tow Yard",
         "68 F",
@@ -663,6 +672,7 @@ def run_self_test(output_directory: str | Path) -> Path:
             "Driver-license dates, ordering data, and driving history persistence: PASS",
             "Role-aware non-driver packet background suppression: PASS",
             "Per-vehicle checklist, towing, release, insurance, and claim persistence: PASS",
+            "Vehicle trim, weight, engine, and tire-size persistence: PASS",
             "Video-source address and Axon upload status persistence: PASS",
             "VRU light-meter and light-board persistence: PASS",
             "Motorcyclist role and calculated VRU count: PASS",

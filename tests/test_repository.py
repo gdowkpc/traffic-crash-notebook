@@ -94,8 +94,15 @@ class RepositoryTest(unittest.TestCase):
         self.repository.save_person(person)
         self.repository.save_vehicle(Vehicle(
             id=new_id(), case_id=self.case.id, vehicle_number="V-1", make="Ford",
-            model="Explorer", driver_person_id=person.id, owner_person_id=person.id,
+            model="Explorer", trim="Limited", vehicle_weight="4,800 lb",
+            engine="3.0 L V6", tire_size="255/55R20",
+            driver_person_id=person.id, owner_person_id=person.id,
         ))
+        vehicle = self.repository.list_vehicles(self.case.id)[0]
+        self.assertEqual(vehicle.trim, "Limited")
+        self.assertEqual(vehicle.vehicle_weight, "4,800 lb")
+        self.assertEqual(vehicle.engine, "3.0 L V6")
+        self.assertEqual(vehicle.tire_size, "255/55R20")
         self.repository.save_chronology(ChronologyEntry(
             id=new_id(), case_id=self.case.id, event_date="2026-01-02",
             summary="Scene documented",
@@ -1081,6 +1088,41 @@ class RepositoryTest(unittest.TestCase):
             migrated.get_case(self.case.id).first_harmful_event,
             "Vehicle one struck a fixed object.",
         )
+        with closing(sqlite3.connect(self.database)) as connection:
+            self.assertEqual(
+                connection.execute("PRAGMA user_version").fetchone()[0],
+                SCHEMA_VERSION,
+            )
+
+    def test_schema_32_receives_vehicle_detail_fields_without_data_loss(self):
+        vehicle = self.repository.save_vehicle(Vehicle(
+            id="", case_id=self.case.id, vehicle_number="V-32", make="Existing",
+            notes="Preserve existing vehicle data",
+        ))
+        with closing(sqlite3.connect(self.database)) as connection:
+            for column in ("trim", "vehicle_weight", "engine", "tire_size"):
+                connection.execute(f"ALTER TABLE vehicles DROP COLUMN {column}")
+            connection.execute("PRAGMA user_version = 32")
+
+        migrated = CaseRepository(self.database)
+        loaded = migrated.get_vehicle(vehicle.id)
+        self.assertEqual(loaded.make, "Existing")
+        self.assertEqual(loaded.notes, "Preserve existing vehicle data")
+        self.assertEqual(loaded.trim, "")
+        self.assertEqual(loaded.vehicle_weight, "")
+        self.assertEqual(loaded.engine, "")
+        self.assertEqual(loaded.tire_size, "")
+
+        loaded.trim = "Touring"
+        loaded.vehicle_weight = "3,750 lb"
+        loaded.engine = "2.0 L Turbo"
+        loaded.tire_size = "235/40R19"
+        migrated.save_vehicle(loaded)
+        reloaded = migrated.get_vehicle(vehicle.id)
+        self.assertEqual(reloaded.trim, "Touring")
+        self.assertEqual(reloaded.vehicle_weight, "3,750 lb")
+        self.assertEqual(reloaded.engine, "2.0 L Turbo")
+        self.assertEqual(reloaded.tire_size, "235/40R19")
         with closing(sqlite3.connect(self.database)) as connection:
             self.assertEqual(
                 connection.execute("PRAGMA user_version").fetchone()[0],

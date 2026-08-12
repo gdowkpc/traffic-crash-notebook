@@ -57,7 +57,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 32
+SCHEMA_VERSION = 33
 
 
 SCHEMA = """
@@ -125,8 +125,12 @@ CREATE TABLE IF NOT EXISTS vehicles (
     year TEXT NOT NULL DEFAULT '',
     make TEXT NOT NULL DEFAULT '',
     model TEXT NOT NULL DEFAULT '',
+    trim TEXT NOT NULL DEFAULT '',
     body_style TEXT NOT NULL DEFAULT '',
     color TEXT NOT NULL DEFAULT '',
+    vehicle_weight TEXT NOT NULL DEFAULT '',
+    engine TEXT NOT NULL DEFAULT '',
+    tire_size TEXT NOT NULL DEFAULT '',
     vin TEXT NOT NULL DEFAULT '',
     plate TEXT NOT NULL DEFAULT '',
     plate_state TEXT NOT NULL DEFAULT '',
@@ -612,7 +616,7 @@ CREATE INDEX IF NOT EXISTS idx_hit_run_evidence_case
     ON hit_run_evidence_items(case_id, evidence_number, created_at);
 CREATE INDEX IF NOT EXISTS idx_hit_run_person_leads_case
     ON hit_run_person_leads(case_id, lead_number, created_at);
-PRAGMA user_version = 32;
+PRAGMA user_version = 33;
 """
 
 
@@ -638,10 +642,10 @@ class CaseRepository:
         with self._connect() as connection:
             previous_version = connection.execute("PRAGMA user_version").fetchone()[0]
             connection.executescript(SCHEMA)
-            self._migrate_schema_32(connection, previous_version)
+            self._migrate_schema_33(connection, previous_version)
 
     @staticmethod
-    def _migrate_schema_32(
+    def _migrate_schema_33(
         connection: sqlite3.Connection,
         previous_version: int,
     ) -> None:
@@ -663,6 +667,10 @@ class CaseRepository:
                 "insurance_adjuster_phone": "TEXT NOT NULL DEFAULT ''",
                 "insurance_adjuster_email": "TEXT NOT NULL DEFAULT ''",
                 "body_style": "TEXT NOT NULL DEFAULT ''",
+                "trim": "TEXT NOT NULL DEFAULT ''",
+                "vehicle_weight": "TEXT NOT NULL DEFAULT ''",
+                "engine": "TEXT NOT NULL DEFAULT ''",
+                "tire_size": "TEXT NOT NULL DEFAULT ''",
                 "property_damage": "TEXT NOT NULL DEFAULT ''",
                 "towed": "INTEGER NOT NULL DEFAULT 0",
                 "warrant_obtained": "INTEGER NOT NULL DEFAULT 0",
@@ -992,7 +1000,7 @@ class CaseRepository:
                 )
                 """
             )
-        connection.execute("PRAGMA user_version = 32")
+        connection.execute("PRAGMA user_version = 33")
 
     def get_user_defaults(self) -> UserDefaults:
         with self._connect() as connection:
@@ -1176,7 +1184,8 @@ class CaseRepository:
         with self._connect() as connection:
             connection.execute(
                 """INSERT INTO vehicles
-                (id, case_id, vehicle_number, year, make, model, body_style, color, vin, plate, plate_state,
+                (id, case_id, vehicle_number, year, make, model, trim, body_style, color,
+                 vehicle_weight, engine, tire_size, vin, plate, plate_state,
                  owner_person_id, driver_person_id, insurance, insurance_company,
                  insurance_policy_number, insurance_claim_number,
                  insurance_adjuster_name, insurance_adjuster_phone,
@@ -1186,8 +1195,9 @@ class CaseRepository:
                  vehicle_inspection_completed, nhtsa_recalls_checked, cdr_equipped, cdr_imaged,
                  cdr_report_uploaded,
                  released, release_date, release_information, damage_notes, notes, created_at, updated_at)
-                VALUES (:id, :case_id, :vehicle_number, :year, :make, :model, :body_style, :color, :vin,
-                        :plate, :plate_state, :owner_person_id, :driver_person_id, :insurance,
+                VALUES (:id, :case_id, :vehicle_number, :year, :make, :model, :trim, :body_style,
+                        :color, :vehicle_weight, :engine, :tire_size, :vin, :plate, :plate_state,
+                        :owner_person_id, :driver_person_id, :insurance,
                         :insurance_company, :insurance_policy_number,
                         :insurance_claim_number, :insurance_adjuster_name,
                         :insurance_adjuster_phone, :insurance_adjuster_email,
@@ -1199,8 +1209,9 @@ class CaseRepository:
                         :release_information, :damage_notes, :notes, :created_at, :updated_at)
                 ON CONFLICT(id) DO UPDATE SET
                   vehicle_number=excluded.vehicle_number, year=excluded.year, make=excluded.make,
-                  model=excluded.model, body_style=excluded.body_style,
-                  color=excluded.color, vin=excluded.vin,
+                  model=excluded.model, trim=excluded.trim, body_style=excluded.body_style,
+                  color=excluded.color, vehicle_weight=excluded.vehicle_weight,
+                  engine=excluded.engine, tire_size=excluded.tire_size, vin=excluded.vin,
                   plate=excluded.plate, plate_state=excluded.plate_state,
                   owner_person_id=excluded.owner_person_id, driver_person_id=excluded.driver_person_id,
                   insurance=excluded.insurance, insurance_company=excluded.insurance_company,

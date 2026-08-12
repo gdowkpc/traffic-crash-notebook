@@ -513,6 +513,8 @@ class PdfExportTest(unittest.TestCase):
             vehicle = Vehicle(
                 id=new_id(), case_id=case.id, vehicle_number="V-1", year="2024",
                 make="Toyota", model="Camry", driver_person_id=person.id,
+                trim="XSE", vehicle_weight="3,595 lb", engine="2.5 L I4",
+                tire_size="235/40R19",
                 insurance_company="Example Mutual",
                 insurance_policy_number="POL-24680",
                 insurance_claim_number="CLM-97531",
@@ -1030,6 +1032,10 @@ class PdfExportTest(unittest.TestCase):
                 normalized_compact_text,
             )
             self.assertIn("CLM-97531", normalized_compact_text)
+            self.assertIn("XSE", normalized_compact_text)
+            self.assertIn("3,595 lb", normalized_compact_text)
+            self.assertIn("2.5 L I4", normalized_compact_text)
+            self.assertIn("235/40R19", normalized_compact_text)
             self.assertIn("Avery Adjuster", normalized_compact_text)
             self.assertIn("503-555-0175", normalized_compact_text)
             self.assertIn(

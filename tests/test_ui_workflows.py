@@ -231,7 +231,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
             dialog.year.setText("2025")
             dialog.make.setText("Example")
             dialog.model.setText("Sedan")
+            dialog.trim.setText("Touring")
             dialog.body_style.setText("Four-door sedan")
+            dialog.vehicle_weight.setText("3,750 lb")
+            dialog.engine.setText("2.0 L Turbo")
+            dialog.tire_size.setText("235/40R19")
             dialog.driver.setCurrentIndex(dialog.driver.findData(driver.id))
             dialog.insurance_company.setText("Example Mutual")
             dialog.insurance_policy_number.setText("POL-13579")
@@ -271,6 +275,10 @@ class AddRecordWorkflowTest(unittest.TestCase):
             "riley.adjuster@example.com",
         )
         self.assertEqual(vehicles[0].body_style, "Four-door sedan")
+        self.assertEqual(vehicles[0].trim, "Touring")
+        self.assertEqual(vehicles[0].vehicle_weight, "3,750 lb")
+        self.assertEqual(vehicles[0].engine, "2.0 L Turbo")
+        self.assertEqual(vehicles[0].tire_size, "235/40R19")
         self.assertEqual(vehicles[0].property_damage, "None")
         self.assertTrue(vehicles[0].towed)
         self.assertEqual(
@@ -330,6 +338,10 @@ class AddRecordWorkflowTest(unittest.TestCase):
             parent=self.window,
         )
         self.assertEqual(edit_dialog.insurance_claim_number.text(), "CLM-24680")
+        self.assertEqual(edit_dialog.trim.text(), "Touring")
+        self.assertEqual(edit_dialog.vehicle_weight.text(), "3,750 lb")
+        self.assertEqual(edit_dialog.engine.text(), "2.0 L Turbo")
+        self.assertEqual(edit_dialog.tire_size.text(), "235/40R19")
         self.assertEqual(edit_dialog.insurance_adjuster_name.text(), "Riley Adjuster")
         self.assertEqual(edit_dialog.insurance_adjuster_phone.text(), "503-555-0124")
         self.assertEqual(
