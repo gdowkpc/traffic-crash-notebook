@@ -2063,6 +2063,22 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(self.window.weather_fields_grid.rowCount(), 5)
         self.assertEqual(self.window.weather_fields_grid.verticalSpacing(), 5)
         self.assertEqual(self.window.weather_fields_grid.horizontalSpacing(), 10)
+        self.assertEqual(
+            self.window.weather_fields_grid.itemAtPosition(0, 0).widget().text(),
+            "Weather station",
+        )
+        self.assertIs(
+            self.window.weather_fields_grid.itemAtPosition(0, 1).widget(),
+            self.window.condition_widgets["weather_station"],
+        )
+        self.assertEqual(
+            self.window.weather_fields_grid.itemAtPosition(0, 2).widget().text(),
+            "Time of reading",
+        )
+        self.assertIs(
+            self.window.weather_fields_grid.itemAtPosition(0, 3).widget(),
+            self.window.condition_widgets["weather_time"],
+        )
         self.assertNotIn("Observation time", labels)
         self.assertIn("Civil twilight - morning", labels)
         self.assertIn("Civil twilight - evening", labels)

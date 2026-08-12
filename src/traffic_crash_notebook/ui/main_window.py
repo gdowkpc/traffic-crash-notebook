@@ -841,6 +841,10 @@ class MainWindow(QMainWindow):
 
         weather_pairs = (
             (
+                ("weather_station", "Weather station", "Station name or identifier"),
+                ("weather_time", "Time of reading", "HH:MM; include time zone if known"),
+            ),
+            (
                 ("temperature", "Temperature", "Numeric observation"),
                 ("dew_point", "Dew point", "Numeric observation"),
             ),
@@ -854,10 +858,6 @@ class MainWindow(QMainWindow):
             ),
             (
                 ("visibility", "Visibility", "Distance in miles"),
-                ("weather_station", "Weather station", "Station name or identifier"),
-            ),
-            (
-                ("weather_time", "Time of reading", "HH:MM; include time zone if known"),
                 ("weather_condition", "Condition", "Clear, rain, fog..."),
             ),
         )
