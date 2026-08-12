@@ -117,7 +117,7 @@ from ..models import (
 )
 from ..pdf_export import export_case_compact_pdf, export_case_pdf, export_case_summary_pdf
 from ..pdf_printing import print_pdf_document, selected_pdf_page_indexes
-from ..repository import SCHEMA_VERSION, CaseRepository
+from ..repository import DuplicateCaseNumberError, SCHEMA_VERSION, CaseRepository
 from ..resources import tiu_logo_path
 from ..updates import (
     UpdateManifest,
@@ -492,6 +492,15 @@ class MainWindow(QMainWindow):
         self.case_list.currentItemChanged.connect(self._case_selection_changed)
         layout.addWidget(self.case_list, 1)
         layout.addWidget(_button("New Case", self.new_case))
+        self.delete_case_button = _button(
+            "Delete Selected Case...",
+            self.delete_current_case,
+            secondary=True,
+        )
+        self.delete_case_button.setToolTip(
+            "Permanently delete the selected case and all of its saved records"
+        )
+        layout.addWidget(self.delete_case_button)
         return panel
 
     def _build_case_workspace(self) -> QWidget:
@@ -1561,7 +1570,7 @@ class MainWindow(QMainWindow):
                 tab_widget.currentChanged.connect(self._case_subtab_changed)
 
     def _case_subtab_changed(self, _index: int) -> None:
-        if not self.loading and self.current_case:
+        if not self.loading and self.current_case and self.overview_dirty:
             self.save_overview()
 
     def _packet_location_text(self) -> str:
@@ -1595,6 +1604,17 @@ class MainWindow(QMainWindow):
             return True
         try:
             self._save_overview_records()
+        except DuplicateCaseNumberError as error:
+            self.autosave_timer.stop()
+            self.overview_dirty = True
+            QMessageBox.warning(
+                self,
+                "Case number already exists",
+                "Each nonblank case number may be used only once. Enter a different "
+                "case number or select the existing case from the case list.\n\n"
+                f"{error}",
+            )
+            return False
         except (OSError, sqlite3.Error) as error:
             self.autosave_timer.stop()
             self.overview_dirty = True
@@ -1758,8 +1778,15 @@ class MainWindow(QMainWindow):
     def _case_selection_changed(self, current: QListWidgetItem | None, _previous) -> None:
         if not current:
             return
-        if self.current_case:
-            self.save_overview()
+        if self.current_case and self.overview_dirty and not self.save_overview():
+            self.case_list.blockSignals(True)
+            for index in range(self.case_list.count()):
+                item = self.case_list.item(index)
+                if item.data(Qt.ItemDataRole.UserRole) == self.current_case.id:
+                    self.case_list.setCurrentItem(item)
+                    break
+            self.case_list.blockSignals(False)
+            return
         case = self.repository.get_case(current.data(Qt.ItemDataRole.UserRole))
         if case:
             self.load_case(case)
@@ -1920,20 +1947,74 @@ class MainWindow(QMainWindow):
         case_number, accepted = QInputDialog.getText(self, "New Case", "Case number (may be left blank)")
         if not accepted:
             return
-        self.save_overview()
+        if not self.save_overview():
+            return
         defaults = self.repository.get_user_defaults()
-        case = self.repository.create_case(
-            case_number.strip(),
-            defaults.user_name,
-            defaults.dpsst,
-            defaults.assignment,
-        )
+        try:
+            case = self.repository.create_case(
+                case_number.strip(),
+                defaults.user_name,
+                defaults.dpsst,
+                defaults.assignment,
+            )
+        except DuplicateCaseNumberError as error:
+            QMessageBox.warning(
+                self,
+                "Case number already exists",
+                "A case with that number already exists. Select it from the case "
+                "list instead, or enter a different case number.\n\n"
+                f"{error}",
+            )
+            return
         self.refresh_cases()
         for index in range(self.case_list.count()):
             item = self.case_list.item(index)
             if item.data(Qt.ItemDataRole.UserRole) == case.id:
                 self.case_list.setCurrentItem(item)
                 break
+
+    def delete_current_case(self) -> None:
+        if not self.current_case:
+            QMessageBox.information(
+                self,
+                "No case selected",
+                "Select the case you want to delete first.",
+            )
+            return
+        case = self.current_case
+        case_label = case.case_number or "Untitled Case"
+        details = " | ".join(
+            value for value in (
+                format_date_for_display(case.crash_date),
+                case.location,
+            ) if value
+        )
+        message = (
+            f"Permanently delete {case_label}?"
+            + (f"\n\n{details}" if details else "")
+            + "\n\nThis permanently deletes the selected case and all saved people, "
+            "vehicles, evidence, tasks, journal entries, and packet data. This cannot be undone."
+        )
+        if not self._confirm_remove(message):
+            return
+        try:
+            self.repository.delete_case(case.id)
+        except (OSError, sqlite3.Error) as error:
+            QMessageBox.critical(
+                self,
+                "Case could not be deleted",
+                f"The selected case was not deleted.\n\n{self.repository.database_path}\n\n{error}",
+            )
+            return
+        self.autosave_timer.stop()
+        self.current_case = None
+        self.packet_preview_dialog.hide()
+        self.refresh_cases(select_first=True)
+        if not self.current_case:
+            self.case_title.setText("No case selected")
+            self.case_subtitle.setText("Create a case to begin")
+            self.counts_label.clear()
+        self.statusBar().showMessage(f"Deleted {case_label}.", 5000)
 
     def _selected_id(self, table: QTableWidget) -> str | None:
         row = table.currentRow()
@@ -2374,7 +2455,7 @@ class MainWindow(QMainWindow):
     def _case_tab_changed(self, index: int) -> None:
         if self.loading:
             return
-        if self.current_case and not self.save_overview():
+        if self.current_case and self.overview_dirty and not self.save_overview():
             return
         if index == self.exchange_report_tab_index:
             self.refresh_exchange_report(force_preview=True)

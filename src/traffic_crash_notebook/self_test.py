@@ -40,7 +40,12 @@ from .paths import (
     save_storage_config,
     validate_storage_directory,
 )
-from .repository import SCHEMA_VERSION, CaseRepository, new_id
+from .repository import (
+    SCHEMA_VERSION,
+    CaseRepository,
+    DuplicateCaseNumberError,
+    new_id,
+)
 from .resources import app_icon_path, startup_splash_path
 from .spellcheck import SpellCheckService
 from .updates import is_update_available, parse_update_manifest
@@ -166,6 +171,12 @@ def run_self_test(output_directory: str | Path) -> Path:
         raise RuntimeError(
             "Assigned-officer DPSST, assignment, or first harmful event persistence failed."
         )
+    try:
+        repository.create_case("SELF-TEST", "Duplicate verification")
+    except DuplicateCaseNumberError:
+        pass
+    else:
+        raise RuntimeError("Duplicate case-number protection failed.")
 
     person = repository.save_person(Person(
         id=new_id(), case_id=case.id, first_name="Test", last_name="Record",
@@ -680,6 +691,7 @@ def run_self_test(output_directory: str | Path) -> Path:
             "Property receipt hierarchy and numbered item persistence: PASS",
             "Assigned-officer DPSST and assignment persistence: PASS",
             "First harmful event persistence and packet output: PASS",
+            "Duplicate case-number protection: PASS",
             "Data-folder user defaults and new-case prefill: PASS",
             "Driver, pedestrian, bicyclist, and motorcyclist exchange-report inclusion: PASS",
             "Dynamic exchange-report data, time formatting, and searchable information page: PASS",

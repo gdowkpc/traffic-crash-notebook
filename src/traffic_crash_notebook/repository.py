@@ -57,7 +57,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 33
+SCHEMA_VERSION = 34
 
 
 SCHEMA = """
@@ -498,6 +498,30 @@ CREATE TABLE IF NOT EXISTS investigative_checklists (
     updated_at TEXT NOT NULL
 );
 
+CREATE TRIGGER IF NOT EXISTS prevent_duplicate_case_number_insert
+BEFORE INSERT ON cases
+WHEN TRIM(NEW.case_number) <> ''
+ AND EXISTS (
+    SELECT 1 FROM cases
+    WHERE id <> NEW.id
+      AND LOWER(TRIM(case_number)) = LOWER(TRIM(NEW.case_number))
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'A case with this case number already exists.');
+END;
+
+CREATE TRIGGER IF NOT EXISTS prevent_duplicate_case_number_update
+BEFORE UPDATE OF case_number ON cases
+WHEN TRIM(NEW.case_number) <> ''
+ AND EXISTS (
+    SELECT 1 FROM cases
+    WHERE id <> NEW.id
+      AND LOWER(TRIM(case_number)) = LOWER(TRIM(NEW.case_number))
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'A case with this case number already exists.');
+END;
+
 CREATE TABLE IF NOT EXISTS property_receipts (
     id TEXT PRIMARY KEY,
     case_id TEXT NOT NULL REFERENCES cases(id) ON DELETE CASCADE,
@@ -616,8 +640,12 @@ CREATE INDEX IF NOT EXISTS idx_hit_run_evidence_case
     ON hit_run_evidence_items(case_id, evidence_number, created_at);
 CREATE INDEX IF NOT EXISTS idx_hit_run_person_leads_case
     ON hit_run_person_leads(case_id, lead_number, created_at);
-PRAGMA user_version = 33;
+PRAGMA user_version = 34;
 """
+
+
+class DuplicateCaseNumberError(ValueError):
+    """Raised when a nonblank case number is already assigned to another case."""
 
 
 class CaseRepository:
@@ -642,10 +670,10 @@ class CaseRepository:
         with self._connect() as connection:
             previous_version = connection.execute("PRAGMA user_version").fetchone()[0]
             connection.executescript(SCHEMA)
-            self._migrate_schema_33(connection, previous_version)
+            self._migrate_schema_34(connection, previous_version)
 
     @staticmethod
-    def _migrate_schema_33(
+    def _migrate_schema_34(
         connection: sqlite3.Connection,
         previous_version: int,
     ) -> None:
@@ -1000,7 +1028,7 @@ class CaseRepository:
                 )
                 """
             )
-        connection.execute("PRAGMA user_version = 33")
+        connection.execute("PRAGMA user_version = 34")
 
     def get_user_defaults(self) -> UserDefaults:
         with self._connect() as connection:
@@ -1057,11 +1085,26 @@ class CaseRepository:
         return case
 
     def save_case(self, case: CrashCase) -> CrashCase:
+        case.case_number = case.case_number.strip()
         if not case.created_at:
             case.created_at = utc_now()
         case.updated_at = utc_now()
         values = asdict(case)
         with self._connect() as connection:
+            if case.case_number:
+                duplicate = connection.execute(
+                    """
+                    SELECT case_number FROM cases
+                    WHERE id <> ?
+                      AND LOWER(TRIM(case_number)) = LOWER(?)
+                    LIMIT 1
+                    """,
+                    (case.id, case.case_number),
+                ).fetchone()
+                if duplicate:
+                    raise DuplicateCaseNumberError(
+                        f"Case number {case.case_number!r} is already in use."
+                    )
             connection.execute(
                 """INSERT INTO cases
                 (id, case_number, crash_date, crash_time, location, investigator,

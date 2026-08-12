@@ -129,6 +129,29 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertIn("QListWidget::item:selected:!active", style_sheet)
         self.assertIn("background: #2e6f95; color: #ffffff", style_sheet)
 
+    def test_case_number_duplicates_are_rejected_and_selected_cases_can_be_deleted(self):
+        self.assertEqual(self.window.delete_case_button.text(), "Delete Selected Case...")
+        with (
+            patch(
+                "traffic_crash_notebook.ui.main_window.QInputDialog.getText",
+                return_value=("ui-test", True),
+            ),
+            patch("traffic_crash_notebook.ui.main_window.QMessageBox.warning") as warning,
+        ):
+            self.window.new_case()
+        warning.assert_called_once()
+        self.assertEqual(len(self.repository.list_cases()), 1)
+        self.assertEqual(self.window.current_case.id, self.case.id)
+
+        with patch(
+            "traffic_crash_notebook.ui.main_window.QMessageBox.question",
+            return_value=QMessageBox.StandardButton.Yes,
+        ):
+            self.window.delete_current_case()
+        self.assertIsNone(self.repository.get_case(self.case.id))
+        self.assertEqual(self.window.case_list.count(), 0)
+        self.assertIsNone(self.window.current_case)
+
     def test_case_picker_displays_incident_location_before_date_and_status(self):
         case = self.window.current_case
         self.assertIsNotNone(case)

@@ -38,7 +38,12 @@ from traffic_crash_notebook.models import (
     VRUAnalysis,
     WitnessDetails,
 )
-from traffic_crash_notebook.repository import SCHEMA_VERSION, CaseRepository, new_id
+from traffic_crash_notebook.repository import (
+    SCHEMA_VERSION,
+    CaseRepository,
+    DuplicateCaseNumberError,
+    new_id,
+)
 
 
 class RepositoryTest(unittest.TestCase):
@@ -132,6 +137,36 @@ class RepositoryTest(unittest.TestCase):
         counts = self.repository.case_counts(self.case.id)
         self.assertEqual(counts["injured"], 0)
         self.assertEqual(counts["fatal"], 1)
+
+    def test_nonblank_case_numbers_are_unique_without_case_or_spacing_distinctions(self):
+        with self.assertRaises(DuplicateCaseNumberError):
+            self.repository.create_case(" 26-000001 ", "Duplicate")
+        self.assertEqual(len(self.repository.list_cases()), 1)
+
+        other = self.repository.create_case("26-000002", "Other")
+        self.case.case_number = "26-000002"
+        with self.assertRaises(DuplicateCaseNumberError):
+            self.repository.save_case(self.case)
+        self.assertEqual(self.repository.get_case(other.id).case_number, "26-000002")
+
+        untitled = self.repository.create_case("", "Untitled")
+        self.assertEqual(untitled.case_number, "")
+
+    def test_database_trigger_rejects_direct_duplicate_case_number_writes(self):
+        with closing(sqlite3.connect(self.database)) as connection:
+            with self.assertRaises(sqlite3.IntegrityError):
+                connection.execute(
+                    """
+                    INSERT INTO cases (
+                        id, case_number, crash_date, crash_time, location, investigator,
+                        assigned_officer_dpsst, assignment, status, first_harmful_event,
+                        summary, notes, created_at, updated_at
+                    ) VALUES (
+                        'direct-duplicate', '26-000001', '', '', '', '', '', '',
+                        'Active', '', '', '', '2026-08-12', '2026-08-12'
+                    )
+                    """
+                )
 
     def test_property_receipts_own_numbered_items_and_cascade_on_delete(self):
         receipt = self.repository.save_property_receipt(PropertyReceipt(
