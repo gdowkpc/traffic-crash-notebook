@@ -663,7 +663,7 @@ class PropertyReceiptDialog(RecordDialog):
         self.lodged_date = _date_line(self.receipt.lodged_date)
         form.addRow("Property receipt number", self.receipt_number)
         form.addRow("Property owner", self.property_owner)
-        form.addRow("Lodged under", self.lodging_type)
+        form.addRow("Lodged as", self.lodging_type)
         form.addRow("Lodged location", self.lodged_location)
         form.addRow("Date lodged", self.lodged_date)
         self.root.addLayout(form)

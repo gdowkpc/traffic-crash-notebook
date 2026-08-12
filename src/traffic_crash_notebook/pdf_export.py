@@ -2211,7 +2211,7 @@ def _evidence_section(
             [
                 [
                     _field_cell("PROPERTY OWNER", receipt.property_owner, styles),
-                    _field_cell("LODGED UNDER", receipt.lodging_type, styles),
+                    _field_cell("LODGED AS", receipt.lodging_type, styles),
                     _field_cell("LODGED LOCATION", receipt.lodged_location, styles),
                     _field_cell(
                         "DATE LODGED", format_date_for_display(receipt.lodged_date), styles

@@ -1465,7 +1465,7 @@ class MainWindow(QMainWindow):
         self.property_receipts_table = QTableWidget(0, 5)
         self.property_receipts_table.setObjectName("property_receipts_table")
         self.property_receipts_table.setHorizontalHeaderLabels(
-            ["Receipt #", "Property Owner", "Lodged Under", "Lodged At", "Date"]
+            ["Receipt #", "Property Owner", "Lodged As", "Lodged At", "Date"]
         )
         self.property_receipts_table.setSelectionBehavior(
             QAbstractItemView.SelectionBehavior.SelectRows
