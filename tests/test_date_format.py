@@ -3,6 +3,8 @@ from __future__ import annotations
 import unittest
 
 from traffic_crash_notebook.date_format import (
+    add_date_separators,
+    add_time_separator,
     format_date_for_display,
     format_time_for_display,
     normalize_date_for_storage,
@@ -14,6 +16,20 @@ from traffic_crash_notebook.date_format import (
 
 
 class DateFormatTest(unittest.TestCase):
+    def test_typed_dates_receive_separators_without_changing_manual_single_digits(self):
+        self.assertEqual(add_date_separators("0"), "0")
+        self.assertEqual(add_date_separators("08"), "08/")
+        self.assertEqual(add_date_separators("0804"), "08/04/")
+        self.assertEqual(add_date_separators("08042026"), "08/04/2026")
+        self.assertEqual(add_date_separators("8/5/2026"), "8/5/2026")
+
+    def test_typed_times_receive_colons_without_changing_manual_single_digits(self):
+        self.assertEqual(add_time_separator("0"), "0")
+        self.assertEqual(add_time_separator("14"), "14:")
+        self.assertEqual(add_time_separator("1435"), "14:35")
+        self.assertEqual(add_time_separator("0235 PM"), "02:35 PM")
+        self.assertEqual(add_time_separator("2:35 PM"), "2:35 PM")
+
     def test_iso_dates_display_as_mm_dd_yyyy(self):
         self.assertEqual(format_date_for_display("2026-08-05"), "08/05/2026")
 

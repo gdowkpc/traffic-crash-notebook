@@ -1732,6 +1732,19 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(self.window.packet_widgets["nearest_city"].text(), "Gresham")
         self.assertTrue(self.window.scene_evidence_boxes["FARO"].isChecked())
 
+    def test_date_and_time_fields_add_separators_while_typing(self):
+        self.window.crash_date.setFocus()
+        QTest.keyClicks(self.window.crash_date, "08042026")
+        self.assertEqual(self.window.crash_date.text(), "08/04/2026")
+
+        self.window.crash_time.setFocus()
+        QTest.keyClicks(self.window.crash_time, "1435")
+        self.assertEqual(self.window.crash_time.text(), "14:35")
+
+        self.window.condition_widgets["weather_time"].setFocus()
+        QTest.keyClicks(self.window.condition_widgets["weather_time"], "0830 PDT")
+        self.assertEqual(self.window.condition_widgets["weather_time"].text(), "08:30 PDT")
+
     def test_reporting_checklist_uses_routing_statuses_and_completion_dates(self):
         self.assertNotIn("DIMS CD Ordered", self.window.checklist_boxes)
         self.assertIn("Toxicology", self.window.checklist_boxes)

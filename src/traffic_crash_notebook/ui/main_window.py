@@ -72,6 +72,8 @@ from ..build_info import format_about_text, load_build_info
 from ..date_format import (
     DISPLAY_DATE_PLACEHOLDER,
     DISPLAY_TIME_PLACEHOLDER,
+    add_date_separators,
+    add_time_separator,
     format_date_for_display,
     format_time_for_display,
     normalize_date_for_storage,
@@ -192,10 +194,40 @@ def _button(text: str, callback, secondary: bool = False) -> QPushButton:
 def _date_line(text: str = "") -> QLineEdit:
     widget = QLineEdit(format_date_for_display(text))
     widget.setPlaceholderText(DISPLAY_DATE_PLACEHOLDER)
+    _add_live_separator_formatting(widget, add_date_separators)
     widget.editingFinished.connect(
         lambda: widget.setText(format_date_for_display(widget.text()))
     )
     return widget
+
+
+def _time_line(text: str = "", placeholder: str = "HH:MM") -> QLineEdit:
+    widget = QLineEdit(text)
+    widget.setPlaceholderText(placeholder)
+    _add_live_separator_formatting(widget, add_time_separator)
+    return widget
+
+
+def _add_live_separator_formatting(widget: QLineEdit, formatter) -> None:
+    def apply_formatting(value: str) -> None:
+        formatted = formatter(value)
+        if formatted == value:
+            return
+        original_cursor = widget.cursorPosition()
+        digit_count = sum(character.isdigit() for character in value[:original_cursor])
+        cursor = 0
+        seen_digits = 0
+        while cursor < len(formatted) and seen_digits < digit_count:
+            if formatted[cursor].isdigit():
+                seen_digits += 1
+            cursor += 1
+        if original_cursor == len(value):
+            while cursor < len(formatted) and formatted[cursor] in "/:":
+                cursor += 1
+        widget.setText(formatted)
+        widget.setCursorPosition(cursor)
+
+    widget.textEdited.connect(apply_formatting)
 
 
 def _scrollable(widget: QWidget) -> QScrollArea:
@@ -545,8 +577,7 @@ class MainWindow(QMainWindow):
         form = QFormLayout()
         self.case_number = QLineEdit()
         self.crash_date = _date_line()
-        self.crash_time = QLineEdit()
-        self.crash_time.setPlaceholderText(DISPLAY_TIME_PLACEHOLDER)
+        self.crash_time = _time_line(placeholder=DISPLAY_TIME_PLACEHOLDER)
         self.location = QLineEdit()
         self.location.setReadOnly(True)
         self.location.setPlaceholderText("Entered under Packet > Crash Location")
@@ -614,7 +645,17 @@ class MainWindow(QMainWindow):
         self.scene_evidence_boxes: dict[str, QCheckBox] = {}
 
         def packet_line(name: str, placeholder: str = "") -> QLineEdit:
-            widget = _date_line() if name == "team_notified_date" else QLineEdit()
+            widget = (
+                _date_line()
+                if name == "team_notified_date"
+                else _time_line(placeholder=placeholder)
+                if name in {
+                    "team_notified_time",
+                    "investigator_en_route",
+                    "investigator_arrival",
+                }
+                else QLineEdit()
+            )
             widget.setPlaceholderText(placeholder)
             widget.textChanged.connect(self.schedule_autosave)
             self.packet_widgets[name] = widget
@@ -787,8 +828,13 @@ class MainWindow(QMainWindow):
         self.condition_widgets: dict[str, QWidget] = {}
         self.area_type_boxes: dict[str, QCheckBox] = {}
 
-        def line(name: str, placeholder: str = "") -> QLineEdit:
-            widget = QLineEdit()
+        def line(
+            name: str,
+            placeholder: str = "",
+            *,
+            time_input: bool = False,
+        ) -> QLineEdit:
+            widget = _time_line(placeholder=placeholder) if time_input else QLineEdit()
             widget.setPlaceholderText(placeholder)
             widget.textChanged.connect(self.schedule_autosave)
             self.condition_widgets[name] = widget
@@ -872,7 +918,7 @@ class MainWindow(QMainWindow):
                 field_column = column_group * 2
                 self.weather_fields_grid.addWidget(label_widget, row, field_column)
                 self.weather_fields_grid.addWidget(
-                    line(name, placeholder),
+                    line(name, placeholder, time_input=name == "weather_time"),
                     row,
                     field_column + 1,
                 )
@@ -913,18 +959,18 @@ class MainWindow(QMainWindow):
         lighting_conditions = memo("lighting_conditions", "Ambient light, sun location, artificial lighting, and contrast")
         lighting_conditions.setMaximumHeight(130)
         lighting_form.addRow("Lighting conditions", lighting_conditions)
-        lighting_form.addRow("Sunrise", line("sunrise", "HH:MM"))
-        lighting_form.addRow("Sunset", line("sunset", "HH:MM"))
+        lighting_form.addRow("Sunrise", line("sunrise", "HH:MM", time_input=True))
+        lighting_form.addRow("Sunset", line("sunset", "HH:MM", time_input=True))
         lighting_form.addRow(
             "Civil twilight - morning",
-            line("civil_twilight_morning", "HH:MM"),
+            line("civil_twilight_morning", "HH:MM", time_input=True),
         )
         lighting_form.addRow(
             "Civil twilight - evening",
-            line("civil_twilight_evening", "HH:MM"),
+            line("civil_twilight_evening", "HH:MM", time_input=True),
         )
-        lighting_form.addRow("Moonrise", line("moonrise", "HH:MM"))
-        lighting_form.addRow("Moonset", line("moonset", "HH:MM"))
+        lighting_form.addRow("Moonrise", line("moonrise", "HH:MM", time_input=True))
+        lighting_form.addRow("Moonset", line("moonset", "HH:MM", time_input=True))
         lighting_form.addRow(
             "Moon phase",
             line("moon_phase", "New, crescent, quarter, gibbous, or full"),
@@ -1229,8 +1275,7 @@ class MainWindow(QMainWindow):
         self.hit_run_status.addItems(HIT_RUN_INVESTIGATION_STATUSES)
         self.hit_run_last_known_location = QLineEdit()
         self.hit_run_last_seen_date = _date_line()
-        self.hit_run_last_seen_time = QLineEdit()
-        self.hit_run_last_seen_time.setPlaceholderText("HH:MM")
+        self.hit_run_last_seen_time = _time_line()
         self.hit_run_direction = QLineEdit()
         self.hit_run_initial_source = QLineEdit()
         for label, widget in (

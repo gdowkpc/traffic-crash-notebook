@@ -31,6 +31,8 @@ from PySide6.QtWidgets import (
 
 from ..date_format import (
     DISPLAY_DATE_PLACEHOLDER,
+    add_date_separators,
+    add_time_separator,
     format_date_for_display,
     normalize_date_for_storage,
 )
@@ -103,10 +105,39 @@ def _uppercase_line(text: str = "", placeholder: str = "") -> QLineEdit:
 
 def _date_line(text: str = "") -> QLineEdit:
     widget = _line(format_date_for_display(text), DISPLAY_DATE_PLACEHOLDER)
+    _add_live_separator_formatting(widget, add_date_separators)
     widget.editingFinished.connect(
         lambda: widget.setText(format_date_for_display(widget.text()))
     )
     return widget
+
+
+def _time_line(text: str = "", placeholder: str = "HH:MM") -> QLineEdit:
+    widget = _line(text, placeholder)
+    _add_live_separator_formatting(widget, add_time_separator)
+    return widget
+
+
+def _add_live_separator_formatting(widget: QLineEdit, formatter) -> None:
+    def apply_formatting(value: str) -> None:
+        formatted = formatter(value)
+        if formatted == value:
+            return
+        original_cursor = widget.cursorPosition()
+        digit_count = sum(character.isdigit() for character in value[:original_cursor])
+        cursor = 0
+        seen_digits = 0
+        while cursor < len(formatted) and seen_digits < digit_count:
+            if formatted[cursor].isdigit():
+                seen_digits += 1
+            cursor += 1
+        if original_cursor == len(value):
+            while cursor < len(formatted) and formatted[cursor] in "/:":
+                cursor += 1
+        widget.setText(formatted)
+        widget.setCursorPosition(cursor)
+
+    widget.textEdited.connect(apply_formatting)
 
 
 def _combo(values: tuple[str, ...] | list[str], current: str = "", editable: bool = False) -> QComboBox:
@@ -502,7 +533,7 @@ class ChronologyDialog(RecordDialog):
         self.resize(620, 420)
         form = QFormLayout()
         self.event_date = _date_line(self.entry.event_date)
-        self.event_time = _line(self.entry.event_time, "HH:MM")
+        self.event_time = _time_line(self.entry.event_time)
         self.category = _combo(CHRONOLOGY_CATEGORIES, self.entry.category, editable=True)
         self.summary = _line(
             self.entry.summary,
@@ -1614,7 +1645,7 @@ class HitRunEvidenceDialog(RecordDialog):
         self.quantity = _line(self.record.quantity)
         self.recovery_location = SpellCheckedLineEdit(self.record.recovery_location)
         self.recovery_date = _date_line(self.record.recovery_date)
-        self.recovery_time = _line(self.record.recovery_time, "HH:MM")
+        self.recovery_time = _time_line(self.record.recovery_time)
         self.recovered_by = _line(self.record.recovered_by)
         self.lab_status = _line(
             self.record.lab_status,
@@ -1740,7 +1771,7 @@ class HitRunVehicleLeadDialog(RecordDialog):
         self.vin = _uppercase_line(self.record.vin)
         self.last_seen_location = SpellCheckedLineEdit(self.record.last_seen_location)
         self.last_seen_date = _date_line(self.record.last_seen_date)
-        self.last_seen_time = _line(self.record.last_seen_time, "HH:MM")
+        self.last_seen_time = _time_line(self.record.last_seen_time)
         self.direction_of_travel = _line(self.record.direction_of_travel)
         self.information_source = _line(
             self.record.information_source,
