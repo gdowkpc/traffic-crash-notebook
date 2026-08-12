@@ -24,6 +24,7 @@ from PySide6.QtGui import (
     QAction,
     QColor,
     QDesktopServices,
+    QGuiApplication,
     QIntValidator,
     QPageLayout,
     QPageSize,
@@ -348,6 +349,100 @@ class ApplicationSettingsDialog(QDialog):
             auto_check_updates=self.auto_check_updates_checkbox.isChecked(),
             last_update_check=self.last_update_check,
         )
+
+
+class UpdateAvailableDialog(QDialog):
+    """Present update details without allowing long release notes to hide actions."""
+
+    def __init__(
+        self,
+        manifest: UpdateManifest,
+        current_version: str,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.selected_action = "later"
+        self.setWindowTitle("Traffic Crash Notebook update available")
+        self.setMinimumSize(480, 320)
+        self.resize(760, 560)
+
+        layout = QVBoxLayout(self)
+        title = QLabel("Verified portable update available")
+        title.setStyleSheet("font-size: 18px; font-weight: 700; color: #18344a;")
+        layout.addWidget(title)
+
+        version_label = QLabel(
+            f"Version {manifest.version} is available. You are running {current_version}."
+        )
+        version_label.setWordWrap(True)
+        layout.addWidget(version_label)
+
+        notes_group = QGroupBox("Release notes")
+        notes_layout = QVBoxLayout(notes_group)
+        self.release_notes = QTextEdit()
+        self.release_notes.setReadOnly(True)
+        self.release_notes.setPlainText(
+            manifest.release_notes or "See the GitHub release page for details."
+        )
+        self.release_notes.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
+        self.release_notes.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        self.release_notes.setMinimumHeight(180)
+        notes_layout.addWidget(self.release_notes)
+        layout.addWidget(notes_group, 1)
+
+        details = QLabel(
+            f"Portable ZIP size: {format_download_size(manifest.portable.size_bytes)}\n"
+            "The ZIP will be SHA-256 verified after download. It will not be "
+            "installed or extracted automatically."
+        )
+        details.setWordWrap(True)
+        layout.addWidget(details)
+
+        self.build_details = QLabel(
+            f"Build ID: {manifest.portable.build_id}\n"
+            f"SHA-256: {manifest.portable.sha256}"
+        )
+        self.build_details.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        self.build_details.setWordWrap(True)
+        layout.addWidget(self.build_details)
+
+        buttons = QDialogButtonBox()
+        self.download_button = buttons.addButton(
+            "Download Verified ZIP",
+            QDialogButtonBox.ButtonRole.AcceptRole,
+        )
+        self.release_button = buttons.addButton(
+            "Open Release Page",
+            QDialogButtonBox.ButtonRole.ActionRole,
+        )
+        self.later_button = buttons.addButton(
+            "Later",
+            QDialogButtonBox.ButtonRole.RejectRole,
+        )
+        self.download_button.clicked.connect(lambda: self._choose("download"))
+        self.release_button.clicked.connect(lambda: self._choose("release"))
+        self.later_button.clicked.connect(lambda: self._choose("later"))
+        layout.addWidget(buttons)
+
+    def _choose(self, action: str) -> None:
+        self.selected_action = action
+        self.accept()
+
+    def showEvent(self, event) -> None:  # noqa: N802 - Qt API name
+        super().showEvent(event)
+        screen = self.screen() or QGuiApplication.primaryScreen()
+        if screen is None:
+            return
+        available = screen.availableGeometry()
+        self.resize(
+            min(self.width(), max(480, available.width() - 48)),
+            min(self.height(), max(320, available.height() - 48)),
+        )
+        self.move(available.center() - self.rect().center())
 
 
 class MainWindow(QMainWindow):
@@ -4099,38 +4194,11 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Automatic update check unavailable.", 3500)
 
     def _show_update_available(self, manifest: UpdateManifest) -> None:
-        message = QMessageBox(self)
-        message.setIcon(QMessageBox.Icon.Information)
-        message.setWindowTitle("Traffic Crash Notebook update available")
-        message.setText(
-            f"Version {manifest.version} is available. You are running {__version__}."
-        )
-        notes = manifest.release_notes or "See the GitHub release page for details."
-        message.setInformativeText(
-            f"{notes}\n\n"
-            f"Portable ZIP size: {format_download_size(manifest.portable.size_bytes)}\n"
-            "The ZIP will be SHA-256 verified after download. It will not be "
-            "installed or extracted automatically."
-        )
-        message.setDetailedText(
-            f"Build ID: {manifest.portable.build_id}\n"
-            f"SHA-256: {manifest.portable.sha256}\n"
-            f"Release: {manifest.release_page_url}"
-        )
-        download_button = message.addButton(
-            "Download Verified ZIP",
-            QMessageBox.ButtonRole.AcceptRole,
-        )
-        release_button = message.addButton(
-            "Open Release Page",
-            QMessageBox.ButtonRole.ActionRole,
-        )
-        message.addButton("Later", QMessageBox.ButtonRole.RejectRole)
-        message.exec()
-        clicked = message.clickedButton()
-        if clicked is download_button:
+        dialog = UpdateAvailableDialog(manifest, __version__, self)
+        dialog.exec()
+        if dialog.selected_action == "download":
             self._start_update_download(manifest)
-        elif clicked is release_button:
+        elif dialog.selected_action == "release":
             QDesktopServices.openUrl(QUrl(manifest.release_page_url))
 
     def _start_update_download(self, manifest: UpdateManifest) -> None:

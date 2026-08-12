@@ -68,7 +68,11 @@ from traffic_crash_notebook.ui.dialogs import (
     VRUAnalysisDialog,
     WitnessDetailsDialog,
 )
-from traffic_crash_notebook.ui.main_window import ApplicationSettingsDialog, MainWindow
+from traffic_crash_notebook.ui.main_window import (
+    ApplicationSettingsDialog,
+    MainWindow,
+    UpdateAvailableDialog,
+)
 from traffic_crash_notebook.ui.spellcheck_text_edit import (
     SpellCheckedLineEdit,
     SpellCheckedTextEdit,
@@ -1430,6 +1434,43 @@ class AddRecordWorkflowTest(unittest.TestCase):
         with patch.object(self.window, "_show_update_available") as available:
             self.window._update_manifest_received(newer)
         available.assert_called_once_with(newer)
+
+    def test_update_available_dialog_keeps_actions_visible_with_long_notes(self):
+        portable = PortableRelease(
+            filename="TrafficCrashNotebook-99.0.0-Windows-Portable.zip",
+            download_url=(
+                "https://github.com/gdowkpc/traffic-crash-notebook/releases/download/"
+                "v99.0.0/TrafficCrashNotebook-99.0.0-Windows-Portable.zip"
+            ),
+            sha256="a" * 64,
+            size_bytes=123_456_789,
+            build_id="ui-test",
+        )
+        manifest = UpdateManifest(
+            version="99.0.0",
+            release_tag="v99.0.0",
+            published_at="2026-08-05T21:00:00Z",
+            release_page_url=(
+                "https://github.com/gdowkpc/traffic-crash-notebook/releases/tag/v99.0.0"
+            ),
+            release_notes="\n".join(f"Release note {index}" for index in range(80)),
+            minimum_supported_version="0.4.8",
+            portable=portable,
+        )
+        dialog = UpdateAvailableDialog(manifest, __version__, self.window)
+        self.assertGreaterEqual(dialog.width(), 700)
+        self.assertTrue(dialog.release_notes.isReadOnly())
+        self.assertEqual(
+            dialog.release_notes.verticalScrollBarPolicy(),
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded,
+        )
+        self.assertIn("Release note 79", dialog.release_notes.toPlainText())
+        self.assertEqual(
+            {button.text() for button in dialog.findChildren(QPushButton)},
+            {"Download Verified ZIP", "Open Release Page", "Later"},
+        )
+        dialog.download_button.click()
+        self.assertEqual(dialog.selected_action, "download")
 
     def test_reports_and_backups_default_to_the_configured_case_folder(self):
         with patch(
