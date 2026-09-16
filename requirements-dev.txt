@@ -1,2 +1,2 @@
 -r requirements.txt
-pypdf>=6,<7
+pypdf>=6.18.1,<7
