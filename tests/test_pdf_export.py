@@ -214,6 +214,38 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("Hit & Run Investigation", working_text)
             self.assertNotIn("Hit & Run Investigation", compact_text)
 
+    def test_blank_packet_fields_have_no_printed_dash_placeholders(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = CaseRepository(root / "blank-fields.sqlite3")
+            case = repository.create_case("26-BLANK", "Packet QA")
+            case.assignment = "   "
+            repository.save_case(case)
+            person = repository.save_person(Person(
+                id="", case_id=case.id, first_name="Packet", last_name="Person",
+            ))
+            repository.save_vehicle(Vehicle(id="", case_id=case.id))
+            repository.save_participant_details(ParticipantDetails(
+                person_id=person.id, transported="", transported_to="Hospital X",
+            ))
+            repository.save_vru_analysis(VRUAnalysis(
+                id="", case_id=case.id, person_id=person.id,
+            ))
+
+            for export, name in (
+                (export_case_pdf, "working.pdf"),
+                (export_case_compact_pdf, "compact.pdf"),
+                (export_case_summary_pdf, "review.pdf"),
+            ):
+                with self.subTest(name=name):
+                    reader = PdfReader(export(repository, case.id, root / name))
+                    text = "\n".join(page.extract_text() or "" for page in reader.pages)
+                    self.assertIn("26-BLANK", text)
+                    self.assertFalse(any(line.strip() == "-" for line in text.splitlines()))
+                    self.assertNotIn(" - Unidentified vehicle", text)
+                    self.assertNotIn(" - Hospital X", text)
+                    self.assertNotIn("Packet Person / -", text)
+
     def test_review_and_da_routing_supports_all_three_statuses(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -142,8 +142,9 @@ class _PacketCanvas(pdf_canvas.Canvas):
 
 
 def _text(value: object) -> str:
-    if value is None or value == "":
-        return "-"
+    if value is None or (isinstance(value, str) and not value.strip()):
+        # Keep an empty line's height in packet tables without printing a mark.
+        return "&#160;"
     return escape(str(value)).replace("\n", "<br/>")
 
 
@@ -176,7 +177,7 @@ def _coordinates_field_cell(details: CrashDetails, styles) -> list[Paragraph]:
 
 def _name(person_id: str | None, people: dict[str, Person]) -> str:
     if not person_id:
-        return "-"
+        return ""
     person = people.get(person_id)
     return person.display_name if person else "Unknown person"
 
@@ -188,6 +189,14 @@ def _person_address(person: Person) -> str:
     return ", ".join(
         value for value in (person.address, person.city, state_and_zip) if value
     )
+
+
+def _join_nonblank(separator: str, *values: str) -> str:
+    return separator.join(value for value in values if value and value.strip())
+
+
+def _vehicle_label(vehicle: Vehicle) -> str:
+    return _join_nonblank(" - ", vehicle.vehicle_number, vehicle.description)
 
 
 def export_case_pdf(
@@ -1202,10 +1211,12 @@ def _hit_run_section(
     for index, lead in enumerate(vehicle_leads):
         if index:
             story.append(CondPageBreak(2.7 * inch))
-        heading = f"{lead.lead_number or 'Unnumbered lead'} - {lead.description}"
+        heading = _join_nonblank(
+            " - ", lead.lead_number or "Unnumbered lead", lead.description
+        )
         linked_vehicle = vehicles.get(lead.linked_vehicle_id)
         linked_vehicle_label = (
-            f"{linked_vehicle.vehicle_number} - {linked_vehicle.description}"
+            _vehicle_label(linked_vehicle)
             if linked_vehicle else ""
         )
         last_seen = " ".join(
@@ -1267,7 +1278,9 @@ def _hit_run_section(
     for index, lead in enumerate(person_leads):
         if index:
             story.append(CondPageBreak(3.0 * inch))
-        heading = f"{lead.lead_number or 'Unnumbered lead'} - {lead.display_name}"
+        heading = _join_nonblank(
+            " - ", lead.lead_number or "Unnumbered lead", lead.display_name
+        )
         linked_person = people.get(lead.linked_person_id)
         associated_vehicle = vehicle_lead_labels.get(lead.vehicle_lead_id, "")
         address = ", ".join(
@@ -1531,7 +1544,7 @@ def _people_section(
         data.append([
             Paragraph(_text(person.display_name), styles["Cell"]),
             Paragraph(role_markup, styles["Cell"]),
-            Paragraph("<br/>".join(identity_lines) or "-", styles["Cell"]),
+            Paragraph("<br/>".join(identity_lines) or "&#160;", styles["Cell"]),
             Paragraph(_text(_person_address(person)), styles["Cell"]),
             Paragraph(_text(phones), styles["Cell"]),
             Paragraph(_text("; ".join(value for value in (
@@ -1557,7 +1570,7 @@ def _participant_sections(
     vehicles: list[Vehicle],
     styles,
 ) -> list[object]:
-    vehicle_names = {vehicle.id: f"{vehicle.vehicle_number} - {vehicle.description}" for vehicle in vehicles}
+    vehicle_names = {vehicle.id: _vehicle_label(vehicle) for vehicle in vehicles}
     qualifying = [
         person for person in people
         if _has_detail(participant_details[person.id], {"person_id", "updated_at"})
@@ -1611,9 +1624,8 @@ def _participant_sections(
                     ), styles),
                 ])
             participant_data.extend([
-                [_field_cell("TRANSPORT", (
-                    f"{details.transported} - {details.transported_to}"
-                    if details.transported_to else details.transported
+                [_field_cell("TRANSPORT", _join_nonblank(
+                    " - ", details.transported, details.transported_to
                 ), styles), _field_cell("HOSPITAL / RECORDS", "; ".join(
                     value for value in (
                         details.hospital, details.medical_records_status,
@@ -1785,7 +1797,7 @@ def _vehicles_section(
         story.append(Paragraph("No vehicles entered.", styles["Empty"]))
         return story
     for vehicle in vehicles:
-        heading = f"{_text(vehicle.vehicle_number or 'Vehicle')} - {_text(vehicle.description)}"
+        heading = _text(_vehicle_label(vehicle))
         insurance_company = vehicle.insurance_company or vehicle.insurance
         towing = "No"
         if vehicle.towed:
@@ -2053,7 +2065,7 @@ def _witness_contact_sections(
     ]
     if not witnesses and not contacts:
         return []
-    vehicle_names = {vehicle.id: f"{vehicle.vehicle_number} - {vehicle.description}" for vehicle in vehicles}
+    vehicle_names = {vehicle.id: _vehicle_label(vehicle) for vehicle in vehicles}
     story: list[object] = [Paragraph("Witness Interviews and Contacts", styles["Section"])]
     for person, details in witnesses:
         story.append(Paragraph(_text(person.display_name), styles["Subsection"]))
@@ -2138,12 +2150,14 @@ def _vru_section(
 ) -> list[object]:
     if not analyses:
         return []
-    vehicle_names = {vehicle.id: f"{vehicle.vehicle_number} - {vehicle.description}" for vehicle in vehicles}
+    vehicle_names = {vehicle.id: _vehicle_label(vehicle) for vehicle in vehicles}
     story: list[object] = [Paragraph("Vulnerable Road User Analysis", styles["Section"])]
     for analysis in analyses:
         subject = _name(analysis.person_id, people)
-        vehicle = vehicle_names.get(analysis.vehicle_id, "-")
-        story.append(Paragraph(f"{_text(subject)} / {_text(vehicle)}", styles["Subsection"]))
+        vehicle = vehicle_names.get(analysis.vehicle_id, "")
+        story.append(Paragraph(
+            _text(_join_nonblank(" / ", subject, vehicle)), styles["Subsection"]
+        ))
         data = [
             [_field_cell("CLOTHING", " / ".join(
                 x for x in (analysis.upper_clothing, analysis.lower_clothing) if x
