@@ -412,6 +412,7 @@ class Vehicle:
     towed: bool = False
     tow_information: str = ""
     edr_status: str = ""
+    edr_not_downloaded_reason: str = ""
     warrant_obtained: bool = False
     vehicle_inspection_completed: bool = False
     nhtsa_recalls_checked: bool = False

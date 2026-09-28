@@ -260,7 +260,6 @@ class AddRecordWorkflowTest(unittest.TestCase):
             dialog.model.setText("Sedan")
             dialog.trim.setText("Touring")
             dialog.body_style.setText("Four-door sedan")
-            dialog.vehicle_weight.setText("3,750 lb")
             dialog.engine.setText("2.0 L Turbo")
             dialog.tire_size.setText("235/40R19")
             dialog.driver.setCurrentIndex(dialog.driver.findData(driver.id))
@@ -282,8 +281,13 @@ class AddRecordWorkflowTest(unittest.TestCase):
                 "Released to registered owner with receipt"
             )
             dialog.property_damage.setPlainText("None")
+            dialog.edr_not_downloaded_reason.setText(
+                "Vehicle fire damage prevented CDR retrieval"
+            )
             for checkbox in dialog.vehicle_workflow_boxes.values():
                 checkbox.setChecked(True)
+            dialog.vehicle_workflow_boxes["cdr_imaged"].setChecked(False)
+            self.assertTrue(dialog.edr_not_downloaded_reason.isEnabled())
 
         self._complete_modal_dialog(self.window.add_vehicle, VehicleDialog, configure)
 
@@ -303,7 +307,6 @@ class AddRecordWorkflowTest(unittest.TestCase):
         )
         self.assertEqual(vehicles[0].body_style, "Four-door sedan")
         self.assertEqual(vehicles[0].trim, "Touring")
-        self.assertEqual(vehicles[0].vehicle_weight, "3,750 lb")
         self.assertEqual(vehicles[0].engine, "2.0 L Turbo")
         self.assertEqual(vehicles[0].tire_size, "235/40R19")
         self.assertEqual(vehicles[0].property_damage, "None")
@@ -316,7 +319,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertTrue(vehicles[0].vehicle_inspection_completed)
         self.assertTrue(vehicles[0].nhtsa_recalls_checked)
         self.assertTrue(vehicles[0].cdr_equipped)
-        self.assertTrue(vehicles[0].cdr_imaged)
+        self.assertFalse(vehicles[0].cdr_imaged)
+        self.assertEqual(
+            vehicles[0].edr_not_downloaded_reason,
+            "Vehicle fire damage prevented CDR retrieval",
+        )
         self.assertTrue(vehicles[0].cdr_report_uploaded)
         self.assertTrue(vehicles[0].released)
         self.assertEqual(vehicles[0].release_date, "2026-08-05")
@@ -366,7 +373,6 @@ class AddRecordWorkflowTest(unittest.TestCase):
         )
         self.assertEqual(edit_dialog.insurance_claim_number.text(), "CLM-24680")
         self.assertEqual(edit_dialog.trim.text(), "Touring")
-        self.assertEqual(edit_dialog.vehicle_weight.text(), "3,750 lb")
         self.assertEqual(edit_dialog.engine.text(), "2.0 L Turbo")
         self.assertEqual(edit_dialog.tire_size.text(), "235/40R19")
         self.assertEqual(edit_dialog.insurance_adjuster_name.text(), "Riley Adjuster")
@@ -393,7 +399,9 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertTrue(self.window.periodic_autosave_timer.isActive())
         self.assertEqual(self.window.periodic_autosave_timer.interval(), 30_000)
 
-        self.window.general_notes.setPlainText("Saved when leaving Overview")
+        self.window.current_case.notes = "Previously saved general notes"
+        self.repository.save_case(self.window.current_case)
+        self.window.summary.setPlainText("Saved when leaving Overview")
         self.window.autosave_timer.stop()
         self.assertTrue(self.window.overview_dirty)
         people_index = next(
@@ -404,8 +412,12 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.window.tabs.setCurrentIndex(people_index)
         self.app.processEvents()
         self.assertEqual(
-            self.repository.get_case(self.case.id).notes,
+            self.repository.get_case(self.case.id).summary,
             "Saved when leaving Overview",
+        )
+        self.assertEqual(
+            self.repository.get_case(self.case.id).notes,
+            "Previously saved general notes",
         )
         self.assertFalse(self.window.overview_dirty)
 
@@ -1750,6 +1762,14 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(promoted_person_lead.linked_person_id, confirmed_person.id)
 
     def test_packet_case_fields_round_trip(self):
+        labels = {label.text() for label in self.window.findChildren(QLabel)}
+        self.assertIn("MCT notified date", labels)
+        self.assertIn("MCT notified time", labels)
+        self.assertIn("Investigator en route", labels)
+        self.assertIn("Investigator arrival", labels)
+        self.assertIn("Scene Sergeant", labels)
+        self.assertIn("First area of impact", labels)
+        self.assertNotIn("Initial point of collision", labels)
         self.assertEqual(self.window.crash_date.placeholderText(), "MM/DD/YYYY")
         self.assertEqual(
             self.window.packet_widgets["team_notified_date"].placeholderText(),
@@ -2414,7 +2434,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
 
     def test_response_evidence_uses_revised_personnel_and_evidence_fields(self):
         labels = {label.text() for label in self.window.findChildren(QLabel)}
-        self.assertIn("MCT Sergeant", labels)
+        self.assertIn("Scene Sergeant", labels)
         self.assertIn("MDI", labels)
         self.assertNotIn("Sergeant", labels)
         self.assertNotIn("Medical examiner on scene", labels)
@@ -2494,7 +2514,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
 
     def test_narrative_fields_use_offline_spell_check(self):
         self.assertIsInstance(self.window.summary, SpellCheckedTextEdit)
-        self.assertIsInstance(self.window.general_notes, SpellCheckedTextEdit)
+        self.assertFalse(hasattr(self.window, "general_notes"))
+        self.assertNotIn(
+            "General investigative notes",
+            {label.text() for label in self.window.findChildren(QLabel)},
+        )
         self.assertFalse(hasattr(self.window, "key_questions"))
         self.assertNotIn(
             "Key questions / unresolved issues",

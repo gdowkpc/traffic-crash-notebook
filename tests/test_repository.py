@@ -485,6 +485,67 @@ class RepositoryTest(unittest.TestCase):
         self.assertIsInstance(listed.released, bool)
         self.assertTrue(listed.released)
 
+    def test_legacy_vehicle_weight_migrates_to_inspection_measured_weight(self):
+        vehicle = self.repository.save_vehicle(Vehicle(
+            id=new_id(), case_id=self.case.id, vehicle_number="V-WEIGHT",
+            vehicle_weight="3,750 lb",
+        ))
+        no_inspection = self.repository.save_vehicle(Vehicle(
+            id=new_id(), case_id=self.case.id, vehicle_number="V-WEIGHT-ONLY",
+            vehicle_weight="4,100 lb",
+        ))
+        explicit_inspection = self.repository.save_vehicle(Vehicle(
+            id=new_id(), case_id=self.case.id, vehicle_number="V-WEIGHT-EXPLICIT",
+            vehicle_weight="4,500 lb",
+        ))
+        self.repository.save_vehicle_inspection(VehicleInspection(
+            vehicle_id=vehicle.id, curb_weight="3,200 lb",
+        ))
+        self.repository.save_vehicle_inspection(VehicleInspection(
+            vehicle_id=explicit_inspection.id, measured_weight="4,450 lb",
+        ))
+        with self.repository._connect() as connection:
+            connection.execute(
+                "DELETE FROM vehicle_inspections WHERE vehicle_id=?",
+                (no_inspection.id,),
+            )
+            connection.execute("PRAGMA user_version = 34")
+
+        self.repository._initialize()
+
+        migrated = self.repository.get_vehicle_inspection(vehicle.id)
+        self.assertEqual(migrated.measured_weight, "3,750 lb")
+        self.assertEqual(migrated.curb_weight, "3,200 lb")
+        self.assertEqual(
+            self.repository.get_vehicle_inspection(no_inspection.id).measured_weight,
+            "4,100 lb",
+        )
+        self.assertEqual(
+            self.repository.get_vehicle_inspection(explicit_inspection.id).measured_weight,
+            "4,450 lb",
+        )
+        self.assertEqual(
+            self.repository.get_vehicle(vehicle.id).vehicle_weight,
+            "3,750 lb",
+        )
+
+    def test_cleared_measured_weight_stays_blank_after_vehicle_profile_save(self):
+        vehicle = self.repository.save_vehicle(Vehicle(
+            id=new_id(), case_id=self.case.id, vehicle_weight="3,750 lb",
+        ))
+        inspection = self.repository.get_vehicle_inspection(vehicle.id)
+        self.assertEqual(inspection.measured_weight, "3,750 lb")
+        inspection.measured_weight = ""
+        self.repository.save_vehicle_inspection(inspection)
+
+        vehicle.make = "Toyota"
+        self.repository.save_vehicle(vehicle)
+        self.assertEqual(
+            self.repository.get_vehicle_inspection(vehicle.id).measured_weight,
+            "",
+        )
+        self.assertEqual(self.repository.get_vehicle(vehicle.id).vehicle_weight, "3,750 lb")
+
     def test_exchange_report_details_round_trip(self):
         details = self.repository.save_exchange_report_details(
             ExchangeReportDetails(

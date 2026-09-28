@@ -187,7 +187,7 @@ class PdfExportTest(unittest.TestCase):
                 "People",
                 "Participant and Driver Details",
                 "Vehicles",
-                "Witness Interviews and Contacts",
+                "Witness Interviews",
                 "Vulnerable Road User Analysis",
                 "Evidence",
                 "Tasks",
@@ -213,6 +213,38 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("GENERAL HANDWRITTEN CONTINUATION", compact_text)
             self.assertNotIn("Hit & Run Investigation", working_text)
             self.assertNotIn("Hit & Run Investigation", compact_text)
+
+    def test_blank_packet_fields_have_no_printed_dash_placeholders(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = CaseRepository(root / "blank-fields.sqlite3")
+            case = repository.create_case("26-BLANK", "Packet QA")
+            case.assignment = "   "
+            repository.save_case(case)
+            person = repository.save_person(Person(
+                id="", case_id=case.id, first_name="Packet", last_name="Person",
+            ))
+            repository.save_vehicle(Vehicle(id="", case_id=case.id))
+            repository.save_participant_details(ParticipantDetails(
+                person_id=person.id, transported="", transported_to="Hospital X",
+            ))
+            repository.save_vru_analysis(VRUAnalysis(
+                id="", case_id=case.id, person_id=person.id,
+            ))
+
+            for export, name in (
+                (export_case_pdf, "working.pdf"),
+                (export_case_compact_pdf, "compact.pdf"),
+                (export_case_summary_pdf, "review.pdf"),
+            ):
+                with self.subTest(name=name):
+                    reader = PdfReader(export(repository, case.id, root / name))
+                    text = "\n".join(page.extract_text() or "" for page in reader.pages)
+                    self.assertIn("26-BLANK", text)
+                    self.assertFalse(any(line.strip() == "-" for line in text.splitlines()))
+                    self.assertNotIn(" - Unidentified vehicle", text)
+                    self.assertNotIn(" - Hospital X", text)
+                    self.assertNotIn("Packet Person / -", text)
 
     def test_review_and_da_routing_supports_all_three_statuses(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -559,6 +591,7 @@ class PdfExportTest(unittest.TestCase):
             case.assignment = "Traffic Investigations Unit"
             case.first_harmful_event = "Vehicle one struck a pedestrian in the crosswalk."
             case.summary = "A detailed but unofficial investigative working summary."
+            case.notes = "LEGACY GENERAL INVESTIGATIVE NOTES"
             repository.save_case(case)
             person = Person(
                 id=new_id(), case_id=case.id, first_name="Morgan", last_name="Lee",
@@ -577,7 +610,7 @@ class PdfExportTest(unittest.TestCase):
             vehicle = Vehicle(
                 id=new_id(), case_id=case.id, vehicle_number="V-1", year="2024",
                 make="Toyota", model="Camry", driver_person_id=person.id,
-                trim="XSE", vehicle_weight="3,595 lb", engine="2.5 L I4",
+                trim="XSE", engine="2.5 L I4",
                 tire_size="235/40R19",
                 insurance_company="Example Mutual",
                 insurance_policy_number="POL-24680",
@@ -604,13 +637,15 @@ class PdfExportTest(unittest.TestCase):
                 winds="NW 6", humidity="43", pressure="29.92",
                 precipitation="0.04", visibility="0.5",
                 surface_condition="LEGACY SINGLE SURFACE VALUE",
-                weather_station="KPDX ASOS", weather_time="14:35 PDT",
+                weather_condition="Clear", weather_station="KPDX ASOS",
+                weather_time="14:35 PDT",
                 lighting_conditions="Daylight", speed_limit="35",
                 sunrise="05:59", sunset="20:31",
                 civil_twilight_morning="05:27", civil_twilight_evening="21:03",
                 moonrise="22:44", moonset="11:28", moon_phase="Waxing gibbous",
                 streetlight_notes="LED luminaire at northeast corner",
                 area_classifications="Business; Residential; Interstate",
+                initial_point_of_collision="Crosswalk area",
             ))
             repository.save_surface_observation(SurfaceObservation(
                 id="", case_id=case.id, location="Northbound lane",
@@ -750,6 +785,7 @@ class PdfExportTest(unittest.TestCase):
             ))
             repository.save_vehicle_inspection(VehicleInspection(
                 vehicle_id=vehicle.id, mileage="12,345", brake_system="ABS",
+                measured_weight="3,595 lb",
                 tire_contribution="Yes", tire_contribution_explanation="RF tread separation",
                 headlights_equipped="Yes", headlights_operable="No",
                 ignition_position="On", device_observations="Mounted GPS illuminated",
@@ -871,6 +907,16 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("CHRONOLOGY CONTINUATION", normalized_text)
             self.assertIn("Review surveillance video", text)
             self.assertIn("Road and Weather Conditions", text)
+            self.assertIn("WEATHER CONDITIONS", text)
+            self.assertIn("First Area of Impact", text)
+            self.assertNotIn("Initial Point of Collision", text)
+            self.assertNotIn("Road / Weather Follow-Up", text)
+            self.assertIn("MCT NOTIFIED", text)
+            self.assertIn("INVESTIGATOR EN ROUTE / ARRIVAL", text)
+            self.assertIn("SCENE SERGEANT", text)
+            self.assertIn("PROSECUTOR ON SCENE", text)
+            self.assertIn("MDI", text)
+            self.assertNotIn("SCENE PERSONNEL", text)
             self.assertIn("WEATHER STATION", normalized_text)
             self.assertIn("TIME OF READING", normalized_text)
             self.assertIn("71 F", normalized_text)
@@ -952,8 +998,8 @@ class PdfExportTest(unittest.TestCase):
             )
             self.assertIn("NOT AT INTERSECTION", normalized_text)
             self.assertIn("250 ft North of intersection", normalized_text)
-            self.assertIn("MCT Sergeant: Taylor Example", normalized_text)
-            self.assertIn("MDI: Morgan Example", normalized_text)
+            self.assertIn("SCENE SERGEANT Taylor Example", normalized_text)
+            self.assertIn("MDI Morgan Example", normalized_text)
             self.assertNotIn("LEGACY CRIMINALIST VALUE", normalized_text)
             self.assertIn(
                 "Investigator Photos, Uploaded to Axon, FARO, Surveillance Video",
@@ -1027,15 +1073,21 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("air bag Unknown; helmet Non-Standard", normalized_text)
             self.assertIn("12,345", text)
             self.assertIn("225/45R18", text)
-            self.assertIn("Witness Interviews and Contacts", text)
+            self.assertIn("Morgan Lee (DECEASED)", text)
+            self.assertNotIn("<font", text)
+            self.assertIn("Witness Interviews", text)
             witness_block = text[
-                text.index("Witness Interviews and Contacts"):
+                text.rindex("Witness Interviews"):
                 text.index("Vulnerable Road User Analysis")
             ]
             self.assertIn("SIGNIFICANCE", witness_block)
             self.assertIn("STATEMENT SUMMARY", witness_block)
             self.assertIn("observed the entire signal cycle", witness_block)
             self.assertNotIn("OCCUPATION", witness_block)
+            people_block = text[text.index("People"):text.index("Participant and Driver Details")]
+            self.assertIn("People Contacts", people_block)
+            self.assertIn("Alex Lee", people_block)
+            self.assertNotIn("Alex Lee", witness_block)
             self.assertNotIn("FOLLOW-UP", witness_block)
             self.assertNotIn("WITNESS FOLLOW-UP OMITTED FROM PACKET", witness_block)
             self.assertIn("PERSON", normalized_text)
@@ -1062,7 +1114,9 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("Crash Diagram Completed", text)
             self.assertIn("not an official report", text.lower())
             self.assertNotIn("FULL WORKING PACKET", text)
-            self.assertIn("COVER NOTES", text)
+            self.assertNotIn("COVER NOTES", text)
+            self.assertNotIn("LEGACY GENERAL INVESTIGATIVE NOTES", text)
+            self.assertNotIn("General investigative notes", text)
             self.assertNotIn("ROUTING UPDATES", text)
             for retired_heading in (
                 "Driver background",
@@ -1083,6 +1137,8 @@ class PdfExportTest(unittest.TestCase):
             self.assertLess(len(compact_reader.pages), len(reader.pages))
             self.assertIn("COMPACT COMPLETED-CASE PACKET", compact_text)
             self.assertNotIn("COVER NOTES", compact_text)
+            self.assertNotIn("LEGACY GENERAL INVESTIGATIVE NOTES", compact_text)
+            self.assertNotIn("General investigative notes", compact_text)
             self.assertIn("Morgan Lee", compact_text)
             self.assertIn("KPDX ASOS", compact_text)
             self.assertIn("71 F", compact_text)
@@ -1098,6 +1154,11 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("CLM-97531", normalized_compact_text)
             self.assertIn("XSE", normalized_compact_text)
             self.assertIn("3,595 lb", normalized_compact_text)
+            self.assertIn(
+                "MEASURED WEIGHT 3,595 lb",
+                normalized_compact_text,
+            )
+            self.assertNotIn("VEHICLE WEIGHT", normalized_compact_text)
             self.assertIn("2.5 L I4", normalized_compact_text)
             self.assertIn("235/40R19", normalized_compact_text)
             self.assertIn("Avery Adjuster", normalized_compact_text)
@@ -1131,6 +1192,8 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("26-123456", summary_text)
             self.assertIn("Scene scan completed", summary_text)
             self.assertIn("Quick review", summary_text)
+            self.assertNotIn("LEGACY GENERAL INVESTIGATIVE NOTES", summary_text)
+            self.assertNotIn("General investigative notes", summary_text)
             self.assertNotIn("Key questions", summary_text)
             self.assertNotIn("unresolved issues", summary_text.lower())
             self.assertIn(f"Page 1 of {len(summary_reader.pages)}", summary_text)

@@ -66,7 +66,7 @@ from .models import (
     scene_evidence_for_output,
 )
 from .repository import CaseRepository
-from .resources import tiu_logo_path
+from .resources import mct_logo_path, tiu_logo_path
 
 
 NAVY = colors.HexColor("#18344A")
@@ -142,8 +142,9 @@ class _PacketCanvas(pdf_canvas.Canvas):
 
 
 def _text(value: object) -> str:
-    if value is None or value == "":
-        return "-"
+    if value is None or (isinstance(value, str) and not value.strip()):
+        # Keep an empty line's height in packet tables without printing a mark.
+        return "&#160;"
     return escape(str(value)).replace("\n", "<br/>")
 
 
@@ -174,11 +175,17 @@ def _coordinates_field_cell(details: CrashDetails, styles) -> list[Paragraph]:
     ]
 
 
-def _name(person_id: str | None, people: dict[str, Person]) -> str:
+def _name(
+    person_id: str | None,
+    people: dict[str, Person],
+    participant_details: dict[str, ParticipantDetails] | None = None,
+) -> str:
     if not person_id:
-        return "-"
+        return ""
     person = people.get(person_id)
-    return person.display_name if person else "Unknown person"
+    if not person:
+        return "Unknown person"
+    return _person_name_markup(person, participant_details or {})
 
 
 def _person_address(person: Person) -> str:
@@ -188,6 +195,14 @@ def _person_address(person: Person) -> str:
     return ", ".join(
         value for value in (person.address, person.city, state_and_zip) if value
     )
+
+
+def _join_nonblank(separator: str, *values: str) -> str:
+    return separator.join(value for value in values if value and value.strip())
+
+
+def _vehicle_label(vehicle: Vehicle) -> str:
+    return _join_nonblank(" - ", vehicle.vehicle_number, vehicle.description)
 
 
 def export_case_pdf(
@@ -278,8 +293,6 @@ def export_case_pdf(
             overview_location,
         )
     )
-    if working_copy:
-        story.extend(_write_in_area("Cover Notes", styles, lines=5))
     story.append(PageBreak())
     story.extend(_packet_case_section(
         case, checklist, charge_dispositions, crash_details, video_sources, counts, styles
@@ -299,8 +312,6 @@ def export_case_pdf(
             roadway_records,
             styles,
         ))
-        if working_copy:
-            story.extend(_write_in_area("Road / Weather Follow-Up", styles, lines=4))
 
     has_hit_run = _has_hit_run_content(
         hit_run_overview,
@@ -317,6 +328,7 @@ def export_case_pdf(
             hit_run_person_leads,
             people,
             {vehicle.id: vehicle for vehicle in vehicles},
+            participant_details,
             styles,
         ))
         if working_copy:
@@ -326,10 +338,10 @@ def export_case_pdf(
                 lines=12,
             ))
 
-    if working_copy or people_list:
-        story.extend(_people_section(people_list, participant_details, styles))
-        if working_copy:
-            story.extend(_write_in_area("Additional People / Contact Updates", styles, lines=12))
+    if working_copy or people_list or contacts:
+        story.extend(_people_section(
+            people_list, participant_details, contacts, people, styles
+        ))
 
     participant_story = _participant_sections(
         people_list, participant_details, driver_profiles, vehicles, styles
@@ -350,13 +362,14 @@ def export_case_pdf(
 
     if working_copy or vehicles:
         story.extend(_vehicles_section(
-            vehicles, people, inspections, tires, motorcycle_inspections, styles
+            vehicles, people, inspections, tires, motorcycle_inspections,
+            participant_details, styles
         ))
         if working_copy:
             story.extend(_write_in_area("Vehicle / Inspection Follow-Up", styles, lines=20))
 
     witness_contact_story = _witness_contact_sections(
-        people_list, witness_details, contacts, people, vehicles, styles
+        people_list, witness_details, participant_details, styles
     )
     if witness_contact_story:
         story.append(PageBreak() if working_copy else CondPageBreak(2.5 * inch))
@@ -370,7 +383,9 @@ def export_case_pdf(
             lines=9,
         ))
 
-    vru_story = _vru_section(vru_analyses, people, vehicles, styles)
+    vru_story = _vru_section(
+        vru_analyses, people, vehicles, participant_details, styles
+    )
     if vru_story:
         story.extend(vru_story)
         if working_copy:
@@ -383,7 +398,7 @@ def export_case_pdf(
             lines=5,
         ))
 
-    if working_copy or property_receipts or tasks or chronology or case.notes:
+    if working_copy or property_receipts or tasks or chronology:
         story.append(PageBreak())
         if working_copy or property_receipts:
             story.extend(_evidence_section(
@@ -405,10 +420,8 @@ def export_case_pdf(
             story.extend(_chronology_section(chronology, styles))
             if working_copy:
                 story.extend(_write_in_area("Journal Continuation", styles, lines=7))
-        if working_copy or case.notes:
-            story.extend(_notes_section(case, styles))
-            if working_copy:
-                story.extend(_write_in_area("General Handwritten Continuation", styles, lines=20))
+        if working_copy:
+            story.extend(_write_in_area("General Handwritten Continuation", styles, lines=20))
 
     canvas_factory = partial(
         _PacketCanvas,
@@ -489,6 +502,10 @@ def export_case_summary_pdf(
             hit_run_person_leads,
             people,
             vehicles,
+            {
+                person.id: repository.get_participant_details(person.id)
+                for person in people.values()
+            },
             styles,
         ))
     property_receipts = repository.list_property_receipts(case_id)
@@ -502,7 +519,6 @@ def export_case_summary_pdf(
     ))
     story.extend(_tasks_section(repository.list_tasks(case_id), styles))
     story.extend(_chronology_section(repository.list_chronology(case_id), styles))
-    story.extend(_notes_section(case, styles))
     canvas_factory = partial(
         _PacketCanvas,
         case_label=case.case_number or "Untitled Case",
@@ -554,6 +570,13 @@ def _styles():
     ))
     styles.add(ParagraphStyle(
         name="Cell", parent=styles["Normal"], fontSize=8, leading=10,
+    ))
+    styles.add(ParagraphStyle(
+        name="VehicleNoteLabel", parent=styles["Label"],
+        spaceBefore=3, spaceAfter=2, keepWithNext=1,
+    ))
+    styles.add(ParagraphStyle(
+        name="VehicleNoteValue", parent=styles["BodySmall"], spaceAfter=5,
     ))
     styles.add(ParagraphStyle(
         name="Empty", parent=styles["BodyText"], fontSize=9, leading=12,
@@ -648,17 +671,28 @@ def _packet_cover(
         f"Traffic Crash Notebook v{__version__} - generated {_text(generated)}",
         styles["CaseSubtitle"],
     ))
-    logo_path = tiu_logo_path()
-    if logo_path.exists():
-        logo = Image(str(logo_path), width=0.9 * inch, height=0.87 * inch)
+    tiu_path = tiu_logo_path()
+    mct_path = mct_logo_path()
+    if tiu_path.exists() or mct_path.exists():
+        logo_width, logo_height = 0.9 * inch, 0.87 * inch
+        tiu_logo = (
+            Image(str(tiu_path), width=logo_width, height=logo_height)
+            if tiu_path.exists() else ""
+        )
+        mct_logo = (
+            Image(str(mct_path), width=logo_width, height=logo_height)
+            if mct_path.exists() else ""
+        )
         title_table = Table(
-            [[logo, title_content]],
-            colWidths=[1.08 * inch, 5.52 * inch],
+            [[tiu_logo, title_content, mct_logo]],
+            colWidths=[1.08 * inch, 4.44 * inch, 1.08 * inch],
         )
         title_table.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("LEFTPADDING", (0, 0), (-1, -1), 0),
             ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (2, 0), (2, 0), 0),
+            ("ALIGN", (2, 0), (2, 0), "RIGHT"),
             ("TOPPADDING", (0, 0), (-1, -1), 0),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
         ]))
@@ -989,20 +1023,16 @@ def _packet_case_section(
          _field_cell("NOT AT INTERSECTION", non_intersection, styles)],
         [_coordinates_field_cell(details, styles),
          _field_cell("JURISDICTION", details.road_jurisdiction, styles)],
-        [_field_cell("TEAM NOTIFIED", " ".join(value for value in (
+        [_field_cell("MCT NOTIFIED", " ".join(value for value in (
             format_date_for_display(details.team_notified_date),
             details.team_notified_time,
         ) if value), styles),
-         _field_cell("EN ROUTE / ARRIVAL", " / ".join(value for value in (
+         _field_cell("INVESTIGATOR EN ROUTE / ARRIVAL", " / ".join(value for value in (
              details.investigator_en_route, details.investigator_arrival,
          ) if value), styles)],
-        [_field_cell("SCENE PERSONNEL", "; ".join(value for value in (
-            f"MCT Sergeant: {details.sergeant}" if details.sergeant else "",
-            f"Prosecutor: {details.prosecutor_on_scene}"
-            if details.prosecutor_on_scene else "",
-            f"MDI: {details.medical_examiner_on_scene}"
-            if details.medical_examiner_on_scene else "",
-        ) if value), styles),
+        [_field_cell("SCENE SERGEANT", details.sergeant, styles),
+         _field_cell("PROSECUTOR ON SCENE", details.prosecutor_on_scene, styles)],
+        [_field_cell("MDI", details.medical_examiner_on_scene, styles),
          _field_cell("RECORD COUNTS", (
              f"{counts['vehicles']} vehicles; {counts['injured']} injured; "
              f"{counts['fatal']} fatal; {counts['vru']} VRU"
@@ -1069,17 +1099,31 @@ def _has_hit_run_content(
     )
 
 
-def _hit_run_detail_table(rows: list[tuple[str, str, str, str]], styles) -> Table:
+def _hit_run_detail_table(
+    rows: list[tuple[str, str, str, str]],
+    styles,
+    markup_values: set[tuple[int, int]] | None = None,
+) -> Table:
+    markup_values = markup_values or set()
     data = [
         [
-            _field_cell(left_label, left_value, styles),
-            _field_cell(right_label, right_value, styles),
+            _field_cell_markup(left_label, left_value, styles)
+            if (row_index, 0) in markup_values
+            else _field_cell(left_label, left_value, styles),
+            _field_cell_markup(right_label, right_value, styles)
+            if (row_index, 1) in markup_values
+            else _field_cell(right_label, right_value, styles),
         ]
-        for left_label, left_value, right_label, right_value in rows
+        for row_index, (left_label, left_value, right_label, right_value) in enumerate(rows)
     ]
     table = Table(data, colWidths=[3.3 * inch, 3.3 * inch])
     table.setStyle(_standard_table_style())
     return table
+
+
+def _field_cell_markup(label: object, trusted_markup: str, styles) -> list[Paragraph]:
+    """Render generated, pre-escaped markup; caller must not pass raw user text."""
+    return [Paragraph(_text(label), styles["Label"]), Paragraph(trusted_markup, styles["Cell"])]
 
 
 def _append_hit_run_narratives(
@@ -1102,6 +1146,7 @@ def _hit_run_section(
     person_leads: list[HitRunPersonLead],
     people: dict[str, Person],
     vehicles: dict[str, Vehicle],
+    participant_details: dict[str, ParticipantDetails],
     styles,
 ) -> list[object]:
     story: list[object] = [
@@ -1202,10 +1247,12 @@ def _hit_run_section(
     for index, lead in enumerate(vehicle_leads):
         if index:
             story.append(CondPageBreak(2.7 * inch))
-        heading = f"{lead.lead_number or 'Unnumbered lead'} - {lead.description}"
+        heading = _join_nonblank(
+            " - ", lead.lead_number or "Unnumbered lead", lead.description
+        )
         linked_vehicle = vehicles.get(lead.linked_vehicle_id)
         linked_vehicle_label = (
-            f"{linked_vehicle.vehicle_number} - {linked_vehicle.description}"
+            _vehicle_label(linked_vehicle)
             if linked_vehicle else ""
         )
         last_seen = " ".join(
@@ -1267,8 +1314,14 @@ def _hit_run_section(
     for index, lead in enumerate(person_leads):
         if index:
             story.append(CondPageBreak(3.0 * inch))
-        heading = f"{lead.lead_number or 'Unnumbered lead'} - {lead.display_name}"
+        heading = _join_nonblank(
+            " - ", lead.lead_number or "Unnumbered lead", lead.display_name
+        )
         linked_person = people.get(lead.linked_person_id)
+        heading_markup = _text(heading)
+        linked_details = participant_details.get(linked_person.id) if linked_person else None
+        if linked_details and participant_is_deceased(linked_details):
+            heading_markup += f' <font color="{DECEASED_RED}"><b>(DECEASED)</b></font>'
         associated_vehicle = vehicle_lead_labels.get(lead.vehicle_lead_id, "")
         address = ", ".join(
             value for value in (
@@ -1294,7 +1347,7 @@ def _hit_run_section(
                 f"Facial hair: {lead.facial_hair}" if lead.facial_hair else "",
             ) if value
         )
-        story.append(Paragraph(_text(heading), styles["Subsection"]))
+        story.append(Paragraph(heading_markup, styles["Subsection"]))
         story.append(_hit_run_detail_table([
             ("STATUS", lead.status, "CONFIDENCE", lead.confidence),
             ("PHYSICAL DESCRIPTION", physical, "CLOTHING", lead.clothing),
@@ -1314,9 +1367,10 @@ def _hit_run_section(
                 "VEHICLE RELATIONSHIP",
                 lead.relationship_to_vehicle,
                 "LINKED PERSON",
-                linked_person.display_name if linked_person else "",
+                _person_name_markup(linked_person, participant_details)
+                if linked_person else "",
             ),
-        ], styles))
+        ], styles, markup_values={(4, 1)} if linked_person else None))
         _append_hit_run_narratives(
             story,
             (
@@ -1356,7 +1410,7 @@ def _conditions_section(
     visibility = format_weather_measurement("visibility", conditions.visibility)
     data = [
         [_field_cell("TEMPERATURE", temperature, styles),
-         _field_cell("WEATHER", conditions.weather_condition, styles)],
+         _field_cell("WEATHER CONDITIONS", conditions.weather_condition, styles)],
         [_field_cell("WEATHER STATION", conditions.weather_station, styles),
          _field_cell("TIME OF READING", conditions.weather_time, styles)],
         [_field_cell("VISIBILITY", visibility, styles), ""],
@@ -1463,7 +1517,7 @@ def _conditions_section(
         ("Lighting Conditions", conditions.lighting_conditions),
         ("Streetlight Notes", conditions.streetlight_notes),
         ("Visual Obstructions", conditions.visual_obstructions),
-        ("Initial Point of Collision", conditions.initial_point_of_collision),
+        ("First Area of Impact", conditions.initial_point_of_collision),
         ("Skid Test / Drag Sled Notes", conditions.skid_test_notes),
     )
     for title, value in narratives:
@@ -1494,60 +1548,125 @@ def _conditions_section(
 def _people_section(
     people: list[Person],
     participant_details: dict[str, ParticipantDetails],
+    contacts: list[ContactRelationship],
+    people_by_id: dict[str, Person],
     styles,
 ) -> list[object]:
     story: list[object] = [Paragraph("People", styles["Section"])]
     if not people:
         story.append(Paragraph("No people entered.", styles["Empty"]))
-        return story
-    data = [[Paragraph(item, styles["Label"]) for item in (
+    else:
+        data = [[Paragraph(item, styles["Label"]) for item in (
         "NAME", "ROLE(S)", "IDENTITY", "ADDRESS", "CONTACT", "OCCUPATION / NOTES"
-    )]]
-    for person in people:
-        role_markup = _text(", ".join(person.roles))
-        details = participant_details.get(person.id)
-        if details and participant_is_deceased(details):
-            role_markup += (
-                f'<br/><font color="{DECEASED_RED}"><b>DECEASED</b></font>'
+        )]]
+        for person in people:
+            role_markup = _text(", ".join(person.roles))
+            details = participant_details.get(person.id)
+            if details and participant_is_deceased(details):
+                role_markup += (
+                    f'<br/><font color="{DECEASED_RED}"><b>DECEASED</b></font>'
+                )
+            phones = "; ".join(value for value in (
+                f"Cell {person.cell_phone}" if person.cell_phone else "",
+                f"Home {person.home_phone}" if person.home_phone else "",
+                f"Work {person.work_phone}" if person.work_phone else "",
+                person.email,
+            ) if value)
+            sex_and_race = " / ".join(
+                value for value in (person.sex, person.race) if value
             )
-        phones = "; ".join(value for value in (
-            f"Cell {person.cell_phone}" if person.cell_phone else "",
-            f"Home {person.home_phone}" if person.home_phone else "",
-            f"Work {person.work_phone}" if person.work_phone else "",
-            person.email,
-        ) if value)
-        sex_and_race = " / ".join(
-            value for value in (person.sex, person.race) if value
+            display_dob = format_date_for_display(person.dob)
+            identity_lines = [
+                _text(value)
+                for value in (
+                    sex_and_race,
+                    f"DOB: {display_dob}" if display_dob else "",
+                )
+                if value
+            ]
+            data.append([
+                Paragraph(_person_name_markup(person, participant_details), styles["Cell"]),
+                Paragraph(role_markup, styles["Cell"]),
+                Paragraph("<br/>".join(identity_lines) or "&#160;", styles["Cell"]),
+                Paragraph(_text(_person_address(person)), styles["Cell"]),
+                Paragraph(_text(phones), styles["Cell"]),
+                Paragraph(_text("; ".join(value for value in (
+                    person.occupation,
+                    f"Business: {person.business_address}" if person.business_address else "",
+                    person.notes,
+                ) if value)), styles["Cell"]),
+            ])
+        table = Table(
+            data,
+            colWidths=[1.1 * inch, 0.85 * inch, 1.05 * inch, 1.25 * inch, 1.15 * inch, 1.2 * inch],
+            repeatRows=1,
         )
-        display_dob = format_date_for_display(person.dob)
-        identity_lines = [
-            _text(value)
-            for value in (
-                sex_and_race,
-                f"DOB: {display_dob}" if display_dob else "",
+        table.setStyle(_standard_table_style())
+        story.append(table)
+    if contacts:
+        story.append(Paragraph("People Contacts", styles["Subsection"]))
+        data = [[Paragraph(item, styles["Label"]) for item in (
+            "PERSON", "TYPE", "CONTACT", "PHONES / EMAIL", "ADDRESS / NOTES"
+        )]]
+        for contact in contacts:
+            contact_person = people_by_id.get(contact.contact_person_id)
+            contact_name = (
+                _person_name_markup(contact_person, participant_details)
+                if contact_person else _text(contact.contact_name)
             )
-            if value
-        ]
-        data.append([
-            Paragraph(_text(person.display_name), styles["Cell"]),
-            Paragraph(role_markup, styles["Cell"]),
-            Paragraph("<br/>".join(identity_lines) or "-", styles["Cell"]),
-            Paragraph(_text(_person_address(person)), styles["Cell"]),
-            Paragraph(_text(phones), styles["Cell"]),
-            Paragraph(_text("; ".join(value for value in (
-                person.occupation,
-                f"Business: {person.business_address}" if person.business_address else "",
-                person.notes,
-            ) if value)), styles["Cell"]),
-        ])
-    table = Table(
-        data,
-        colWidths=[1.1 * inch, 0.85 * inch, 1.05 * inch, 1.25 * inch, 1.15 * inch, 1.2 * inch],
-        repeatRows=1,
-    )
-    table.setStyle(_standard_table_style())
-    story.append(table)
+            subject_person = people_by_id.get(contact.subject_person_id)
+            subject = (
+                _person_name_markup(subject_person, participant_details)
+                if subject_person else "Needs person assignment"
+            )
+            data.append([
+                Paragraph(subject, styles["Cell"]),
+                Paragraph(_text(contact.contact_type), styles["Cell"]),
+                Paragraph(" - ".join(x for x in (
+                    contact_name, _text(contact.organization)
+                ) if x), styles["Cell"]),
+                Paragraph(_text("; ".join(x for x in (
+                    f"Cell {contact.cell_phone}" if contact.cell_phone else "",
+                    f"Home {contact.home_phone}" if contact.home_phone else "",
+                    f"Work {contact.work_phone}" if contact.work_phone else "",
+                    contact.email,
+                ) if x)), styles["Cell"]),
+                Paragraph(_text("; ".join(x for x in (
+                    ", ".join(value for value in (contact.address, contact.city, contact.state) if value),
+                    contact.notes,
+                ) if x)), styles["Cell"]),
+            ])
+        table = Table(data, colWidths=[1.25 * inch, 0.8 * inch, 1.35 * inch, 1.3 * inch, 1.9 * inch], repeatRows=1)
+        table.setStyle(_standard_table_style())
+        story.append(table)
     return story
+
+
+def _person_name_markup(
+    person: Person, participant_details: dict[str, ParticipantDetails]
+) -> str:
+    name = _text(person.display_name)
+    details = participant_details.get(person.id)
+    if details and participant_is_deceased(details):
+        name += f' <font color="{DECEASED_RED}"><b>(DECEASED)</b></font>'
+    return name
+
+
+def _person_name_field_cell(
+    label: str,
+    person_id: str | None,
+    people: dict[str, Person],
+    participant_details: dict[str, ParticipantDetails],
+    styles,
+) -> list[Paragraph]:
+    person = people.get(person_id) if person_id else None
+    if person:
+        value = _person_name_markup(person, participant_details)
+    elif person_id:
+        value = "Unknown person"
+    else:
+        value = "&#160;"
+    return [Paragraph(_text(label), styles["Label"]), Paragraph(value, styles["Cell"])]
 
 
 def _participant_sections(
@@ -1557,7 +1676,7 @@ def _participant_sections(
     vehicles: list[Vehicle],
     styles,
 ) -> list[object]:
-    vehicle_names = {vehicle.id: f"{vehicle.vehicle_number} - {vehicle.description}" for vehicle in vehicles}
+    vehicle_names = {vehicle.id: _vehicle_label(vehicle) for vehicle in vehicles}
     qualifying = [
         person for person in people
         if _has_detail(participant_details[person.id], {"person_id", "updated_at"})
@@ -1574,7 +1693,7 @@ def _participant_sections(
         ) or "Not specified"
         story.append(CondPageBreak(3.0 * inch))
         story.append(Paragraph(
-            f"{_text(person.display_name)} - Person Type: {_text(person_type)}",
+            f"{_person_name_markup(person, participant_details)} - Person Type: {_text(person_type)}",
             styles["Subsection"],
         ))
         if _has_detail(details, {"person_id", "updated_at"}):
@@ -1611,9 +1730,8 @@ def _participant_sections(
                     ), styles),
                 ])
             participant_data.extend([
-                [_field_cell("TRANSPORT", (
-                    f"{details.transported} - {details.transported_to}"
-                    if details.transported_to else details.transported
+                [_field_cell("TRANSPORT", _join_nonblank(
+                    " - ", details.transported, details.transported_to
                 ), styles), _field_cell("HOSPITAL / RECORDS", "; ".join(
                     value for value in (
                         details.hospital, details.medical_records_status,
@@ -1772,12 +1890,21 @@ def _participant_sections(
     return story
 
 
+def _vehicle_note(title: str, value: str, styles) -> list[Paragraph]:
+    """Keep each vehicle note label with its value while allowing long text to split."""
+    return [
+        Paragraph(title, styles["VehicleNoteLabel"]),
+        Paragraph(_text(value), styles["VehicleNoteValue"]),
+    ]
+
+
 def _vehicles_section(
     vehicles: list[Vehicle],
     people: dict[str, Person],
     inspections: dict[str, VehicleInspection],
     tires: dict[str, list[TireInspection]],
     motorcycle_inspections: dict[str, MotorcycleInspection],
+    participant_details: dict[str, ParticipantDetails],
     styles,
 ) -> list[object]:
     story: list[object] = [CondPageBreak(4.25 * inch), Paragraph("Vehicles", styles["Section"])]
@@ -1785,7 +1912,7 @@ def _vehicles_section(
         story.append(Paragraph("No vehicles entered.", styles["Empty"]))
         return story
     for vehicle in vehicles:
-        heading = f"{_text(vehicle.vehicle_number or 'Vehicle')} - {_text(vehicle.description)}"
+        heading = _text(_vehicle_label(vehicle))
         insurance_company = vehicle.insurance_company or vehicle.insurance
         towing = "No"
         if vehicle.towed:
@@ -1801,12 +1928,11 @@ def _vehicles_section(
             )],
             [_field_cell("TRIM", vehicle.trim, styles),
              _field_cell("ENGINE", vehicle.engine, styles)],
-            [_field_cell("VEHICLE WEIGHT", vehicle.vehicle_weight, styles),
-             _field_cell("TIRE SIZE", vehicle.tire_size, styles)],
-            [_field_cell("VIN", vehicle.vin, styles),
-             _field_cell("TOWED / TO", towing, styles)],
-            [_field_cell("DRIVER", _name(vehicle.driver_person_id, people), styles),
-             _field_cell("OWNER", _name(vehicle.owner_person_id, people), styles)],
+            [_field_cell("TIRE SIZE", vehicle.tire_size, styles),
+             _field_cell("VIN", vehicle.vin, styles)],
+            [_field_cell("TOWED / TO", towing, styles), ""],
+            [_person_name_field_cell("DRIVER", vehicle.driver_person_id, people, participant_details, styles),
+             _person_name_field_cell("OWNER", vehicle.owner_person_id, people, participant_details, styles)],
             [_field_cell("INSURANCE COMPANY", insurance_company, styles),
              _field_cell("POLICY NUMBER", vehicle.insurance_policy_number, styles)],
         ]
@@ -1862,14 +1988,17 @@ def _vehicles_section(
             release_table,
         ]
         if vehicle.edr_status:
-            block.extend([
-                Paragraph("CDR / EDR Notes", styles["Label"]),
-                Paragraph(_text(vehicle.edr_status), styles["BodySmall"]),
-            ])
+            block.extend(_vehicle_note("CDR / EDR Notes", vehicle.edr_status, styles))
+        if vehicle.cdr_equipped and not vehicle.cdr_imaged and vehicle.edr_not_downloaded_reason:
+            block.extend(_vehicle_note(
+                "EDR Not Downloaded — Reason",
+                vehicle.edr_not_downloaded_reason,
+                styles,
+            ))
         if vehicle.damage_notes:
-            block.extend([Paragraph("Damage", styles["Label"]), Paragraph(_text(vehicle.damage_notes), styles["BodySmall"])])
+            block.extend(_vehicle_note("Damage", vehicle.damage_notes, styles))
         if vehicle.notes:
-            block.extend([Paragraph("Additional Notes", styles["Label"]), Paragraph(_text(vehicle.notes), styles["BodySmall"])])
+            block.extend(_vehicle_note("Additional Notes", vehicle.notes, styles))
         inspection = inspections[vehicle.id]
         if _has_detail(inspection, {"vehicle_id", "updated_at"}):
             inspection_data = [
@@ -1877,14 +2006,10 @@ def _vehicles_section(
                  _field_cell("TRANSMISSION / GEAR", " / ".join(
                      x for x in (inspection.transmission, inspection.gear) if x
                  ), styles)],
-                [_field_cell("WEIGHTS", "; ".join(x for x in (
-                    f"Reg {inspection.registered_weight}"
-                    if inspection.registered_weight else "",
-                    f"Curb {inspection.curb_weight}"
-                    if inspection.curb_weight else "",
-                    f"Measured {inspection.measured_weight}"
-                    if inspection.measured_weight else "",
-                ) if x), styles), _field_cell("STEERING", inspection.steering, styles)],
+                [_field_cell("REGISTERED WEIGHT", inspection.registered_weight, styles),
+                 _field_cell("CURB WEIGHT", inspection.curb_weight, styles)],
+                [_field_cell("MEASURED WEIGHT", inspection.measured_weight, styles),
+                 _field_cell("STEERING", inspection.steering, styles)],
                 [_field_cell("BRAKES", "; ".join(
                     x for x in (
                         inspection.front_brakes, inspection.rear_brakes,
@@ -1929,7 +2054,7 @@ def _vehicles_section(
                 ("Inspection Notes", inspection.inspection_notes),
             ):
                 if value:
-                    block.extend([Paragraph(title, styles["Label"]), Paragraph(_text(value), styles["BodySmall"])])
+                    block.extend(_vehicle_note(title, value, styles))
             equipment_rows = [[Paragraph(item, styles["Label"]) for item in (
                 "SYSTEM", "EQUIPPED", "OPERABLE"
             )]]
@@ -2042,21 +2167,18 @@ def _vehicles_section(
 def _witness_contact_sections(
     people_list: list[Person],
     witness_details: dict[str, WitnessDetails],
-    contacts: list[ContactRelationship],
-    people: dict[str, Person],
-    vehicles: list[Vehicle],
+    participant_details: dict[str, ParticipantDetails],
     styles,
 ) -> list[object]:
     witnesses = [
         (person, witness_details[person.id]) for person in people_list
         if _has_detail(witness_details[person.id], {"person_id", "updated_at"})
     ]
-    if not witnesses and not contacts:
+    if not witnesses:
         return []
-    vehicle_names = {vehicle.id: f"{vehicle.vehicle_number} - {vehicle.description}" for vehicle in vehicles}
-    story: list[object] = [Paragraph("Witness Interviews and Contacts", styles["Section"])]
+    story: list[object] = [Paragraph("Witness Interviews", styles["Section"])]
     for person, details in witnesses:
-        story.append(Paragraph(_text(person.display_name), styles["Subsection"]))
+        story.append(Paragraph(_person_name_markup(person, participant_details), styles["Subsection"]))
         data = [
             [_field_cell("IDENTITY", " / ".join(value for value in (
                 format_date_for_display(person.dob), person.sex, person.race,
@@ -2095,55 +2217,23 @@ def _witness_contact_sections(
         for title, value in (("Credibility / Consistency", details.credibility_notes),):
             if value:
                 story.extend([Paragraph(title, styles["Label"]), Paragraph(_text(value), styles["BodySmall"])])
-    if contacts:
-        story.append(Paragraph("Contact Relationships", styles["Subsection"]))
-        data = [[Paragraph(item, styles["Label"]) for item in
-                 ("PERSON", "TYPE", "CONTACT", "PHONES / EMAIL", "ADDRESS / NOTES")]]
-        for contact in contacts:
-            contact_name = _name(contact.contact_person_id, people) if contact.contact_person_id else contact.contact_name
-            subject = (
-                _name(contact.subject_person_id, people)
-                if contact.subject_person_id
-                else "Needs person assignment"
-            )
-            if not contact.subject_person_id and contact.vehicle_id in vehicle_names:
-                subject += f" (legacy vehicle: {vehicle_names[contact.vehicle_id]})"
-            data.append([
-                Paragraph(_text(subject), styles["Cell"]),
-                Paragraph(_text(contact.contact_type), styles["Cell"]),
-                Paragraph(_text(" - ".join(x for x in (contact_name, contact.organization) if x)), styles["Cell"]),
-                Paragraph(_text("; ".join(x for x in (
-                    f"Cell {contact.cell_phone}" if contact.cell_phone else "",
-                    f"Home {contact.home_phone}" if contact.home_phone else "",
-                    f"Work {contact.work_phone}" if contact.work_phone else "",
-                    contact.email,
-                ) if x)), styles["Cell"]),
-                Paragraph(_text("; ".join(x for x in (
-                    ", ".join(value for value in (contact.address, contact.city, contact.state) if value),
-                    contact.notes,
-                ) if x)), styles["Cell"]),
-            ])
-        table = Table(
-            data,
-            colWidths=[1.25 * inch, 0.8 * inch, 1.35 * inch, 1.3 * inch, 1.9 * inch],
-            repeatRows=1,
-        )
-        table.setStyle(_standard_table_style())
-        story.append(table)
     return story
 
 
 def _vru_section(
-    analyses: list[VRUAnalysis], people: dict[str, Person], vehicles: list[Vehicle], styles,
+    analyses: list[VRUAnalysis], people: dict[str, Person], vehicles: list[Vehicle],
+    participant_details: dict[str, ParticipantDetails], styles,
 ) -> list[object]:
     if not analyses:
         return []
-    vehicle_names = {vehicle.id: f"{vehicle.vehicle_number} - {vehicle.description}" for vehicle in vehicles}
+    vehicle_names = {vehicle.id: _vehicle_label(vehicle) for vehicle in vehicles}
     story: list[object] = [Paragraph("Vulnerable Road User Analysis", styles["Section"])]
     for analysis in analyses:
-        subject = _name(analysis.person_id, people)
-        vehicle = vehicle_names.get(analysis.vehicle_id, "-")
-        story.append(Paragraph(f"{_text(subject)} / {_text(vehicle)}", styles["Subsection"]))
+        subject = _name(analysis.person_id, people, participant_details)
+        vehicle = vehicle_names.get(analysis.vehicle_id, "")
+        story.append(Paragraph(
+            _join_nonblank(" / ", subject, _text(vehicle)), styles["Subsection"]
+        ))
         data = [
             [_field_cell("CLOTHING", " / ".join(
                 x for x in (analysis.upper_clothing, analysis.lower_clothing) if x
@@ -2290,10 +2380,6 @@ def _tasks_section(tasks: list[CaseTask], styles) -> list[object]:
     table.setStyle(_standard_table_style())
     story.append(table)
     return story
-
-
-def _notes_section(case: CrashCase, styles) -> list[object]:
-    return _narrative_block("General investigative notes", case.notes, styles)
 
 
 def _standard_table_style() -> TableStyle:

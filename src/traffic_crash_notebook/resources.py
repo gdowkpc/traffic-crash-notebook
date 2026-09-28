@@ -15,6 +15,10 @@ def tiu_logo_path() -> Path:
     return resource_path("assets/tiu_logo.jpg")
 
 
+def mct_logo_path() -> Path:
+    return resource_path("assets/mct_logo.png")
+
+
 def app_icon_path() -> Path:
     return resource_path("assets/windows/TrafficCrashNotebook.png")
 
