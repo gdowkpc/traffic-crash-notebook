@@ -66,7 +66,7 @@ from .models import (
     scene_evidence_for_output,
 )
 from .repository import CaseRepository
-from .resources import tiu_logo_path
+from .resources import mct_logo_path, tiu_logo_path
 
 
 NAVY = colors.HexColor("#18344A")
@@ -657,17 +657,28 @@ def _packet_cover(
         f"Traffic Crash Notebook v{__version__} - generated {_text(generated)}",
         styles["CaseSubtitle"],
     ))
-    logo_path = tiu_logo_path()
-    if logo_path.exists():
-        logo = Image(str(logo_path), width=0.9 * inch, height=0.87 * inch)
+    tiu_path = tiu_logo_path()
+    mct_path = mct_logo_path()
+    if tiu_path.exists() or mct_path.exists():
+        logo_width, logo_height = 0.9 * inch, 0.87 * inch
+        tiu_logo = (
+            Image(str(tiu_path), width=logo_width, height=logo_height)
+            if tiu_path.exists() else ""
+        )
+        mct_logo = (
+            Image(str(mct_path), width=logo_width, height=logo_height)
+            if mct_path.exists() else ""
+        )
         title_table = Table(
-            [[logo, title_content]],
-            colWidths=[1.08 * inch, 5.52 * inch],
+            [[tiu_logo, title_content, mct_logo]],
+            colWidths=[1.08 * inch, 4.44 * inch, 1.08 * inch],
         )
         title_table.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("LEFTPADDING", (0, 0), (-1, -1), 0),
             ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (2, 0), (2, 0), 0),
+            ("ALIGN", (2, 0), (2, 0), "RIGHT"),
             ("TOPPADDING", (0, 0), (-1, -1), 0),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
         ]))
