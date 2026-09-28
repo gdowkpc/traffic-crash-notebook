@@ -57,7 +57,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 34
+SCHEMA_VERSION = 35
 
 
 SCHEMA = """
@@ -147,6 +147,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
     towed INTEGER NOT NULL DEFAULT 0,
     tow_information TEXT NOT NULL DEFAULT '',
     edr_status TEXT NOT NULL DEFAULT '',
+    edr_not_downloaded_reason TEXT NOT NULL DEFAULT '',
     warrant_obtained INTEGER NOT NULL DEFAULT 0,
     vehicle_inspection_completed INTEGER NOT NULL DEFAULT 0,
     nhtsa_recalls_checked INTEGER NOT NULL DEFAULT 0,
@@ -640,7 +641,7 @@ CREATE INDEX IF NOT EXISTS idx_hit_run_evidence_case
     ON hit_run_evidence_items(case_id, evidence_number, created_at);
 CREATE INDEX IF NOT EXISTS idx_hit_run_person_leads_case
     ON hit_run_person_leads(case_id, lead_number, created_at);
-PRAGMA user_version = 34;
+PRAGMA user_version = 35;
 """
 
 
@@ -670,10 +671,10 @@ class CaseRepository:
         with self._connect() as connection:
             previous_version = connection.execute("PRAGMA user_version").fetchone()[0]
             connection.executescript(SCHEMA)
-            self._migrate_schema_34(connection, previous_version)
+            self._migrate_schema(connection, previous_version)
 
     @staticmethod
-    def _migrate_schema_34(
+    def _migrate_schema(
         connection: sqlite3.Connection,
         previous_version: int,
     ) -> None:
@@ -697,6 +698,7 @@ class CaseRepository:
                 "body_style": "TEXT NOT NULL DEFAULT ''",
                 "trim": "TEXT NOT NULL DEFAULT ''",
                 "vehicle_weight": "TEXT NOT NULL DEFAULT ''",
+                "edr_not_downloaded_reason": "TEXT NOT NULL DEFAULT ''",
                 "engine": "TEXT NOT NULL DEFAULT ''",
                 "tire_size": "TEXT NOT NULL DEFAULT ''",
                 "property_damage": "TEXT NOT NULL DEFAULT ''",
@@ -824,6 +826,34 @@ class CaseRepository:
             for column, declaration in columns.items():
                 if column not in existing:
                     connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+        if previous_version < 35:
+            # Consolidate legacy profile weights into the existing inspection
+            # measured-weight field without overwriting explicit inspection data.
+            connection.execute(
+                """INSERT INTO vehicle_inspections
+                       (vehicle_id, measured_weight, updated_at)
+                   SELECT vehicles.id, vehicles.vehicle_weight, ?
+                   FROM vehicles
+                   WHERE TRIM(vehicles.vehicle_weight) <> ''
+                     AND NOT EXISTS (
+                       SELECT 1 FROM vehicle_inspections
+                       WHERE vehicle_inspections.vehicle_id = vehicles.id
+                     )""",
+                (utc_now(),),
+            )
+            connection.execute(
+                """UPDATE vehicle_inspections
+                   SET measured_weight = (
+                       SELECT vehicle_weight FROM vehicles
+                       WHERE vehicles.id = vehicle_inspections.vehicle_id
+                   )
+                   WHERE TRIM(measured_weight) = ''
+                     AND EXISTS (
+                       SELECT 1 FROM vehicles
+                       WHERE vehicles.id = vehicle_inspections.vehicle_id
+                         AND TRIM(vehicle_weight) <> ''
+                     )"""
+            )
         if previous_version < 30:
             for status_column, date_column, item in (
                 ("peer_review_status", "peer_review_date", "Report Peer Reviewed"),
@@ -1028,7 +1058,7 @@ class CaseRepository:
                 )
                 """
             )
-        connection.execute("PRAGMA user_version = 34")
+        connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     def get_user_defaults(self) -> UserDefaults:
         with self._connect() as connection:
@@ -1225,6 +1255,13 @@ class CaseRepository:
             vehicle.created_at = utc_now()
         vehicle.updated_at = utc_now()
         with self._connect() as connection:
+            prior_weight = connection.execute(
+                "SELECT vehicle_weight FROM vehicles WHERE id=?", (vehicle.id,)
+            ).fetchone()
+            legacy_weight_changed = (
+                bool(vehicle.vehicle_weight.strip())
+                and (prior_weight is None or prior_weight["vehicle_weight"] != vehicle.vehicle_weight)
+            )
             connection.execute(
                 """INSERT INTO vehicles
                 (id, case_id, vehicle_number, year, make, model, trim, body_style, color,
@@ -1233,7 +1270,7 @@ class CaseRepository:
                  insurance_policy_number, insurance_claim_number,
                  insurance_adjuster_name, insurance_adjuster_phone,
                  insurance_adjuster_email, property_damage, towed,
-                 tow_information, edr_status,
+                 tow_information, edr_status, edr_not_downloaded_reason,
                  warrant_obtained,
                  vehicle_inspection_completed, nhtsa_recalls_checked, cdr_equipped, cdr_imaged,
                  cdr_report_uploaded,
@@ -1245,6 +1282,7 @@ class CaseRepository:
                         :insurance_claim_number, :insurance_adjuster_name,
                         :insurance_adjuster_phone, :insurance_adjuster_email,
                         :property_damage, :towed, :tow_information, :edr_status,
+                        :edr_not_downloaded_reason,
                         :warrant_obtained,
                         :vehicle_inspection_completed,
                         :nhtsa_recalls_checked, :cdr_equipped, :cdr_imaged, :cdr_report_uploaded,
@@ -1266,6 +1304,7 @@ class CaseRepository:
                   property_damage=excluded.property_damage,
                   towed=excluded.towed, tow_information=excluded.tow_information,
                   edr_status=excluded.edr_status,
+                  edr_not_downloaded_reason=excluded.edr_not_downloaded_reason,
                   warrant_obtained=excluded.warrant_obtained,
                   vehicle_inspection_completed=excluded.vehicle_inspection_completed,
                   nhtsa_recalls_checked=excluded.nhtsa_recalls_checked,
@@ -1277,6 +1316,22 @@ class CaseRepository:
                   notes=excluded.notes, updated_at=excluded.updated_at""",
                 asdict(vehicle),
             )
+            if legacy_weight_changed:
+                # Older callers still populate the profile-level weight. Route
+                # it to the canonical inspection weight when none is recorded.
+                connection.execute(
+                    """INSERT INTO vehicle_inspections
+                           (vehicle_id, measured_weight, updated_at)
+                       VALUES (?, ?, ?)
+                       ON CONFLICT(vehicle_id) DO UPDATE SET
+                         measured_weight=CASE
+                           WHEN TRIM(vehicle_inspections.measured_weight) = ''
+                           THEN excluded.measured_weight
+                           ELSE vehicle_inspections.measured_weight
+                         END,
+                         updated_at=excluded.updated_at""",
+                    (vehicle.id, vehicle.vehicle_weight, utc_now()),
+                )
             if vehicle.driver_person_id:
                 connection.execute(
                     "INSERT OR IGNORE INTO person_roles(person_id, role) VALUES (?, 'Driver')",

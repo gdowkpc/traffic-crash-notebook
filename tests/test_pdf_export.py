@@ -187,7 +187,7 @@ class PdfExportTest(unittest.TestCase):
                 "People",
                 "Participant and Driver Details",
                 "Vehicles",
-                "Witness Interviews and Contacts",
+                "Witness Interviews",
                 "Vulnerable Road User Analysis",
                 "Evidence",
                 "Tasks",
@@ -610,7 +610,7 @@ class PdfExportTest(unittest.TestCase):
             vehicle = Vehicle(
                 id=new_id(), case_id=case.id, vehicle_number="V-1", year="2024",
                 make="Toyota", model="Camry", driver_person_id=person.id,
-                trim="XSE", vehicle_weight="3,595 lb", engine="2.5 L I4",
+                trim="XSE", engine="2.5 L I4",
                 tire_size="235/40R19",
                 insurance_company="Example Mutual",
                 insurance_policy_number="POL-24680",
@@ -637,13 +637,15 @@ class PdfExportTest(unittest.TestCase):
                 winds="NW 6", humidity="43", pressure="29.92",
                 precipitation="0.04", visibility="0.5",
                 surface_condition="LEGACY SINGLE SURFACE VALUE",
-                weather_station="KPDX ASOS", weather_time="14:35 PDT",
+                weather_condition="Clear", weather_station="KPDX ASOS",
+                weather_time="14:35 PDT",
                 lighting_conditions="Daylight", speed_limit="35",
                 sunrise="05:59", sunset="20:31",
                 civil_twilight_morning="05:27", civil_twilight_evening="21:03",
                 moonrise="22:44", moonset="11:28", moon_phase="Waxing gibbous",
                 streetlight_notes="LED luminaire at northeast corner",
                 area_classifications="Business; Residential; Interstate",
+                initial_point_of_collision="Crosswalk area",
             ))
             repository.save_surface_observation(SurfaceObservation(
                 id="", case_id=case.id, location="Northbound lane",
@@ -783,6 +785,7 @@ class PdfExportTest(unittest.TestCase):
             ))
             repository.save_vehicle_inspection(VehicleInspection(
                 vehicle_id=vehicle.id, mileage="12,345", brake_system="ABS",
+                measured_weight="3,595 lb",
                 tire_contribution="Yes", tire_contribution_explanation="RF tread separation",
                 headlights_equipped="Yes", headlights_operable="No",
                 ignition_position="On", device_observations="Mounted GPS illuminated",
@@ -904,6 +907,16 @@ class PdfExportTest(unittest.TestCase):
             self.assertNotIn("CHRONOLOGY CONTINUATION", normalized_text)
             self.assertIn("Review surveillance video", text)
             self.assertIn("Road and Weather Conditions", text)
+            self.assertIn("WEATHER CONDITIONS", text)
+            self.assertIn("First Area of Impact", text)
+            self.assertNotIn("Initial Point of Collision", text)
+            self.assertNotIn("Road / Weather Follow-Up", text)
+            self.assertIn("MCT NOTIFIED", text)
+            self.assertIn("INVESTIGATOR EN ROUTE / ARRIVAL", text)
+            self.assertIn("SCENE SERGEANT", text)
+            self.assertIn("PROSECUTOR ON SCENE", text)
+            self.assertIn("MDI", text)
+            self.assertNotIn("SCENE PERSONNEL", text)
             self.assertIn("WEATHER STATION", normalized_text)
             self.assertIn("TIME OF READING", normalized_text)
             self.assertIn("71 F", normalized_text)
@@ -985,8 +998,8 @@ class PdfExportTest(unittest.TestCase):
             )
             self.assertIn("NOT AT INTERSECTION", normalized_text)
             self.assertIn("250 ft North of intersection", normalized_text)
-            self.assertIn("MCT Sergeant: Taylor Example", normalized_text)
-            self.assertIn("MDI: Morgan Example", normalized_text)
+            self.assertIn("SCENE SERGEANT Taylor Example", normalized_text)
+            self.assertIn("MDI Morgan Example", normalized_text)
             self.assertNotIn("LEGACY CRIMINALIST VALUE", normalized_text)
             self.assertIn(
                 "Investigator Photos, Uploaded to Axon, FARO, Surveillance Video",
@@ -1060,15 +1073,21 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("air bag Unknown; helmet Non-Standard", normalized_text)
             self.assertIn("12,345", text)
             self.assertIn("225/45R18", text)
-            self.assertIn("Witness Interviews and Contacts", text)
+            self.assertIn("Morgan Lee (DECEASED)", text)
+            self.assertNotIn("<font", text)
+            self.assertIn("Witness Interviews", text)
             witness_block = text[
-                text.index("Witness Interviews and Contacts"):
+                text.rindex("Witness Interviews"):
                 text.index("Vulnerable Road User Analysis")
             ]
             self.assertIn("SIGNIFICANCE", witness_block)
             self.assertIn("STATEMENT SUMMARY", witness_block)
             self.assertIn("observed the entire signal cycle", witness_block)
             self.assertNotIn("OCCUPATION", witness_block)
+            people_block = text[text.index("People"):text.index("Participant and Driver Details")]
+            self.assertIn("People Contacts", people_block)
+            self.assertIn("Alex Lee", people_block)
+            self.assertNotIn("Alex Lee", witness_block)
             self.assertNotIn("FOLLOW-UP", witness_block)
             self.assertNotIn("WITNESS FOLLOW-UP OMITTED FROM PACKET", witness_block)
             self.assertIn("PERSON", normalized_text)
@@ -1135,6 +1154,11 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("CLM-97531", normalized_compact_text)
             self.assertIn("XSE", normalized_compact_text)
             self.assertIn("3,595 lb", normalized_compact_text)
+            self.assertIn(
+                "MEASURED WEIGHT 3,595 lb",
+                normalized_compact_text,
+            )
+            self.assertNotIn("VEHICLE WEIGHT", normalized_compact_text)
             self.assertIn("2.5 L I4", normalized_compact_text)
             self.assertIn("235/40R19", normalized_compact_text)
             self.assertIn("Avery Adjuster", normalized_compact_text)

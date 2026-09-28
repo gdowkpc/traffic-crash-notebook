@@ -363,7 +363,6 @@ class VehicleDialog(RecordDialog):
         self.trim = _line(self.vehicle.trim)
         self.body_style = _line(self.vehicle.body_style, "Sedan, SUV, pickup, motorcycle...")
         self.color = _line(self.vehicle.color)
-        self.vehicle_weight = _line(self.vehicle.vehicle_weight, "Curb, registered, or measured weight")
         self.engine = _line(self.vehicle.engine, "Engine size, fuel, and configuration")
         self.tire_size = _line(self.vehicle.tire_size, "For example, 225/45R18")
         self.vin = _uppercase_line(self.vehicle.vin, "17-character VIN")
@@ -409,6 +408,12 @@ class VehicleDialog(RecordDialog):
             self.vehicle.edr_status,
             "Optional explanatory or legacy CDR / EDR notes",
         )
+        self.edr_not_downloaded_reason = SpellCheckedLineEdit(
+            self.vehicle.edr_not_downloaded_reason
+        )
+        self.edr_not_downloaded_reason.setPlaceholderText(
+            "Required when equipped but data was not downloaded"
+        )
         self.release_date = _date_line(self.vehicle.release_date)
         self.release_information = SpellCheckedLineEdit(
             self.vehicle.release_information
@@ -423,7 +428,6 @@ class VehicleDialog(RecordDialog):
         form.addRow("Trim", self.trim)
         form.addRow("Body style", self.body_style)
         form.addRow("Color", self.color)
-        form.addRow("Vehicle weight", self.vehicle_weight)
         form.addRow("Engine", self.engine)
         form.addRow("Tire size", self.tire_size)
         form.addRow("VIN", self.vin)
@@ -440,6 +444,7 @@ class VehicleDialog(RecordDialog):
         form.addRow("Towed", self.towed)
         form.addRow("Towed to", self.towed_to)
         form.addRow("CDR / EDR notes", self.edr_status)
+        form.addRow("EDR not downloaded: reason", self.edr_not_downloaded_reason)
         form.addRow("Release date", self.release_date)
         form.addRow("Release information", self.release_information)
         self.root.addLayout(form)
@@ -452,6 +457,16 @@ class VehicleDialog(RecordDialog):
             box.setChecked(bool(getattr(self.vehicle, attribute)))
             workflow_grid.addWidget(box, index // 2, index % 2)
             self.vehicle_workflow_boxes[attribute] = box
+        self.edr_not_downloaded_reason.setEnabled(
+            self.vehicle_workflow_boxes["cdr_equipped"].isChecked()
+            and not self.vehicle_workflow_boxes["cdr_imaged"].isChecked()
+        )
+        self.vehicle_workflow_boxes["cdr_equipped"].toggled.connect(
+            self._update_edr_reason_enabled
+        )
+        self.vehicle_workflow_boxes["cdr_imaged"].toggled.connect(
+            self._update_edr_reason_enabled
+        )
         self.root.addWidget(workflow_group)
         self.property_damage = SpellCheckedTextEdit(self.vehicle.property_damage)
         self.property_damage.setPlaceholderText(
@@ -503,15 +518,26 @@ class VehicleDialog(RecordDialog):
                 "The letters I, O, and Q are not used in VINs.",
             )
             return
+        if (
+            self.vehicle_workflow_boxes["cdr_equipped"].isChecked()
+            and not self.vehicle_workflow_boxes["cdr_imaged"].isChecked()
+            and not self.edr_not_downloaded_reason.text().strip()
+        ):
+            QMessageBox.warning(
+                self,
+                "EDR disposition required",
+                "Enter why EDR data was not downloaded when the vehicle was equipped.",
+            )
+            return
         super()._validate_and_accept()
 
     def result_record(self) -> Vehicle:
         for attribute in ("vehicle_number", "year", "make", "model", "trim", "body_style", "color",
-                          "vehicle_weight", "engine", "tire_size", "vin", "plate",
+                          "engine", "tire_size", "vin", "plate",
                           "plate_state", "insurance_company", "insurance_policy_number",
                           "insurance_claim_number", "insurance_adjuster_name",
                           "insurance_adjuster_phone", "insurance_adjuster_email",
-                          "edr_status", "release_information"):
+                          "edr_status", "edr_not_downloaded_reason", "release_information"):
             setattr(self.vehicle, attribute, getattr(self, attribute).text().strip())
         self.vehicle.towed = self.towed.isChecked()
         self.vehicle.tow_information = (
@@ -533,6 +559,12 @@ class VehicleDialog(RecordDialog):
         self.vehicle.damage_notes = self.damage_notes.toPlainText().strip()
         self.vehicle.notes = self.notes.toPlainText().strip()
         return self.vehicle
+
+    def _update_edr_reason_enabled(self) -> None:
+        self.edr_not_downloaded_reason.setEnabled(
+            self.vehicle_workflow_boxes["cdr_equipped"].isChecked()
+            and not self.vehicle_workflow_boxes["cdr_imaged"].isChecked()
+        )
 
 
 class ChronologyDialog(RecordDialog):
@@ -1341,13 +1373,22 @@ class VehicleInspectionDialog(RecordDialog):
         form = QFormLayout(general_tab)
         for attribute, label in (
             ("mileage", "Mileage"), ("transmission", "Transmission"), ("gear", "Gear"),
-            ("steering", "Steering"), ("registered_weight", "Registered weight"),
-            ("curb_weight", "Curb weight"), ("measured_weight", "Measured weight"),
+            ("steering", "Steering"),
             ("front_brakes", "Front brakes"), ("rear_brakes", "Rear brakes"),
             ("brake_system", "Brake system"),
         ):
             setattr(self, attribute, _line(getattr(inspection, attribute)))
             form.addRow(label, getattr(self, attribute))
+        weights_group = QGroupBox("Vehicle weights")
+        weights_form = QFormLayout(weights_group)
+        for attribute, label in (
+            ("registered_weight", "Registered weight"),
+            ("curb_weight", "Curb weight"),
+            ("measured_weight", "Measured weight"),
+        ):
+            setattr(self, attribute, _line(getattr(inspection, attribute)))
+            weights_form.addRow(label, getattr(self, attribute))
+        form.addRow(weights_group)
         for attribute, label in (
             ("nicb_status", "NICB check"),
             ("recall_status", "NHTSA recalls"),

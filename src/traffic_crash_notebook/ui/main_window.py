@@ -856,13 +856,13 @@ class MainWindow(QMainWindow):
         for name, label, placeholder in (
             (
                 "team_notified_date",
-                "Crash team notified date",
+                "MCT notified date",
                 DISPLAY_DATE_PLACEHOLDER,
             ),
-            ("team_notified_time", "Crash team notified time", "HH:MM"),
+            ("team_notified_time", "MCT notified time", "HH:MM"),
             ("investigator_en_route", "Investigator en route", "HH:MM"),
             ("investigator_arrival", "Investigator arrival", "HH:MM"),
-            ("sergeant", "MCT Sergeant", ""),
+            ("sergeant", "Scene Sergeant", ""),
             ("prosecutor_on_scene", "Prosecutor on scene", ""),
             ("medical_examiner_on_scene", "MDI", ""),
         ):
@@ -1115,11 +1115,11 @@ class MainWindow(QMainWindow):
 
         analysis = QWidget()
         analysis_layout = QFormLayout(analysis)
-        impact = memo("initial_point_of_collision", "Evidence supporting the initial point or area of collision")
+        impact = memo("initial_point_of_collision", "Evidence supporting the first area of impact")
         impact.setMaximumHeight(210)
         skid = memo("skid_test_notes", "Drag sled, test skid, surface comparison, and related notes")
         skid.setMaximumHeight(210)
-        analysis_layout.addRow("Initial point of collision", impact)
+        analysis_layout.addRow("First area of impact", impact)
         analysis_layout.addRow("Skid test / drag sled notes", skid)
         tabs.addTab(roadways_tab, "Roadways")
         tabs.addTab(surfaces_tab, "Surface")

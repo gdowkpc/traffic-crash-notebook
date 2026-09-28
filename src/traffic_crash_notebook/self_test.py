@@ -189,7 +189,7 @@ def run_self_test(output_directory: str | Path) -> Path:
     vehicle = repository.save_vehicle(Vehicle(
         id=new_id(), case_id=case.id, vehicle_number="V-1", year="2026",
         make="Example", model="Vehicle", body_style="Four-door SUV",
-        color="Blue", trim="Verification Trim", vehicle_weight="4,250 lb",
+        color="Blue", trim="Verification Trim",
         engine="3.5 L V6", tire_size="255/55R20", plate="SELFTEST", plate_state="OR",
         driver_person_id=person.id,
         insurance_company="Verification Insurance",
@@ -238,7 +238,6 @@ def run_self_test(output_directory: str | Path) -> Path:
         or loaded_vehicle.release_information
         != "Released to verification owner with receipt"
         or loaded_vehicle.trim != "Verification Trim"
-        or loaded_vehicle.vehicle_weight != "4,250 lb"
         or loaded_vehicle.engine != "3.5 L V6"
         or loaded_vehicle.tire_size != "255/55R20"
     ):
@@ -396,8 +395,10 @@ def run_self_test(output_directory: str | Path) -> Path:
         raise RuntimeError("The VRU night-visibility equipment fields could not be saved and reloaded.")
     repository.save_vehicle_inspection(VehicleInspection(
         vehicle_id=vehicle.id, headlights_equipped="Yes", headlights_operable="Yes",
-        tire_contribution="No",
+        tire_contribution="No", measured_weight="4,250 lb",
     ))
+    if repository.get_vehicle_inspection(vehicle.id).measured_weight != "4,250 lb":
+        raise RuntimeError("The measured vehicle weight could not be saved and reloaded.")
     repository.save_motorcycle_inspection(MotorcycleInspection(
         vehicle_id=vehicle.id, frame_number="SELF-TEST-FRAME", officer="Verification Officer",
         items=[MotorcycleInspectionItem(item_number=1, rating="1 - Not damaged")],
@@ -683,7 +684,8 @@ def run_self_test(output_directory: str | Path) -> Path:
             "Driver-license dates, ordering data, and driving history persistence: PASS",
             "Role-aware non-driver packet background suppression: PASS",
             "Per-vehicle checklist, towing, release, insurance, and claim persistence: PASS",
-            "Vehicle trim, weight, engine, and tire-size persistence: PASS",
+            "Vehicle trim, engine, and tire-size persistence: PASS",
+            "Vehicle measured-weight persistence: PASS",
             "Video-source address and Axon upload status persistence: PASS",
             "VRU light-meter and light-board persistence: PASS",
             "Motorcyclist role and calculated VRU count: PASS",
