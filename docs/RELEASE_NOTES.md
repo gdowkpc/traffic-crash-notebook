@@ -1,3 +1,10 @@
+## Traffic Crash Notebook 0.6.0
+
+- Leaves empty investigation packet values blank for handwriting, removes the Cover Notes area and unused General Investigative Notes field, and adds the Major Crash Team logo beside the Traffic Investigations Unit logo.
+- Clarifies MCT notification, investigator response, scene sergeant, weather conditions, and first area of impact labels; removes unused road/weather and contact follow-up areas.
+- Prints person-linked contacts, including next of kin, under People and places a red deceased flag beside each deceased person's name throughout the packet.
+- Groups registered, curb, and measured vehicle weights in Inspection, preserving older vehicle weight entries during database upgrade. Adds a required reason when an EDR-equipped vehicle was not imaged and improves vehicle note spacing in the PDF.
+
 ## Traffic Crash Notebook 0.5.8
 
 - Adds vehicle identification details, automatic date and time separators, first harmful event, duplicate-case prevention, and safe case deletion.
