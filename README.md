@@ -24,6 +24,7 @@ agency endorsement is implied.
 - Enter a person once and assign multiple roles such as driver, passenger, pedestrian, bicyclist, motorcyclist, witness, or victim.
 - Create unlimited vehicles and link existing people as drivers or owners.
 - Preview, print through the standard Windows printer dialog, and export a Traffic Crash Exchange Report from existing case records without duplicate data entry. It preserves linked and unambiguous legacy drivers; includes every saved passenger, witness, pedestrian, bicyclist, and motorcyclist; maps DPSST and Assignment into the footer; creates continuation pages as needed; and appends a searchable text information/responsibilities page last.
+- Run the separate Idaho-focused CrashX utility when an officer needs only an involved-party exchange PDF. It accepts unlimited vehicles and people with driver, registered-owner, passenger, witness, pedestrian, and bicyclist roles; captures owner, registration/VIN, insurance, property-damage, and towing information; scans AAMVA PDF417 driver-license barcodes from the Add Person dialog; keeps entered data only in memory; and creates no case database.
 - Maintain an automatically sorted investigative Journal for dated actions, decisions, requests, findings, and follow-up.
 - Maintain a separate Evidence workspace with unlimited property receipts, property owners, lodging classifications and locations, lodging dates, and automatically numbered descriptive items under each receipt.
 - Track open, waiting, completed, and unnecessary investigative tasks in a dedicated Tasks workspace.
@@ -57,6 +58,12 @@ py -3 -m venv .venv
 .\.venv\Scripts\python.exe run_app.py
 ```
 
+Run the standalone disposable-data exchange utility with:
+
+```powershell
+.\.venv\Scripts\python.exe run_exchange_app.py
+```
+
 ## Building the portable Windows version
 
 On a Windows development computer with Python 3.11 or newer, double-click:
@@ -87,6 +94,37 @@ The completed folder includes `VERIFY_PORTABLE.bat`. This optional check creates
 only fictional temporary data and confirms that the bundled database, PDF,
 spell-check dictionary, and logo work. It does not open the
 normal case database.
+
+## Standalone CrashX Idaho utility
+
+Double-click `BUILD_CRASHX_WINDOWS.bat` to create the separate portable
+`CrashX` application and:
+
+```text
+release\CrashX-0.5.8-Windows-Portable.zip
+```
+
+For a single-file copy that can be moved to another Windows x64 computer,
+double-click `BUILD_CRASHX_SINGLE_FILE.bat`. It creates:
+
+```text
+release\CrashX-0.5.8-Windows-Single.exe
+```
+
+Only that executable is required on the target computer. It does not install or
+request administrator rights. Windows temporarily expands its bundled runtime
+components under the current user's temporary folder while the program runs.
+
+The utility creates an Idaho information-exchange sheet, not an official Idaho
+Vehicle Collision Report (IVCR), and it does not determine fault or imply agency
+approval. The utility does not open or create the notebook database. Crash, vehicle, and
+person data remains in memory only until the application closes or **Clear all**
+is selected. The PDF explicitly selected through **Save PDF** is its only retained
+work product. **Add person > Scan license** uses a connected camera to fill the
+person and license fields for officer review; camera frames and the raw barcode
+payload are not saved. Both the extracted-folder and single-file builds run without
+an installer or administrator rights. See `docs/CRASHX_PORTABLE.txt` for user
+instructions.
 
 ## Case data and storage setup
 

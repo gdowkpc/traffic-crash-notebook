@@ -58,6 +58,29 @@ class PortableScriptTest(unittest.TestCase):
         self.assertIn('uiAccess="false"', windows_manifest)
         self.assertNotIn("requireAdministrator", windows_manifest)
 
+    def test_crashx_single_file_build_is_isolated_and_non_admin(self):
+        build = (
+            PROJECT_ROOT / "scripts" / "build_exchange_onefile_windows.ps1"
+        ).read_text(encoding="utf-8")
+        launcher = (PROJECT_ROOT / "BUILD_CRASHX_SINGLE_FILE.bat").read_text(
+            encoding="utf-8"
+        )
+        windows_manifest = (
+            PROJECT_ROOT / "assets" / "windows" / "CrashX.manifest"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("--onefile", build)
+        self.assertIn("Windows-Single.exe", build)
+        self.assertIn("ReleaseLabel", build)
+        self.assertIn("verify_windows_executable_manifest.py", build)
+        self.assertIn('"--self-test"', build)
+        self.assertIn("Get-ChildItem -LiteralPath $IsolatedDirectory", build)
+        self.assertIn("build_exchange_onefile_windows.ps1", launcher)
+        self.assertIn("--% %*", launcher)
+        self.assertIn('requestedExecutionLevel level="asInvoker"', windows_manifest)
+        self.assertIn('uiAccess="false"', windows_manifest)
+        self.assertNotIn("requireAdministrator", windows_manifest)
+
     def test_tag_workflow_publishes_zip_checksum_and_both_json_manifests(self):
         workflow = (
             PROJECT_ROOT / ".github" / "workflows" / "build-windows.yml"

@@ -11,6 +11,9 @@ __pycache__/
 # Generated application and release output
 build/
 portable-dist/
+portable-dist-location/
+portable-dist-scan/
+single-file-dist/
 release/
 output/
 tmp/

@@ -389,6 +389,25 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(reopened_vehicle.vehicle_number, "V-1")
         self.assertEqual(self.window.vehicles_table.rowCount(), 1)
 
+    def test_vehicle_identifiers_are_uppercase_as_typed(self):
+        dialog = VehicleDialog(self.case.id, [], parent=self.window)
+        dialog.show()
+        entries = (
+            (dialog.vin, "idaho-vin-123", "IDAHO-VIN-123"),
+            (dialog.plate, "abc 123", "ABC 123"),
+            (dialog.plate_state, "id", "ID"),
+        )
+        for editor, value, expected in entries:
+            editor.setFocus()
+            QTest.keyClicks(editor, value)
+            self.assertEqual(editor.text(), expected)
+        vehicle = dialog.result_record()
+        self.assertEqual(vehicle.vin, "IDAHO-VIN-123")
+        self.assertEqual(vehicle.plate, "ABC 123")
+        self.assertEqual(vehicle.plate_state, "ID")
+        dialog.record_dirty = False
+        dialog.close()
+
     def test_overview_autosaves_on_top_level_nested_and_periodic_triggers(self):
         self.assertTrue(self.window.periodic_autosave_timer.isActive())
         self.assertEqual(self.window.periodic_autosave_timer.interval(), 30_000)
@@ -2341,6 +2360,50 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertEqual(self.window.contacts_table.item(0, 3).text(), "503-555-0112")
         person_dialog.close()
         contact_dialog.close()
+
+    def test_existing_person_contact_syncs_common_fields(self):
+        subject = self.repository.save_person(Person(
+            id="", case_id=self.case.id, first_name="Case", last_name="Subject",
+        ))
+        linked_person = self.repository.save_person(Person(
+            id="", case_id=self.case.id, first_name="Linked", middle_name="Q",
+            last_name="Witness", roles=["Witness"], cell_phone="503-555-0201",
+            home_phone="503-555-0202", work_phone="503-555-0203",
+            email="linked@example.test", address="500 Linked Lane",
+            city="Portland", state="OR",
+        ))
+        dialog = ContactRelationshipDialog(
+            self.case.id,
+            [subject, linked_person],
+            ContactRelationship(
+                id="", case_id=self.case.id, subject_person_id=subject.id,
+            ),
+            self.window,
+        )
+        linked_index = dialog.contact_person.findData(linked_person.id)
+        self.assertGreaterEqual(linked_index, 0)
+        dialog.contact_person.setCurrentIndex(linked_index)
+        self.app.processEvents()
+
+        self.assertEqual(dialog.contact_name.text(), linked_person.display_name)
+        for attribute in (
+            "cell_phone", "home_phone", "work_phone", "email", "address", "city", "state",
+        ):
+            self.assertEqual(getattr(dialog, attribute).text(), getattr(linked_person, attribute))
+            self.assertTrue(getattr(dialog, attribute).isReadOnly())
+
+        contact = self.repository.save_contact(dialog.result_record())
+        self.assertEqual(contact.contact_person_id, linked_person.id)
+        self.assertEqual(contact.contact_name, linked_person.display_name)
+        self.assertEqual(contact.cell_phone, linked_person.cell_phone)
+        self.window.refresh_contacts()
+        self.assertEqual(self.window.contacts_table.item(0, 3).text(), "503-555-0201")
+
+        linked_person.cell_phone = "503-555-0299"
+        self.repository.save_person(linked_person)
+        self.window.refresh_contacts()
+        self.assertEqual(self.window.contacts_table.item(0, 3).text(), "503-555-0299")
+        dialog.close()
 
     def test_crash_location_form_omits_retired_fields_and_uses_city_label(self):
         retired_fields = {

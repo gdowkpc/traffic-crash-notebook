@@ -96,6 +96,44 @@ class PdfExportTest(unittest.TestCase):
         self.assertEqual(format_weather_measurement("visibility", "0.5"), "0.5 mi")
         self.assertEqual(format_weather_measurement("visibility", "0.5 mi"), "0.5 mi")
 
+    def test_linked_contact_pdf_uses_current_person_common_fields(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = CaseRepository(root / "test.sqlite3")
+            case = repository.create_case("26-654321", "Contact Sync")
+            subject = repository.save_person(Person(
+                id="", case_id=case.id, first_name="Case", last_name="Subject",
+            ))
+            linked_person = repository.save_person(Person(
+                id="", case_id=case.id, first_name="Linked", last_name="Contact",
+                cell_phone="503-555-0201", home_phone="503-555-0202",
+                work_phone="503-555-0203", email="linked@example.test",
+                address="500 Linked Lane", city="Portland", state="OR",
+            ))
+            repository.save_contact(ContactRelationship(
+                id="", case_id=case.id, contact_type="Next of Kin",
+                subject_person_id=subject.id, contact_person_id=linked_person.id,
+                contact_name="STALE CONTACT", cell_phone="STALE CELL",
+                home_phone="STALE HOME", work_phone="STALE WORK",
+                email="stale@example.test", address="STALE ADDRESS",
+                city="STALE CITY", state="ST",
+            ))
+
+            pdf_path = export_case_pdf(repository, case.id, root / "packet.pdf")
+            reader = PdfReader(pdf_path)
+            contact_page_text = next(
+                page.extract_text() or ""
+                for page in reader.pages
+                if "Contact Relationships" in (page.extract_text() or "")
+            )
+            self.assertIn("Linked Contact", contact_page_text)
+            self.assertIn("Cell 503-555-0201", contact_page_text)
+            self.assertIn("Home 503-555-0202", contact_page_text)
+            self.assertIn("Work 503-555-0203", contact_page_text)
+            self.assertIn("linked@example.test", contact_page_text)
+            self.assertIn("500 Linked Lane, Portland, OR", contact_page_text)
+            self.assertNotIn("STALE", contact_page_text)
+
     def test_scene_evidence_filters_retired_values_and_derives_surveillance_video(self):
         selected = [
             "Crime Scene Log",

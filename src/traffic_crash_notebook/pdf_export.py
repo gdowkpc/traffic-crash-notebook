@@ -59,6 +59,7 @@ from .models import (
     VideoSource,
     VRUAnalysis,
     WitnessDetails,
+    contact_common_fields,
     format_crash_location,
     format_weather_measurement,
     participant_has_injury_or_death,
@@ -2100,7 +2101,10 @@ def _witness_contact_sections(
         data = [[Paragraph(item, styles["Label"]) for item in
                  ("PERSON", "TYPE", "CONTACT", "PHONES / EMAIL", "ADDRESS / NOTES")]]
         for contact in contacts:
-            contact_name = _name(contact.contact_person_id, people) if contact.contact_person_id else contact.contact_name
+            common_fields = contact_common_fields(
+                contact,
+                people.get(contact.contact_person_id),
+            )
             subject = (
                 _name(contact.subject_person_id, people)
                 if contact.subject_person_id
@@ -2111,15 +2115,19 @@ def _witness_contact_sections(
             data.append([
                 Paragraph(_text(subject), styles["Cell"]),
                 Paragraph(_text(contact.contact_type), styles["Cell"]),
-                Paragraph(_text(" - ".join(x for x in (contact_name, contact.organization) if x)), styles["Cell"]),
-                Paragraph(_text("; ".join(x for x in (
-                    f"Cell {contact.cell_phone}" if contact.cell_phone else "",
-                    f"Home {contact.home_phone}" if contact.home_phone else "",
-                    f"Work {contact.work_phone}" if contact.work_phone else "",
-                    contact.email,
+                Paragraph(_text(" - ".join(x for x in (
+                    common_fields["contact_name"], contact.organization
                 ) if x)), styles["Cell"]),
                 Paragraph(_text("; ".join(x for x in (
-                    ", ".join(value for value in (contact.address, contact.city, contact.state) if value),
+                    f"Cell {common_fields['cell_phone']}" if common_fields["cell_phone"] else "",
+                    f"Home {common_fields['home_phone']}" if common_fields["home_phone"] else "",
+                    f"Work {common_fields['work_phone']}" if common_fields["work_phone"] else "",
+                    common_fields["email"],
+                ) if x)), styles["Cell"]),
+                Paragraph(_text("; ".join(x for x in (
+                    ", ".join(value for value in (
+                        common_fields["address"], common_fields["city"], common_fields["state"]
+                    ) if value),
                     contact.notes,
                 ) if x)), styles["Cell"]),
             ])

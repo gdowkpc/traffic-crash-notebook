@@ -979,6 +979,40 @@ class ContactRelationship:
     updated_at: str = ""
 
 
+def contact_common_fields(
+    contact: ContactRelationship,
+    linked_person: Person | None = None,
+) -> dict[str, str]:
+    """Return the shared contact fields, preferring a linked person record.
+
+    A relationship can point at an existing person or describe a separate,
+    manually entered contact.  Existing people remain the source of truth for
+    identity and contact details so later person edits are reflected wherever
+    that relationship is shown.
+    """
+    if linked_person is not None:
+        return {
+            "contact_name": linked_person.display_name,
+            "cell_phone": linked_person.cell_phone,
+            "home_phone": linked_person.home_phone,
+            "work_phone": linked_person.work_phone,
+            "email": linked_person.email,
+            "address": linked_person.address,
+            "city": linked_person.city,
+            "state": linked_person.state,
+        }
+    return {
+        "contact_name": contact.contact_name,
+        "cell_phone": contact.cell_phone,
+        "home_phone": contact.home_phone,
+        "work_phone": contact.work_phone,
+        "email": contact.email,
+        "address": contact.address,
+        "city": contact.city,
+        "state": contact.state,
+    }
+
+
 @dataclass(slots=True)
 class VRUAnalysis:
     id: str

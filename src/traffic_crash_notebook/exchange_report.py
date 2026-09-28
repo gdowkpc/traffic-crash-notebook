@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Protocol
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -13,11 +15,18 @@ from reportlab.platypus import Paragraph
 
 from . import __version__
 from .date_format import format_date_for_display, format_time_for_display
-from .models import ParticipantDetails, Person, Vehicle, format_crash_location
-from .repository import CaseRepository
-
-
+from .models import (
+    CrashCase,
+    CrashDetails,
+    DriverProfile,
+    ExchangeReportDetails,
+    ParticipantDetails,
+    Person,
+    Vehicle,
+    format_crash_location,
+)
 VEHICLE_BLOCK_HEIGHT = 1.58 * inch
+IDAHO_VEHICLE_BLOCK_HEIGHT = 2.0 * inch
 PERSON_BLOCK_HEIGHT = 0.75 * inch
 CONTENT_HEIGHT_PER_PAGE = 8.45 * inch
 EXCHANGE_PERSON_ROLES = {
@@ -34,6 +43,84 @@ EXCHANGE_PERSON_ROLES = {
 LINE_COLOR = colors.HexColor("#27323A")
 LABEL_COLOR = colors.HexColor("#3F4B53")
 LIGHT_FILL = colors.HexColor("#F1F3F4")
+
+
+@dataclass(frozen=True, slots=True)
+class ExchangeReportProfile:
+    """Jurisdiction-specific labels and layout choices for an exchange PDF."""
+
+    report_title: str
+    banner_text: str
+    retention_notice: str
+    officer_id_label: str
+    assignment_label: str
+    footer_distribution: str
+    information_page_variant: str
+    vehicle_block_height: float = VEHICLE_BLOCK_HEIGHT
+    include_vehicle_owners: bool = False
+    show_north_indicator: bool = True
+
+
+OREGON_EXCHANGE_PROFILE = ExchangeReportProfile(
+    report_title="TRAFFIC CRASH EXCHANGE REPORT",
+    banner_text="TRAFFIC CRASH INFORMATION EXCHANGE - RETAIN THIS FORM",
+    retention_notice=(
+        "Please retain for your records and insurance purposes. The Portland "
+        "Police Bureau will not retain a copy of this form."
+    ),
+    officer_id_label="DPSST",
+    assignment_label="PRECINCT",
+    footer_distribution="ORIGINAL / INVOLVED PARTIES",
+    information_page_variant="oregon",
+)
+
+
+IDAHO_EXCHANGE_PROFILE = ExchangeReportProfile(
+    report_title="IDAHO MOTOR VEHICLE CRASH INFORMATION EXCHANGE",
+    banner_text="INFORMATION EXCHANGE - RETAIN FOR YOUR RECORDS",
+    retention_notice=(
+        "Not an official Idaho Vehicle Collision Report (IVCR). This form does "
+        "not determine fault."
+    ),
+    officer_id_label="BADGE NUMBER",
+    assignment_label="ASSIGNMENT",
+    footer_distribution="COPY FOR INVOLVED PARTIES",
+    information_page_variant="idaho",
+    vehicle_block_height=IDAHO_VEHICLE_BLOCK_HEIGHT,
+    include_vehicle_owners=True,
+    show_north_indicator=False,
+)
+
+
+@dataclass(slots=True)
+class ExchangeReportDocument:
+    """All records needed to render one exchange report without persistence."""
+
+    case: CrashCase
+    crash_details: CrashDetails
+    exchange_details: ExchangeReportDetails
+    people: list[Person] = field(default_factory=list)
+    vehicles: list[Vehicle] = field(default_factory=list)
+    profiles: dict[str, DriverProfile] = field(default_factory=dict)
+    participants: dict[str, ParticipantDetails] = field(default_factory=dict)
+
+
+class ExchangeReportRepository(Protocol):
+    """Read-only repository surface used by the notebook compatibility wrapper."""
+
+    def get_case(self, case_id: str) -> CrashCase | None: ...
+
+    def get_crash_details(self, case_id: str) -> CrashDetails: ...
+
+    def get_exchange_report_details(self, case_id: str) -> ExchangeReportDetails: ...
+
+    def list_people(self, case_id: str) -> list[Person]: ...
+
+    def list_vehicles(self, case_id: str) -> list[Vehicle]: ...
+
+    def get_driver_profile(self, person_id: str) -> DriverProfile: ...
+
+    def get_participant_details(self, person_id: str) -> ParticipantDetails: ...
 
 INFORMATION_PAGE_POLICY = (
     "This crash <b>WILL NOT</b> be investigated. Police are not required to "
@@ -180,10 +267,48 @@ def resolve_exchange_vehicle_drivers(
     return resolved
 
 
+def resolve_exchange_vehicle_owners(
+    vehicles: list[Vehicle],
+    people: list[Person],
+    participants: dict[str, ParticipantDetails] | None = None,
+) -> dict[str, Person]:
+    """Resolve registered owners that are explicitly linked to a vehicle."""
+
+    people_by_id = {person.id: person for person in people}
+    details = participants or {}
+    resolved: dict[str, Person] = {}
+    used_person_ids: set[str] = set()
+
+    for vehicle in vehicles:
+        owner = people_by_id.get(vehicle.owner_person_id)
+        if owner is not None and owner.id not in used_person_ids:
+            resolved[vehicle.id] = owner
+            used_person_ids.add(owner.id)
+
+    for vehicle in vehicles:
+        if vehicle.id in resolved:
+            continue
+        associated = [
+            person
+            for person in people
+            if person.id not in used_person_ids
+            and person_has_role(person, "Vehicle Owner")
+            and details.get(person.id) is not None
+            and details[person.id].vehicle_id == vehicle.id
+        ]
+        if len(associated) == 1:
+            resolved[vehicle.id] = associated[0]
+            used_person_ids.add(associated[0].id)
+
+    return resolved
+
+
 def exchange_report_people(
     people: list[Person],
     vehicles: list[Vehicle],
     participants: dict[str, ParticipantDetails] | None = None,
+    *,
+    include_vehicle_owners_in_blocks: bool = False,
 ) -> list[Person]:
     """Return involved people not already printed in a vehicle/driver block."""
     represented_person_ids = {
@@ -194,6 +319,15 @@ def exchange_report_people(
             participants,
         ).values()
     }
+    if include_vehicle_owners_in_blocks:
+        represented_person_ids.update(
+            owner.id
+            for owner in resolve_exchange_vehicle_owners(
+                vehicles,
+                people,
+                participants,
+            ).values()
+        )
     return [
         person
         for person in people
@@ -205,10 +339,12 @@ def exchange_report_people(
 def exchange_report_page_plan(
     vehicles: list[Vehicle],
     people: list[Person],
+    *,
+    vehicle_block_height: float = VEHICLE_BLOCK_HEIGHT,
 ) -> list[tuple[list[Vehicle], list[Person]]]:
     """Pack only existing records onto as few readable front pages as possible."""
     items: list[tuple[str, Vehicle | Person, float]] = [
-        ("vehicle", vehicle, VEHICLE_BLOCK_HEIGHT) for vehicle in vehicles
+        ("vehicle", vehicle, vehicle_block_height) for vehicle in vehicles
     ]
     items.extend(
         ("person", person, PERSON_BLOCK_HEIGHT) for person in people
@@ -265,6 +401,25 @@ def _fit_text(
     pdf.setFont(font_name, size)
     pdf.setFillColor(colors.black)
     pdf.drawString(x, y, text)
+
+
+def _draw_centered_fit_text(
+    pdf: canvas.Canvas,
+    value: str,
+    center_x: float,
+    y: float,
+    width: float,
+    *,
+    font_name: str,
+    font_size: float,
+    minimum_size: float = 7.0,
+) -> None:
+    text = " ".join(str(value or "").split())
+    size = font_size
+    while size > minimum_size and stringWidth(text, font_name, size) > width:
+        size -= 0.25
+    pdf.setFont(font_name, size)
+    pdf.drawCentredString(center_x, y, text)
 
 
 def _draw_cell(
@@ -325,6 +480,7 @@ def _draw_checkbox(
 def _draw_header(
     pdf: canvas.Canvas,
     *,
+    profile: ExchangeReportProfile,
     page_number: int,
     page_count: int,
     case_number: str,
@@ -357,11 +513,14 @@ def _draw_header(
         fill=LIGHT_FILL,
     )
     pdf.setFillColor(LINE_COLOR)
-    pdf.setFont("Helvetica-BoldOblique", 14)
-    pdf.drawCentredString(
+    _draw_centered_fit_text(
+        pdf,
+        profile.report_title,
         left + (width - page_width) / 2,
         top - title_height + 8,
-        "TRAFFIC CRASH EXCHANGE REPORT",
+        width - page_width - 18,
+        font_name="Helvetica-BoldOblique",
+        font_size=14,
     )
 
     y = top - title_height
@@ -369,11 +528,14 @@ def _draw_header(
     pdf.setFillColor(colors.black)
     pdf.rect(left, y - notice_height, width, notice_height, stroke=0, fill=1)
     pdf.setFillColor(colors.white)
-    pdf.setFont("Helvetica-Bold", 10.2)
-    pdf.drawCentredString(
+    _draw_centered_fit_text(
+        pdf,
+        profile.banner_text,
         left + width / 2,
         y - notice_height + 6.1,
-        "TRAFFIC CRASH INFORMATION EXCHANGE - RETAIN THIS FORM",
+        width - 18,
+        font_name="Helvetica-Bold",
+        font_size=10.2,
     )
 
     y -= notice_height
@@ -389,11 +551,15 @@ def _draw_header(
         fill=LIGHT_FILL,
     )
     pdf.setFillColor(LABEL_COLOR)
-    pdf.setFont("Helvetica", 7.7)
-    pdf.drawCentredString(
+    _draw_centered_fit_text(
+        pdf,
+        profile.retention_notice,
         left + width / 2,
         y - information_height + 6.0,
-        "Please retain for your records and insurance purposes. The Portland Police Bureau will not retain a copy of this form.",
+        width - 18,
+        font_name="Helvetica",
+        font_size=7.7,
+        minimum_size=6.2,
     )
 
     y -= information_height
@@ -417,16 +583,17 @@ def _draw_header(
         "LOCATION OF CRASH",
         location,
     )
-    arrow_x = left + width - 13
-    arrow_y = y - crash_height + 11
-    pdf.setStrokeColor(LINE_COLOR)
-    pdf.setLineWidth(0.6)
-    pdf.circle(arrow_x, arrow_y, 6, stroke=1, fill=0)
-    pdf.line(arrow_x, arrow_y - 4, arrow_x, arrow_y + 4)
-    pdf.line(arrow_x, arrow_y + 4, arrow_x - 2, arrow_y + 1)
-    pdf.line(arrow_x, arrow_y + 4, arrow_x + 2, arrow_y + 1)
-    pdf.setFont("Helvetica-Bold", 5.5)
-    pdf.drawCentredString(arrow_x, arrow_y + 7.5, "N")
+    if profile.show_north_indicator:
+        arrow_x = left + width - 13
+        arrow_y = y - crash_height + 11
+        pdf.setStrokeColor(LINE_COLOR)
+        pdf.setLineWidth(0.6)
+        pdf.circle(arrow_x, arrow_y, 6, stroke=1, fill=0)
+        pdf.line(arrow_x, arrow_y - 4, arrow_x, arrow_y + 4)
+        pdf.line(arrow_x, arrow_y + 4, arrow_x - 2, arrow_y + 1)
+        pdf.line(arrow_x, arrow_y + 4, arrow_x + 2, arrow_y + 1)
+        pdf.setFont("Helvetica-Bold", 5.5)
+        pdf.drawCentredString(arrow_x, arrow_y + 7.5, "N")
 
     if case_number:
         pdf.setFillColor(LABEL_COLOR)
@@ -613,6 +780,220 @@ def _draw_vehicle_block(
     return top - height
 
 
+def _draw_idaho_vehicle_block(
+    pdf: canvas.Canvas,
+    *,
+    vehicle: Vehicle,
+    driver: Person | None,
+    owner: Person | None,
+    profiles: dict[str, object],
+    left: float,
+    top: float,
+    width: float,
+    height: float,
+) -> float:
+    """Draw the driver, owner, registration, insurance, and tow exchange fields."""
+
+    profile = profiles.get(driver.id) if driver else None
+    row_height = height / 8.0
+    y = top - row_height
+    vehicle_tag = f" - {vehicle.vehicle_number}" if vehicle.vehicle_number else ""
+    name_width = width - 2.25 * inch
+    _draw_cell(
+        pdf,
+        left,
+        y,
+        name_width,
+        row_height,
+        f"DRIVER NAME (LAST, FIRST, MI){vehicle_tag}",
+        person_name_last_first(driver),
+    )
+    _draw_cell(
+        pdf,
+        left + name_width,
+        y,
+        width - name_width,
+        row_height,
+        "DRIVER PHONE",
+        person_exchange_phone(driver),
+    )
+
+    y -= row_height
+    address_width = width - 2.45 * inch
+    license_width = 1.65 * inch
+    state_width = width - address_width - license_width
+    _draw_cell(
+        pdf,
+        left,
+        y,
+        address_width,
+        row_height,
+        "DRIVER ADDRESS",
+        person_exchange_address(driver),
+    )
+    _draw_cell(
+        pdf,
+        left + address_width,
+        y,
+        license_width,
+        row_height,
+        "DRIVER LICENSE NO.",
+        getattr(profile, "license_number", "") if profile else "",
+    )
+    _draw_cell(
+        pdf,
+        left + address_width + license_width,
+        y,
+        state_width,
+        row_height,
+        "STATE",
+        getattr(profile, "license_state", "") if profile else "",
+    )
+
+    y -= row_height
+    owner_is_driver = owner is not None and driver is not None and owner.id == driver.id
+    owner_name = "SAME AS DRIVER" if owner_is_driver else person_name_last_first(owner)
+    owner_phone = "" if owner_is_driver else person_exchange_phone(owner)
+    _draw_cell(
+        pdf,
+        left,
+        y,
+        name_width,
+        row_height,
+        "REGISTERED OWNER NAME (LAST, FIRST, MI)",
+        owner_name,
+    )
+    _draw_cell(
+        pdf,
+        left + name_width,
+        y,
+        width - name_width,
+        row_height,
+        "OWNER PHONE",
+        owner_phone,
+    )
+
+    y -= row_height
+    _draw_cell(
+        pdf,
+        left,
+        y,
+        width,
+        row_height,
+        "REGISTERED OWNER ADDRESS",
+        "SAME AS DRIVER" if owner_is_driver else person_exchange_address(owner),
+    )
+
+    y -= row_height
+    insurance_width = 4.15 * inch
+    _draw_cell(
+        pdf,
+        left,
+        y,
+        insurance_width,
+        row_height,
+        "LIABILITY INSURANCE COMPANY",
+        vehicle.insurance_company or vehicle.insurance,
+    )
+    _draw_cell(
+        pdf,
+        left + insurance_width,
+        y,
+        width - insurance_width,
+        row_height,
+        "INSURANCE POLICY NUMBER",
+        vehicle.insurance_policy_number,
+    )
+
+    y -= row_height
+    plate_width = 1.45 * inch
+    plate_state_width = 0.72 * inch
+    year_width = 0.85 * inch
+    _draw_cell(pdf, left, y, plate_width, row_height, "PLATE", vehicle.plate)
+    _draw_cell(
+        pdf,
+        left + plate_width,
+        y,
+        plate_state_width,
+        row_height,
+        "STATE",
+        vehicle.plate_state,
+    )
+    _draw_cell(
+        pdf,
+        left + plate_width + plate_state_width,
+        y,
+        year_width,
+        row_height,
+        "YEAR",
+        vehicle.year,
+    )
+    _draw_cell(
+        pdf,
+        left + plate_width + plate_state_width + year_width,
+        y,
+        width - plate_width - plate_state_width - year_width,
+        row_height,
+        "MAKE",
+        vehicle.make,
+    )
+
+    y -= row_height
+    model_width = 1.45 * inch
+    style_width = 1.0 * inch
+    color_width = 0.9 * inch
+    _draw_cell(pdf, left, y, model_width, row_height, "MODEL", vehicle.model)
+    _draw_cell(
+        pdf,
+        left + model_width,
+        y,
+        style_width,
+        row_height,
+        "STYLE",
+        vehicle.body_style,
+    )
+    _draw_cell(
+        pdf,
+        left + model_width + style_width,
+        y,
+        color_width,
+        row_height,
+        "COLOR",
+        vehicle.color,
+    )
+    _draw_cell(
+        pdf,
+        left + model_width + style_width + color_width,
+        y,
+        width - model_width - style_width - color_width,
+        row_height,
+        "VIN / REGISTRATION IDENTIFIER",
+        vehicle.vin,
+    )
+
+    y -= row_height
+    property_width = 3.85 * inch
+    _draw_cell(
+        pdf,
+        left,
+        y,
+        property_width,
+        row_height,
+        "OTHER PROPERTY DAMAGED",
+        vehicle.property_damage,
+    )
+    _draw_cell(
+        pdf,
+        left + property_width,
+        y,
+        width - property_width,
+        row_height,
+        "TOW COMPANY / DESTINATION / PHONE",
+        vehicle.tow_information,
+    )
+    return top - height
+
+
 def _draw_person_block(
     pdf: canvas.Canvas,
     *,
@@ -638,6 +1019,7 @@ def _draw_person_block(
     role_x = left + 4
     listed_roles = (
         ("Driver", "DRIVER"),
+        ("Vehicle Owner", "OWNER"),
         ("Passenger", "PASSENGER"),
         ("Witness", "WITNESS"),
         ("Pedestrian", "PEDESTRIAN"),
@@ -708,19 +1090,21 @@ def _draw_person_block(
 def _draw_footer(
     pdf: canvas.Canvas,
     *,
+    profile: ExchangeReportProfile,
     details,
     investigator: str,
     dpsst: str,
     assignment: str,
     case_number: str,
+    generator_label: str,
     left: float,
     top: float,
     width: float,
 ) -> None:
     field_height = 0.34 * inch
-    dpsst_width = 1.0 * inch
-    precinct_width = 1.75 * inch
-    officer_width = width - dpsst_width - precinct_width
+    officer_id_width = (1.35 if profile.include_vehicle_owners else 1.0) * inch
+    assignment_width = (2.35 if profile.include_vehicle_owners else 1.75) * inch
+    officer_width = width - officer_id_width - assignment_width
     _draw_cell(
         pdf,
         left,
@@ -734,18 +1118,18 @@ def _draw_footer(
         pdf,
         left + officer_width,
         top - field_height,
-        dpsst_width,
+        officer_id_width,
         field_height,
-        "DPSST",
+        profile.officer_id_label,
         dpsst,
     )
     _draw_cell(
         pdf,
-        left + officer_width + dpsst_width,
+        left + officer_width + officer_id_width,
         top - field_height,
-        precinct_width,
+        assignment_width,
         field_height,
-        "PRECINCT",
+        profile.assignment_label,
         assignment or details.precinct,
     )
     footer_y = top - field_height - 10
@@ -753,11 +1137,11 @@ def _draw_footer(
     pdf.setFont("Helvetica", 6.2)
     if case_number:
         pdf.drawString(left, footer_y, f"CASE {case_number}")
-    pdf.drawCentredString(left + width / 2, footer_y, "ORIGINAL / INVOLVED PARTIES")
+    pdf.drawCentredString(left + width / 2, footer_y, profile.footer_distribution)
     pdf.drawRightString(
         left + width,
         footer_y,
-        f"Traffic Crash Notebook v{__version__}",
+        generator_label,
     )
 
 
@@ -1024,8 +1408,333 @@ def _draw_back_page(pdf: canvas.Canvas) -> None:
     pdf.showPage()
 
 
+def _draw_idaho_back_page(pdf: canvas.Canvas) -> None:
+    """Draw Idaho-specific exchange duties and report follow-up information."""
+
+    page_width, page_height = letter
+    left = 0.40 * inch
+    bottom = 0.36 * inch
+    width = page_width - 2 * left
+    top = page_height - 0.36 * inch
+    body_left = left + 8
+    body_width = width - 16
+
+    body_style = ParagraphStyle(
+        "IdahoExchangeInformationBody",
+        fontName="Helvetica",
+        fontSize=8.05,
+        leading=9.65,
+        textColor=colors.black,
+        alignment=TA_LEFT,
+    )
+    centered_style = ParagraphStyle(
+        "IdahoExchangeInformationCentered",
+        parent=body_style,
+        alignment=TA_CENTER,
+        fontSize=8.7,
+        leading=10.2,
+    )
+    disclaimer_style = ParagraphStyle(
+        "IdahoExchangeInformationDisclaimer",
+        parent=centered_style,
+        fontName="Helvetica-Bold",
+        fontSize=11.0,
+        leading=12.5,
+    )
+    evaluation_style = ParagraphStyle(
+        "IdahoFallsExchangeEvaluationNotice",
+        parent=centered_style,
+        fontName="Helvetica-Bold",
+        fontSize=8.6,
+        leading=10.0,
+    )
+    bullet_style = ParagraphStyle(
+        "IdahoExchangeInformationBullet",
+        parent=body_style,
+        leftIndent=20,
+        firstLineIndent=0,
+        bulletIndent=7,
+        fontSize=8.0,
+        leading=9.4,
+    )
+    source_style = ParagraphStyle(
+        "IdahoExchangeInformationSource",
+        parent=body_style,
+        fontSize=6.8,
+        leading=8.0,
+        textColor=LABEL_COLOR,
+    )
+
+    pdf.setFillColor(colors.white)
+    pdf.rect(0, 0, page_width, page_height, stroke=0, fill=1)
+    pdf.setStrokeColor(LINE_COLOR)
+    pdf.setLineWidth(1.1)
+    pdf.rect(left, bottom, width, top - bottom, stroke=1, fill=0)
+
+    title_height = 24.0
+    pdf.setFillColor(colors.black)
+    pdf.rect(left, top - title_height, width, title_height, stroke=0, fill=1)
+    pdf.setFillColor(colors.white)
+    _draw_centered_fit_text(
+        pdf,
+        "IDAHO FALLS POLICE DEPARTMENT - CRASH INFORMATION",
+        left + width / 2,
+        top - title_height + 6.4,
+        width - 16,
+        font_name="Helvetica-Bold",
+        font_size=13.0,
+        minimum_size=9.0,
+    )
+    y = top - title_height - 4
+    y = _draw_information_paragraph(
+        pdf,
+        "IDAHO DRIVER RESPONSIBILITIES - RETAIN FOR INSURANCE AND PERSONAL RECORDS",
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=centered_style,
+        space_after=2,
+    )
+    y = _draw_information_paragraph(
+        pdf,
+        "EVALUATION DRAFT - NOT APPROVED OR ADOPTED BY THE IDAHO FALLS POLICE "
+        "DEPARTMENT",
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=evaluation_style,
+        space_after=2,
+    )
+    y = _draw_information_paragraph(
+        pdf,
+        "THIS IS NOT AN OFFICIAL IDAHO VEHICLE COLLISION REPORT (IVCR)",
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=disclaimer_style,
+        space_after=2,
+    )
+    y = _draw_information_paragraph(
+        pdf,
+        "This exchange sheet does not determine fault. Review it before leaving "
+        "the scene when practical and promptly tell the investigating agency if "
+        "information appears incomplete or incorrect.",
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=centered_style,
+        space_after=5,
+    )
+
+    y = _draw_information_heading(
+        pdf,
+        "AT THE SCENE",
+        left=left,
+        top=y,
+        width=width,
+    ) - 5
+    scene_items = (
+        "Stop at or near the scene without unnecessarily blocking traffic.",
+        "Call for police and medical help and give reasonable assistance to "
+        "anyone who is injured.",
+        "Immediately report a crash to police when anyone is injured or killed, "
+        "or when property damage is more than $1,500.",
+        "On an interstate or major divided highway, safely move operable vehicles "
+        "out of travel lanes when the crash caused no injury or death.",
+        "If the damage estimate or reporting duty is uncertain, contact law "
+        "enforcement and follow the officer's directions.",
+    )
+    for item in scene_items:
+        y = _draw_information_paragraph(
+            pdf,
+            item,
+            x=body_left,
+            top=y,
+            width=body_width,
+            style=bullet_style,
+            space_after=1,
+            bullet_text="-",
+        )
+    y -= 3
+
+    y = _draw_information_heading(
+        pdf,
+        "REQUIRED INFORMATION EXCHANGE - IDAHO CODE 49-1302",
+        left=left,
+        top=y,
+        width=width,
+    ) - 5
+    y = _draw_information_paragraph(
+        pdf,
+        "For a crash involving damage to a driven or attended vehicle, exchange:",
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=body_style,
+        space_after=2,
+    )
+    exchange_items = (
+        "Driver name and address",
+        "Driver license, if available at the scene",
+        "Proof of vehicle registration",
+        "Certificate or proof of liability insurance",
+    )
+    for item in exchange_items:
+        y = _draw_information_paragraph(
+            pdf,
+            item,
+            x=body_left,
+            top=y,
+            width=body_width,
+            style=bullet_style,
+            space_after=1,
+            bullet_text="-",
+        )
+    y = _draw_information_paragraph(
+        pdf,
+        "When an officer is present, the officer makes reasonable efforts to "
+        "facilitate this exchange. Willfully withholding required information or "
+        "knowingly providing false information may be a misdemeanor.",
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=body_style,
+        space_after=5,
+    )
+
+    y = _draw_information_heading(
+        pdf,
+        "KEEP FOR INSURANCE AND FOLLOW-UP",
+        left=left,
+        top=y,
+        width=width,
+    ) - 5
+    keep_items = (
+        "Other vehicle owner's name, address, phone, insurance company, and "
+        "policy number",
+        "Driver and witness names, addresses, phone numbers, and driver-license "
+        "information when collected",
+        "Vehicle plate, state, year, make, model, VIN or registration identifier, "
+        "and towing information",
+        "Agency case number and investigating officer or agency contact details",
+    )
+    for item in keep_items:
+        y = _draw_information_paragraph(
+            pdf,
+            item,
+            x=body_left,
+            top=y,
+            width=body_width,
+            style=bullet_style,
+            space_after=1,
+            bullet_text="-",
+        )
+    y -= 3
+
+    y = _draw_information_heading(
+        pdf,
+        "REPORTS AND IDAHO FALLS POLICE CONTACTS",
+        left=left,
+        top=y,
+        width=width,
+    ) - 5
+    contact_items = (
+        "<b>Emergency:</b> 911",
+        "<b>Non-emergency police response:</b> 208-529-1200",
+        "<b>Accident-report questions or help locating a report:</b> IFPD Records, "
+        "208-612-8600",
+        "<b>Obtain a crash report:</b> <link "
+        "href=\"https://www.idahofallsidaho.gov/768/Records\" "
+        "color=\"#17365D\"><u>www.idahofallsidaho.gov/768/Records</u></link>",
+        "<b>Information Desk:</b> 208-612-8616",
+        "<b>Address:</b> 775 Northgate Mile, Idaho Falls, ID 83401",
+    )
+    for item in contact_items:
+        y = _draw_information_paragraph(
+            pdf,
+            item,
+            x=body_left,
+            top=y,
+            width=body_width,
+            style=bullet_style,
+            space_after=1,
+            bullet_text="-",
+        )
+    y -= 2
+    y = _draw_information_paragraph(
+        pdf,
+        "The investigating agency's official IVCR is separate from this exchange "
+        "sheet. Use the IFPD Records link above to obtain a Vehicle Accident Report; "
+        "call IFPD Records if a report cannot be located.",
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=body_style,
+        space_after=4,
+    )
+    y = _draw_information_paragraph(
+        pdf,
+        "Reference review: Idaho Code 49-1302, 49-1305, and 49-1306; Idaho Driver's "
+        "Handbook, July 2025; IFPD Police Complex and Records pages; Idaho "
+        "Transportation Department Office of Highway Safety guidance. "
+        "Reviewed 08/06/2026. This summary is not legal advice; requirements and "
+        "agency procedures can change.",
+        x=body_left,
+        top=y,
+        width=body_width,
+        style=source_style,
+        space_after=5,
+    )
+
+    if y < bottom + 115:
+        raise RuntimeError("The Idaho exchange information page exceeded its layout.")
+    notes_heading_height = 17.0
+    pdf.setFillColor(LIGHT_FILL)
+    pdf.setStrokeColor(LINE_COLOR)
+    pdf.rect(
+        left,
+        y - notes_heading_height,
+        width,
+        notes_heading_height,
+        stroke=1,
+        fill=1,
+    )
+    pdf.setFillColor(colors.black)
+    pdf.setFont("Helvetica", 8.2)
+    pdf.drawCentredString(
+        left + width / 2,
+        y - notes_heading_height + 5.0,
+        "PERSONAL NOTES / CLAIM INFORMATION",
+    )
+    line_y = y - notes_heading_height - 16
+    pdf.setStrokeColor(LINE_COLOR)
+    pdf.setLineWidth(0.45)
+    while line_y > bottom + 14:
+        pdf.line(left, line_y, left + width, line_y)
+        line_y -= 18
+
+    pdf.setFillColor(LABEL_COLOR)
+    pdf.setFont("Helvetica", 6.2)
+    pdf.drawRightString(
+        left + width - 3,
+        bottom + 3,
+        "IDAHO FALLS EVALUATION DRAFT - REVIEWED 08/06/2026",
+    )
+    pdf.showPage()
+
+
+def _draw_information_page(
+    pdf: canvas.Canvas,
+    profile: ExchangeReportProfile,
+) -> None:
+    if profile.information_page_variant == "idaho":
+        _draw_idaho_back_page(pdf)
+        return
+    _draw_back_page(pdf)
+
+
 def export_exchange_report_pdf(
-    repository: CaseRepository,
+    repository: ExchangeReportRepository,
     case_id: str,
     destination: str | Path,
 ) -> Path:
@@ -1033,20 +1742,54 @@ def export_exchange_report_pdf(
     if case is None:
         raise ValueError(f"Case not found: {case_id}")
 
-    crash_details = repository.get_crash_details(case_id)
-    exchange_details = repository.get_exchange_report_details(case_id)
     people_list = repository.list_people(case_id)
-    people = {person.id: person for person in people_list}
-    vehicles = repository.list_vehicles(case_id)
-    profiles = {
-        person.id: repository.get_driver_profile(person.id)
-        for person in people_list
-    }
+    document = ExchangeReportDocument(
+        case=case,
+        crash_details=repository.get_crash_details(case_id),
+        exchange_details=repository.get_exchange_report_details(case_id),
+        people=people_list,
+        vehicles=repository.list_vehicles(case_id),
+        profiles={
+            person.id: repository.get_driver_profile(person.id)
+            for person in people_list
+        },
+        participants={
+            person.id: repository.get_participant_details(person.id)
+            for person in people_list
+        },
+    )
+    return export_exchange_report_document_pdf(document, destination)
+
+
+def export_exchange_report_document_pdf(
+    document: ExchangeReportDocument,
+    destination: str | Path,
+    *,
+    report_profile: ExchangeReportProfile = OREGON_EXCHANGE_PROFILE,
+    generator_label: str = f"Traffic Crash Notebook v{__version__}",
+    default_author: str = "Traffic Crash Notebook",
+) -> Path:
+    """Render an exchange report from records already held by the caller."""
+
+    case = document.case
+    crash_details = document.crash_details
+    exchange_details = document.exchange_details
+    people_list = document.people
+    vehicles = document.vehicles
+    profiles = document.profiles
     participants = {
-        person.id: repository.get_participant_details(person.id)
+        person.id: document.participants.get(
+            person.id,
+            ParticipantDetails(person_id=person.id),
+        )
         for person in people_list
     }
     vehicle_drivers = resolve_exchange_vehicle_drivers(
+        vehicles,
+        people_list,
+        participants,
+    )
+    vehicle_owners = resolve_exchange_vehicle_owners(
         vehicles,
         people_list,
         participants,
@@ -1055,20 +1798,26 @@ def export_exchange_report_pdf(
         people_list,
         vehicles,
         participants,
+        include_vehicle_owners_in_blocks=report_profile.include_vehicle_owners,
     )
     vehicle_labels = {
         vehicle.id: vehicle.vehicle_number or vehicle.description
         for vehicle in vehicles
     }
-    page_plan = exchange_report_page_plan(vehicles, exchange_people)
+    page_plan = exchange_report_page_plan(
+        vehicles,
+        exchange_people,
+        vehicle_block_height=report_profile.vehicle_block_height,
+    )
     page_count = len(page_plan)
     destination_path = Path(destination)
     destination_path.parent.mkdir(parents=True, exist_ok=True)
     pdf = canvas.Canvas(str(destination_path), pagesize=letter, pageCompression=1)
     pdf.setTitle(
-        f"Traffic Crash Exchange Report - {case.case_number or 'Untitled Case'}"
+        f"{report_profile.report_title.title()} - "
+        f"{case.case_number or 'Untitled Case'}"
     )
-    pdf.setAuthor(case.investigator or "Traffic Crash Notebook")
+    pdf.setAuthor(case.investigator or default_author)
     pdf.setSubject("Traffic crash information exchange report")
 
     page_width, page_height = letter
@@ -1089,6 +1838,7 @@ def export_exchange_report_pdf(
     for page_index, (page_vehicles, page_people) in enumerate(page_plan):
         current_top = _draw_header(
             pdf,
+            profile=report_profile,
             page_number=page_index + 1,
             page_count=page_count,
             case_number=case.case_number,
@@ -1100,16 +1850,29 @@ def export_exchange_report_pdf(
         )
 
         for vehicle in page_vehicles:
-            current_top = _draw_vehicle_block(
-                pdf,
-                vehicle=vehicle,
-                driver=vehicle_drivers.get(vehicle.id),
-                profiles=profiles,
-                left=left,
-                top=current_top,
-                width=content_width,
-                height=VEHICLE_BLOCK_HEIGHT,
-            )
+            if report_profile.include_vehicle_owners:
+                current_top = _draw_idaho_vehicle_block(
+                    pdf,
+                    vehicle=vehicle,
+                    driver=vehicle_drivers.get(vehicle.id),
+                    owner=vehicle_owners.get(vehicle.id),
+                    profiles=profiles,
+                    left=left,
+                    top=current_top,
+                    width=content_width,
+                    height=report_profile.vehicle_block_height,
+                )
+            else:
+                current_top = _draw_vehicle_block(
+                    pdf,
+                    vehicle=vehicle,
+                    driver=vehicle_drivers.get(vehicle.id),
+                    profiles=profiles,
+                    left=left,
+                    top=current_top,
+                    width=content_width,
+                    height=report_profile.vehicle_block_height,
+                )
 
         for person in page_people:
             participant_vehicle = vehicle_labels.get(
@@ -1128,17 +1891,19 @@ def export_exchange_report_pdf(
 
         _draw_footer(
             pdf,
+            profile=report_profile,
             details=exchange_details,
             investigator=case.investigator,
             dpsst=case.assigned_officer_dpsst,
             assignment=case.assignment,
             case_number=case.case_number,
+            generator_label=generator_label,
             left=left,
             top=0.85 * inch,
             width=content_width,
         )
         pdf.showPage()
 
-    _draw_back_page(pdf)
+    _draw_information_page(pdf, report_profile)
     pdf.save()
     return destination_path

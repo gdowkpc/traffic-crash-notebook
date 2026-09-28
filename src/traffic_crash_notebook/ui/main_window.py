@@ -113,6 +113,7 @@ from ..models import (
     UserDefaults,
     Vehicle,
     VEHICLE_WORKFLOW_FIELDS,
+    contact_common_fields,
     format_crash_location,
     normalize_scene_evidence_methods,
 )
@@ -3326,7 +3327,10 @@ class MainWindow(QMainWindow):
         people, vehicles = self._case_relationship_maps()
         rows = []
         for contact in self.repository.list_contacts(self.current_case.id):
-            contact_name = people[contact.contact_person_id].display_name if contact.contact_person_id in people else contact.contact_name
+            common_fields = contact_common_fields(
+                contact,
+                people.get(contact.contact_person_id),
+            )
             subject = "Needs person assignment"
             if contact.subject_person_id in people:
                 subject = people[contact.subject_person_id].display_name
@@ -3334,8 +3338,8 @@ class MainWindow(QMainWindow):
                 vehicle = vehicles[contact.vehicle_id]
                 subject += f" (legacy vehicle: {vehicle.vehicle_number} {vehicle.description})"
             rows.append((contact.id, [
-                subject, contact.contact_type, contact_name,
-                contact.cell_phone, contact.home_phone, contact.work_phone,
+                subject, contact.contact_type, common_fields["contact_name"],
+                common_fields["cell_phone"], common_fields["home_phone"], common_fields["work_phone"],
                 contact.organization, contact.notes,
             ]))
         self._populate_table(self.contacts_table, rows)

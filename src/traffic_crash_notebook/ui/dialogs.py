@@ -72,6 +72,7 @@ from ..models import (
     VideoSource,
     VRUAnalysis,
     WitnessDetails,
+    contact_common_fields,
 )
 from .spellcheck_text_edit import SpellCheckedLineEdit, SpellCheckedTextEdit
 
@@ -89,7 +90,11 @@ def _line(text: str = "", placeholder: str = "") -> QLineEdit:
 
 
 def _uppercase_line(text: str = "", placeholder: str = "") -> QLineEdit:
+    """Create a line editor that normalizes typed or pasted text to uppercase."""
     widget = _line(text.upper(), placeholder)
+    widget.setInputMethodHints(
+        widget.inputMethodHints() | Qt.InputMethodHint.ImhUppercaseOnly
+    )
 
     def normalize(value: str) -> None:
         uppercase_value = value.upper()
@@ -2091,6 +2096,7 @@ class ContactRelationshipDialog(RecordDialog):
     ):
         super().__init__("Edit Contact" if contact else "Add Contact", parent)
         self.contact = contact or ContactRelationship(id="", case_id=case_id)
+        self.people_by_id = {person.id: person for person in people}
         form = QFormLayout()
         self.contact_type = _combo(self.CONTACT_TYPES, self.contact.contact_type, editable=True)
         self.subject_person = _related_person_combo(
@@ -2108,9 +2114,25 @@ class ContactRelationshipDialog(RecordDialog):
         self.address = _line(self.contact.address)
         self.city = _line(self.contact.city)
         self.state = _line(self.contact.state)
+        self._common_contact_fields = {
+            "contact_name": self.contact_name,
+            "cell_phone": self.cell_phone,
+            "home_phone": self.home_phone,
+            "work_phone": self.work_phone,
+            "email": self.email,
+            "address": self.address,
+            "city": self.city,
+            "state": self.state,
+        }
         form.addRow("Contact type", self.contact_type)
         form.addRow("Contact for person", self.subject_person)
         form.addRow("Existing person as contact", self.contact_person)
+        self.contact_sync_note = QLabel(
+            "Selecting an existing person syncs their name, phones, email, and address. "
+            "Edit that Person record to change shared details."
+        )
+        self.contact_sync_note.setWordWrap(True)
+        form.addRow("", self.contact_sync_note)
         form.addRow("Contact name", self.contact_name)
         form.addRow("Organization", self.organization)
         form.addRow("Cell phone", self.cell_phone)
@@ -2124,7 +2146,27 @@ class ContactRelationshipDialog(RecordDialog):
         self.notes = SpellCheckedTextEdit(self.contact.notes)
         self.root.addWidget(QLabel("Notes / relationship"))
         self.root.addWidget(self.notes, 1)
+        self.contact_person.currentIndexChanged.connect(self._sync_linked_person_fields)
+        self._sync_linked_person_fields()
         self.finish_layout()
+
+    def _linked_contact_person(self) -> Person | None:
+        return self.people_by_id.get(self.contact_person.currentData())
+
+    def _sync_linked_person_fields(self) -> None:
+        linked_person = self._linked_contact_person()
+        if linked_person is None:
+            for widget in self._common_contact_fields.values():
+                widget.setReadOnly(False)
+                widget.setToolTip("")
+            return
+        for attribute, value in contact_common_fields(self.contact, linked_person).items():
+            widget = self._common_contact_fields[attribute]
+            widget.setText(value)
+            widget.setReadOnly(True)
+            widget.setToolTip(
+                "Synced from the selected person. Edit that person to change this shared detail."
+            )
 
     def _validate_and_accept(self) -> None:
         if not self.subject_person.currentData():
@@ -2144,11 +2186,17 @@ class ContactRelationshipDialog(RecordDialog):
         self.contact.subject_person_id = self.subject_person.currentData()
         self.contact.vehicle_id = None
         self.contact.contact_person_id = self.contact_person.currentData()
-        for attribute in (
-            "contact_name", "organization", "cell_phone", "home_phone",
-            "work_phone", "email", "address", "city", "state",
-        ):
-            setattr(self.contact, attribute, getattr(self, attribute).text().strip())
+        linked_person = self._linked_contact_person()
+        if linked_person is not None:
+            common_fields = contact_common_fields(self.contact, linked_person)
+        else:
+            common_fields = {
+                attribute: widget.text().strip()
+                for attribute, widget in self._common_contact_fields.items()
+            }
+        for attribute, value in common_fields.items():
+            setattr(self.contact, attribute, value)
+        self.contact.organization = self.organization.text().strip()
         self.contact.notes = self.notes.toPlainText().strip()
         return self.contact
 
