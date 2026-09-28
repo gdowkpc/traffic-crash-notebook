@@ -287,8 +287,6 @@ def export_case_pdf(
             overview_location,
         )
     )
-    if working_copy:
-        story.extend(_write_in_area("Cover Notes", styles, lines=5))
     story.append(PageBreak())
     story.extend(_packet_case_section(
         case, checklist, charge_dispositions, crash_details, video_sources, counts, styles
@@ -392,7 +390,7 @@ def export_case_pdf(
             lines=5,
         ))
 
-    if working_copy or property_receipts or tasks or chronology or case.notes:
+    if working_copy or property_receipts or tasks or chronology:
         story.append(PageBreak())
         if working_copy or property_receipts:
             story.extend(_evidence_section(
@@ -414,10 +412,8 @@ def export_case_pdf(
             story.extend(_chronology_section(chronology, styles))
             if working_copy:
                 story.extend(_write_in_area("Journal Continuation", styles, lines=7))
-        if working_copy or case.notes:
-            story.extend(_notes_section(case, styles))
-            if working_copy:
-                story.extend(_write_in_area("General Handwritten Continuation", styles, lines=20))
+        if working_copy:
+            story.extend(_write_in_area("General Handwritten Continuation", styles, lines=20))
 
     canvas_factory = partial(
         _PacketCanvas,
@@ -511,7 +507,6 @@ def export_case_summary_pdf(
     ))
     story.extend(_tasks_section(repository.list_tasks(case_id), styles))
     story.extend(_chronology_section(repository.list_chronology(case_id), styles))
-    story.extend(_notes_section(case, styles))
     canvas_factory = partial(
         _PacketCanvas,
         case_label=case.case_number or "Untitled Case",
@@ -2315,10 +2310,6 @@ def _tasks_section(tasks: list[CaseTask], styles) -> list[object]:
     table.setStyle(_standard_table_style())
     story.append(table)
     return story
-
-
-def _notes_section(case: CrashCase, styles) -> list[object]:
-    return _narrative_block("General investigative notes", case.notes, styles)
 
 
 def _standard_table_style() -> TableStyle:

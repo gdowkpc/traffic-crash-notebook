@@ -591,6 +591,7 @@ class PdfExportTest(unittest.TestCase):
             case.assignment = "Traffic Investigations Unit"
             case.first_harmful_event = "Vehicle one struck a pedestrian in the crosswalk."
             case.summary = "A detailed but unofficial investigative working summary."
+            case.notes = "LEGACY GENERAL INVESTIGATIVE NOTES"
             repository.save_case(case)
             person = Person(
                 id=new_id(), case_id=case.id, first_name="Morgan", last_name="Lee",
@@ -1094,7 +1095,9 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("Crash Diagram Completed", text)
             self.assertIn("not an official report", text.lower())
             self.assertNotIn("FULL WORKING PACKET", text)
-            self.assertIn("COVER NOTES", text)
+            self.assertNotIn("COVER NOTES", text)
+            self.assertNotIn("LEGACY GENERAL INVESTIGATIVE NOTES", text)
+            self.assertNotIn("General investigative notes", text)
             self.assertNotIn("ROUTING UPDATES", text)
             for retired_heading in (
                 "Driver background",
@@ -1115,6 +1118,8 @@ class PdfExportTest(unittest.TestCase):
             self.assertLess(len(compact_reader.pages), len(reader.pages))
             self.assertIn("COMPACT COMPLETED-CASE PACKET", compact_text)
             self.assertNotIn("COVER NOTES", compact_text)
+            self.assertNotIn("LEGACY GENERAL INVESTIGATIVE NOTES", compact_text)
+            self.assertNotIn("General investigative notes", compact_text)
             self.assertIn("Morgan Lee", compact_text)
             self.assertIn("KPDX ASOS", compact_text)
             self.assertIn("71 F", compact_text)
@@ -1163,6 +1168,8 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("26-123456", summary_text)
             self.assertIn("Scene scan completed", summary_text)
             self.assertIn("Quick review", summary_text)
+            self.assertNotIn("LEGACY GENERAL INVESTIGATIVE NOTES", summary_text)
+            self.assertNotIn("General investigative notes", summary_text)
             self.assertNotIn("Key questions", summary_text)
             self.assertNotIn("unresolved issues", summary_text.lower())
             self.assertIn(f"Page 1 of {len(summary_reader.pages)}", summary_text)

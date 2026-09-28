@@ -713,12 +713,9 @@ class MainWindow(QMainWindow):
         )
         self.summary = SpellCheckedTextEdit()
         self.summary.setPlaceholderText("Brief description of the crash and the present investigative picture")
-        self.general_notes = SpellCheckedTextEdit()
-        self.general_notes.setPlaceholderText("General working notes")
         for label, widget in (
             ("First Harmful Event", self.first_harmful_event),
             ("Crash summary", self.summary),
-            ("General investigative notes", self.general_notes),
         ):
             layout.addWidget(QLabel(label))
             layout.addWidget(widget, 1)
@@ -734,7 +731,6 @@ class MainWindow(QMainWindow):
         self.status.currentTextChanged.connect(self.schedule_autosave)
         self.first_harmful_event.textChanged.connect(self.schedule_autosave)
         self.summary.textChanged.connect(self.schedule_autosave)
-        self.general_notes.textChanged.connect(self.schedule_autosave)
         return tab
 
     def _build_packet_tab(self) -> QWidget:
@@ -1742,7 +1738,6 @@ class MainWindow(QMainWindow):
         case.status = self.status.currentText()
         case.first_harmful_event = self.first_harmful_event.text().strip()
         case.summary = self.summary.toPlainText().strip()
-        case.notes = self.general_notes.toPlainText().strip()
         self.save_conditions()
         self.save_packet_case_data()
         self.save_hit_run_overview()
@@ -1906,7 +1901,6 @@ class MainWindow(QMainWindow):
         self.status.setCurrentIndex(max(0, index))
         self.first_harmful_event.setText(case.first_harmful_event)
         self.summary.setPlainText(case.summary)
-        self.general_notes.setPlainText(case.notes)
         self.checklist = self.repository.get_investigative_checklist(case.id)
         for name, widget in self.checklist_widgets.items():
             widget.setText(getattr(self.checklist, name))

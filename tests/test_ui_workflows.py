@@ -393,7 +393,9 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.assertTrue(self.window.periodic_autosave_timer.isActive())
         self.assertEqual(self.window.periodic_autosave_timer.interval(), 30_000)
 
-        self.window.general_notes.setPlainText("Saved when leaving Overview")
+        self.window.current_case.notes = "Previously saved general notes"
+        self.repository.save_case(self.window.current_case)
+        self.window.summary.setPlainText("Saved when leaving Overview")
         self.window.autosave_timer.stop()
         self.assertTrue(self.window.overview_dirty)
         people_index = next(
@@ -404,8 +406,12 @@ class AddRecordWorkflowTest(unittest.TestCase):
         self.window.tabs.setCurrentIndex(people_index)
         self.app.processEvents()
         self.assertEqual(
-            self.repository.get_case(self.case.id).notes,
+            self.repository.get_case(self.case.id).summary,
             "Saved when leaving Overview",
+        )
+        self.assertEqual(
+            self.repository.get_case(self.case.id).notes,
+            "Previously saved general notes",
         )
         self.assertFalse(self.window.overview_dirty)
 
@@ -2494,7 +2500,11 @@ class AddRecordWorkflowTest(unittest.TestCase):
 
     def test_narrative_fields_use_offline_spell_check(self):
         self.assertIsInstance(self.window.summary, SpellCheckedTextEdit)
-        self.assertIsInstance(self.window.general_notes, SpellCheckedTextEdit)
+        self.assertFalse(hasattr(self.window, "general_notes"))
+        self.assertNotIn(
+            "General investigative notes",
+            {label.text() for label in self.window.findChildren(QLabel)},
+        )
         self.assertFalse(hasattr(self.window, "key_questions"))
         self.assertNotIn(
             "Key questions / unresolved issues",
