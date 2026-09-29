@@ -413,6 +413,7 @@ class Vehicle:
     tow_information: str = ""
     edr_status: str = ""
     edr_not_downloaded_reason: str = ""
+    registration_dmv_return: str = ""
     warrant_obtained: bool = False
     vehicle_inspection_completed: bool = False
     nhtsa_recalls_checked: bool = False
@@ -861,6 +862,7 @@ class DriverProfile:
     license_restrictions: str = ""
     license_restriction_explanation: str = ""
     license_restricted: str = "Unknown"
+    driver_license_dmv_return: str = ""
     notes: str = ""
     updated_at: str = ""
 

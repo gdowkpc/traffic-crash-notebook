@@ -49,6 +49,52 @@ from traffic_crash_notebook.repository import CaseRepository, new_id
 
 
 class PdfExportTest(unittest.TestCase):
+    def test_packet_preview_handles_a_driver_field_longer_than_one_page(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repository = CaseRepository(root / "long-driver-field.sqlite3")
+            case = repository.create_case("26-LONG-FIELD", "Packet Test")
+            driver = repository.save_person(Person(
+                id="", case_id=case.id, first_name="Long", last_name="Field",
+                roles=["Driver"],
+            ))
+            repository.save_participant_details(ParticipantDetails(
+                person_id=driver.id, injury_status="Killed",
+            ))
+            long_value = " ".join(
+                f"recorded-detail-{index:04d}" for index in range(550)
+            )
+            repository.save_vehicle(Vehicle(
+                id="", case_id=case.id, vehicle_number="V-1",
+                registration_dmv_return=(
+                    "Registration DMV first line\nRegistration DMV last line"
+                ),
+            ))
+            repository.save_driver_profile(DriverProfile(
+                person_id=driver.id,
+                license_restriction_explanation=long_value,
+                driver_license_dmv_return=(
+                    "Driver DMV first line\nDriver DMV last line"
+                ),
+            ))
+
+            for exporter, filename in (
+                (export_case_pdf, "working.pdf"),
+                (export_case_compact_pdf, "compact.pdf"),
+            ):
+                reader = PdfReader(exporter(repository, case.id, root / filename))
+                text = " ".join(
+                    (page.extract_text() or "") for page in reader.pages
+                )
+                self.assertIn("recorded-detail-0000", text)
+                self.assertIn("recorded-detail-0549", text)
+                self.assertIn("Driver License DMV Return", text)
+                self.assertIn("Driver DMV first line", text)
+                self.assertIn("Driver DMV last line", text)
+                self.assertIn("Vehicle Registration DMV Return", text)
+                self.assertIn("Registration DMV first line", text)
+                self.assertIn("Registration DMV last line", text)
+
     def test_deceased_status_accepts_death_date_or_supported_status_text(self):
         for details in (
             ParticipantDetails(person_id="dated", date_of_death="2026-08-09"),

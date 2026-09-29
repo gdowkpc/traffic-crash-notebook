@@ -57,7 +57,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 35
+SCHEMA_VERSION = 36
 
 
 SCHEMA = """
@@ -148,6 +148,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
     tow_information TEXT NOT NULL DEFAULT '',
     edr_status TEXT NOT NULL DEFAULT '',
     edr_not_downloaded_reason TEXT NOT NULL DEFAULT '',
+    registration_dmv_return TEXT NOT NULL DEFAULT '',
     warrant_obtained INTEGER NOT NULL DEFAULT 0,
     vehicle_inspection_completed INTEGER NOT NULL DEFAULT 0,
     nhtsa_recalls_checked INTEGER NOT NULL DEFAULT 0,
@@ -366,6 +367,7 @@ CREATE TABLE IF NOT EXISTS driver_profiles (
     license_class TEXT NOT NULL DEFAULT '', license_status TEXT NOT NULL DEFAULT '',
     license_issued_date TEXT NOT NULL DEFAULT '',
     license_expiration_date TEXT NOT NULL DEFAULT '', endorsements TEXT NOT NULL DEFAULT '',
+    driver_license_dmv_return TEXT NOT NULL DEFAULT '',
     notes TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL
 );
 
@@ -699,6 +701,7 @@ class CaseRepository:
                 "trim": "TEXT NOT NULL DEFAULT ''",
                 "vehicle_weight": "TEXT NOT NULL DEFAULT ''",
                 "edr_not_downloaded_reason": "TEXT NOT NULL DEFAULT ''",
+                "registration_dmv_return": "TEXT NOT NULL DEFAULT ''",
                 "engine": "TEXT NOT NULL DEFAULT ''",
                 "tire_size": "TEXT NOT NULL DEFAULT ''",
                 "property_damage": "TEXT NOT NULL DEFAULT ''",
@@ -751,6 +754,7 @@ class CaseRepository:
                 "endorsements": "TEXT NOT NULL DEFAULT ''",
                 "license_issued_date": "TEXT NOT NULL DEFAULT ''",
                 "license_expiration_date": "TEXT NOT NULL DEFAULT ''",
+                "driver_license_dmv_return": "TEXT NOT NULL DEFAULT ''",
             },
             "contact_relationships": {
                 "cell_phone": "TEXT NOT NULL DEFAULT ''",
@@ -1271,6 +1275,7 @@ class CaseRepository:
                  insurance_adjuster_name, insurance_adjuster_phone,
                  insurance_adjuster_email, property_damage, towed,
                  tow_information, edr_status, edr_not_downloaded_reason,
+                 registration_dmv_return,
                  warrant_obtained,
                  vehicle_inspection_completed, nhtsa_recalls_checked, cdr_equipped, cdr_imaged,
                  cdr_report_uploaded,
@@ -1282,7 +1287,7 @@ class CaseRepository:
                         :insurance_claim_number, :insurance_adjuster_name,
                         :insurance_adjuster_phone, :insurance_adjuster_email,
                         :property_damage, :towed, :tow_information, :edr_status,
-                        :edr_not_downloaded_reason,
+                        :edr_not_downloaded_reason, :registration_dmv_return,
                         :warrant_obtained,
                         :vehicle_inspection_completed,
                         :nhtsa_recalls_checked, :cdr_equipped, :cdr_imaged, :cdr_report_uploaded,
@@ -1305,6 +1310,7 @@ class CaseRepository:
                   towed=excluded.towed, tow_information=excluded.tow_information,
                   edr_status=excluded.edr_status,
                   edr_not_downloaded_reason=excluded.edr_not_downloaded_reason,
+                  registration_dmv_return=excluded.registration_dmv_return,
                   warrant_obtained=excluded.warrant_obtained,
                   vehicle_inspection_completed=excluded.vehicle_inspection_completed,
                   nhtsa_recalls_checked=excluded.nhtsa_recalls_checked,

@@ -20,7 +20,7 @@ from reportlab.platypus import (
     Paragraph,
     SimpleDocTemplate,
     Spacer,
-    Table,
+    Table as ReportLabTable,
     TableStyle,
 )
 
@@ -77,6 +77,15 @@ LIGHT_GRAY = colors.HexColor("#E4E8EB")
 WARNING = colors.HexColor("#FFF3CD")
 DECEASED_RED = "#B00020"
 AGENCY_UNIT_HEADING = "PORTLAND POLICE BUREAU - TRAFFIC INVESTIGATIONS UNIT"
+MAX_INLINE_TABLE_FIELD_CHARS = 1000
+
+
+class Table(ReportLabTable):
+    """Let a long free-text cell continue instead of blocking packet export."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        kwargs.setdefault("splitInRow", 1)
+        super().__init__(*args, **kwargs)
 
 
 class _PacketCanvas(pdf_canvas.Canvas):
@@ -572,11 +581,11 @@ def _styles():
         name="Cell", parent=styles["Normal"], fontSize=8, leading=10,
     ))
     styles.add(ParagraphStyle(
-        name="VehicleNoteLabel", parent=styles["Label"],
+        name="LongNoteLabel", parent=styles["Label"],
         spaceBefore=3, spaceAfter=2, keepWithNext=1,
     ))
     styles.add(ParagraphStyle(
-        name="VehicleNoteValue", parent=styles["BodySmall"], spaceAfter=5,
+        name="LongNoteValue", parent=styles["BodySmall"], spaceAfter=5,
     ))
     styles.add(ParagraphStyle(
         name="Empty", parent=styles["BodyText"], fontSize=9, leading=12,
@@ -1799,6 +1808,15 @@ def _participant_sections(
                 )
                 if value
             )
+            # Pasted returns can exceed a page; let those fields flow as notes.
+            long_restriction_explanation = (
+                len(profile.license_restriction_explanation)
+                > MAX_INLINE_TABLE_FIELD_CHARS
+            )
+            long_physical_conditions = (
+                len(profile.physical_condition_types)
+                > MAX_INLINE_TABLE_FIELD_CHARS
+            )
             driver_data = [
                 [_field_cell("LICENSE NUMBER", profile.license_number, styles),
                  _field_cell("LICENSE STATE", profile.license_state, styles)],
@@ -1811,34 +1829,44 @@ def _participant_sections(
                 )],
                 [_field_cell("ENDORSEMENTS", profile.endorsements, styles),
                  _field_cell("RESTRICTIONS", restrictions, styles)],
-                [_field_cell(
-                    "RESTRICTIONS EXPLAINED",
-                    profile.license_restriction_explanation,
-                    styles,
-                ), ""],
-                [_field_cell("TRIP", (
+            ]
+            span_rows = []
+            if not long_restriction_explanation:
+                span_rows.append(len(driver_data))
+                driver_data.append([
+                    _field_cell(
+                        "RESTRICTIONS EXPLAINED",
+                        profile.license_restriction_explanation,
+                        styles,
+                    ),
+                    "",
+                ])
+            driver_data.append([
+                _field_cell("TRIP", (
                     f"{profile.trip_from} to {profile.trip_to}; {profile.trip_purpose}"
                 ), styles), _field_cell("IMPAIRMENT", "; ".join(
                     x for x in (
                         profile.impairment_status, profile.bac, profile.testing,
                     ) if x
-                ), styles)],
-            ]
-            span_rows = [4]
+                ), styles),
+            ])
             work = "; ".join(
                 value
                 for value in (profile.hours_worked, profile.type_of_work)
                 if value
             )
             if is_driver:
-                driver_data.insert(6, [
-                    _field_cell(
-                        "PHYSICAL CONDITIONS", profile.physical_condition_types, styles
-                    ),
-                    "",
-                ])
-                span_rows.append(6)
-                driver_data.insert(7, [
+                if not long_physical_conditions:
+                    span_rows.append(len(driver_data))
+                    driver_data.append([
+                        _field_cell(
+                            "PHYSICAL CONDITIONS",
+                            profile.physical_condition_types,
+                            styles,
+                        ),
+                        "",
+                    ])
+                driver_data.append([
                     _field_cell("SLEEP / AWAKE", (
                         f"{profile.hours_asleep} asleep; "
                         f"{profile.hours_awake} awake"
@@ -1846,11 +1874,11 @@ def _participant_sections(
                     _field_cell("WORK", work, styles),
                 ])
             else:
-                driver_data.insert(6, [
+                span_rows.append(len(driver_data))
+                driver_data.append([
                     _field_cell("WORK", work, styles),
                     "",
                 ])
-                span_rows.append(6)
             driver_data.append([
                 _field_cell("FAMILIARITY", (
                     f"Road {profile.familiar_with_road}; "
@@ -1867,6 +1895,24 @@ def _participant_sections(
                 "Driver Background" if is_driver else "Participant Background"
             )
             story.extend([Paragraph(background_title, styles["Label"]), table])
+            if long_restriction_explanation:
+                story.extend(_long_note(
+                    "RESTRICTIONS EXPLAINED",
+                    profile.license_restriction_explanation,
+                    styles,
+                ))
+            if is_driver and long_physical_conditions:
+                story.extend(_long_note(
+                    "PHYSICAL CONDITIONS",
+                    profile.physical_condition_types,
+                    styles,
+                ))
+            if profile.driver_license_dmv_return:
+                story.extend(_long_note(
+                    "Driver License DMV Return",
+                    profile.driver_license_dmv_return,
+                    styles,
+                ))
             additional_driver_details = [
                 ("Testing Methods", profile.testing_methods),
                 ("Impairment Notes", profile.impairment_notes),
@@ -1890,11 +1936,11 @@ def _participant_sections(
     return story
 
 
-def _vehicle_note(title: str, value: str, styles) -> list[Paragraph]:
-    """Keep each vehicle note label with its value while allowing long text to split."""
+def _long_note(title: str, value: str, styles) -> list[Paragraph]:
+    """Keep a note label with its value while allowing long text to split."""
     return [
-        Paragraph(title, styles["VehicleNoteLabel"]),
-        Paragraph(_text(value), styles["VehicleNoteValue"]),
+        Paragraph(title, styles["LongNoteLabel"]),
+        Paragraph(_text(value), styles["LongNoteValue"]),
     ]
 
 
@@ -1980,25 +2026,33 @@ def _vehicles_section(
         block: list[object] = [
             Paragraph(heading, styles["Subsection"]),
             table,
+        ]
+        if vehicle.registration_dmv_return:
+            block.extend(_long_note(
+                "Vehicle Registration DMV Return",
+                vehicle.registration_dmv_return,
+                styles,
+            ))
+        block.extend([
             Paragraph("Insurance Claim", styles["Label"]),
             claim_table,
             Paragraph("Vehicle-Specific Checklist", styles["Label"]),
             workflow_table,
             Paragraph("Vehicle Release", styles["Label"]),
             release_table,
-        ]
+        ])
         if vehicle.edr_status:
-            block.extend(_vehicle_note("CDR / EDR Notes", vehicle.edr_status, styles))
+            block.extend(_long_note("CDR / EDR Notes", vehicle.edr_status, styles))
         if vehicle.cdr_equipped and not vehicle.cdr_imaged and vehicle.edr_not_downloaded_reason:
-            block.extend(_vehicle_note(
+            block.extend(_long_note(
                 "EDR Not Downloaded — Reason",
                 vehicle.edr_not_downloaded_reason,
                 styles,
             ))
         if vehicle.damage_notes:
-            block.extend(_vehicle_note("Damage", vehicle.damage_notes, styles))
+            block.extend(_long_note("Damage", vehicle.damage_notes, styles))
         if vehicle.notes:
-            block.extend(_vehicle_note("Additional Notes", vehicle.notes, styles))
+            block.extend(_long_note("Additional Notes", vehicle.notes, styles))
         inspection = inspections[vehicle.id]
         if _has_detail(inspection, {"vehicle_id", "updated_at"}):
             inspection_data = [
@@ -2054,7 +2108,7 @@ def _vehicles_section(
                 ("Inspection Notes", inspection.inspection_notes),
             ):
                 if value:
-                    block.extend(_vehicle_note(title, value, styles))
+                    block.extend(_long_note(title, value, styles))
             equipment_rows = [[Paragraph(item, styles["Label"]) for item in (
                 "SYSTEM", "EQUIPPED", "OPERABLE"
             )]]

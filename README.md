@@ -13,7 +13,7 @@ grant permission to reuse the source or bundled assets. Agency names, forms, mar
 and other third-party material remain the property of their respective owners; no
 agency endorsement is implied.
 
-## Included in version 0.6.0
+## Included in version 0.6.1
 
 - Create and reopen unlimited cases.
 - Read the selected case clearly with high-contrast text whether the case selector has keyboard focus or not.
@@ -29,13 +29,13 @@ agency endorsement is implied.
 - Track open, waiting, completed, and unnecessary investigative tasks in a dedicated Tasks workspace.
 - Automatically save overview changes.
 - Underline misspelled words in narrative and notes fields using a bundled offline English dictionary, with right-click corrections and a personal dictionary.
-- Preview, print through the standard Windows printer dialog, and export a comprehensive Full Working Packet with a dedicated routing cover page and ruled handwriting areas or a Compact Packet that suppresses unused material; a separate Quick Review export remains available.
+- Preview, print through the standard Windows printer dialog, and export a comprehensive Full Working Packet with a dedicated routing cover page and ruled handwriting areas or a Compact Packet that suppresses unused material; long pasted fields continue across pages, and a separate Quick Review export remains available.
 - Print case identity on every page with final "Page X of Y" numbering and a top-edge punch-safe layout for two-hole attorney folders.
 - Create a consistent SQLite database backup while the application is running.
 - Record unlimited roadways with their own speed, posting, curve, characteristics, and traffic-control details, plus a compact weather form with a direct Weather Underground History link, station, reading time, automatic display units, celestial lighting/twilight details, visibility, and scene-analysis conditions.
 - Maintain participant injury, transport, restraint, air-bag, helmet, ejection/extraction, autopsy, next-of-kin, and medical/evidence notes.
-- Maintain driver trip, impairment, sleep, work, familiarity, driving history, and license information including number, state, class, status, issued/expiration dates, endorsements, and restrictions; packet output suppresses driver-only physical-condition and sleep/awake data for non-drivers.
-- Record registered, curb, and measured vehicle weights together in Inspection, plus brakes, safety equipment, lighting, tire contribution, individual tire measurements, a per-vehicle NHTSA recall-check confirmation, towing status and destination, release status/date/details, and insurance claim number plus adjuster name, phone, and email. Record why an equipped EDR was not downloaded.
+- Maintain driver trip, impairment, sleep, work, familiarity, driving history, and license information including number, state, class, status, issued/expiration dates, endorsements, restrictions, and a separate multiline DMV driver-license return; packet output suppresses driver-only physical-condition and sleep/awake data for non-drivers.
+- Record registered, curb, and measured vehicle weights together in Inspection, plus a separate multiline DMV registration return, brakes, safety equipment, lighting, tire contribution, individual tire measurements, a per-vehicle NHTSA recall-check confirmation, towing status and destination, release status/date/details, and insurance claim number plus adjuster name, phone, and email. Record why an equipped EDR was not downloaded.
 - Record structured equipped/operable states, switch positions, body/glass/restraint observations, identity checks, and unlimited tire positions.
 - Complete the original packet's 44-item motorcycle inspection with ratings, measurements, comments, and inspection metadata.
 - Track the investigative checklist, crash-diagram completion, Axon sharing, peer/sergeant/DA routing milestones with Not Started, Pending, or Complete status and completion dates, unlimited charges/dispositions, crash-team response details, and unlimited video sources with location addresses and Axon upload status.
@@ -70,7 +70,7 @@ builds the executable, runs the finished executable's portable self-test, and
 creates:
 
 ```text
-release\TrafficCrashNotebook-0.6.0-Windows-Portable.zip
+release\TrafficCrashNotebook-0.6.1-Windows-Portable.zip
 ```
 
 The included GitHub Actions workflow performs the same build on a hosted Windows

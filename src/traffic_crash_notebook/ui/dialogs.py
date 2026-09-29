@@ -368,6 +368,10 @@ class VehicleDialog(RecordDialog):
         self.vin = _uppercase_line(self.vehicle.vin, "17-character VIN")
         self.plate = _uppercase_line(self.vehicle.plate)
         self.plate_state = _uppercase_line(self.vehicle.plate_state)
+        self.registration_dmv_return = SpellCheckedTextEdit(
+            self.vehicle.registration_dmv_return
+        )
+        self.registration_dmv_return.setMaximumHeight(150)
         self.driver = self._person_combo(
             self.vehicle.driver_person_id,
             required_role="Driver",
@@ -433,6 +437,7 @@ class VehicleDialog(RecordDialog):
         form.addRow("VIN", self.vin)
         form.addRow("License plate", self.plate)
         form.addRow("Plate state", self.plate_state)
+        form.addRow("Registration DMV return", self.registration_dmv_return)
         form.addRow("Driver", self.driver)
         form.addRow("Owner", self.owner)
         form.addRow("Insurance company", self.insurance_company)
@@ -545,6 +550,9 @@ class VehicleDialog(RecordDialog):
         )
         self.vehicle.release_date = normalize_date_for_storage(
             self.release_date.text()
+        )
+        self.vehicle.registration_dmv_return = (
+            self.registration_dmv_return.toPlainText().strip()
         )
         self.vehicle.insurance = self.vehicle.insurance_company
         for attribute, _label in VEHICLE_WORKFLOW_FIELDS:
@@ -1224,6 +1232,10 @@ class DriverProfileDialog(RecordDialog):
         self.license_restriction_explanation = SpellCheckedLineEdit(
             profile.license_restriction_explanation
         )
+        self.driver_license_dmv_return = SpellCheckedTextEdit(
+            profile.driver_license_dmv_return
+        )
+        self.driver_license_dmv_return.setMaximumHeight(170)
         self.driving_history = SpellCheckedTextEdit(profile.notes)
         self.driving_history.setMaximumHeight(150)
         license_form.addRow("License Number", self.license_number)
@@ -1238,6 +1250,7 @@ class DriverProfileDialog(RecordDialog):
             "Restrictions Explained",
             self.license_restriction_explanation,
         )
+        license_form.addRow("DMV driver license return", self.driver_license_dmv_return)
         license_form.addRow("Driving History", self.driving_history)
         tabs.addTab(license_tab, "License")
 
@@ -1335,6 +1348,9 @@ class DriverProfileDialog(RecordDialog):
         )
         self.profile.license_expiration_date = normalize_date_for_storage(
             self.license_expiration_date.text()
+        )
+        self.profile.driver_license_dmv_return = (
+            self.driver_license_dmv_return.toPlainText().strip()
         )
         self.profile.license_restricted = (
             "Yes"
