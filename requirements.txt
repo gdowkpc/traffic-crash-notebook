@@ -1,4 +1,4 @@
 PySide6>=6.8,<7
-reportlab>=4.2,<5
+reportlab>=4.2,<6
 pyspellchecker>=0.9,<1
 PyInstaller>=6.10,<7
