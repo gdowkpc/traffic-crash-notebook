@@ -570,10 +570,17 @@ class AddRecordWorkflowTest(unittest.TestCase):
         vehicle_dialog.plate.setText("abc123")
         vehicle_dialog.plate_state.setText("or")
         vehicle_dialog.insurance_policy_number.setText("ab-123-cd")
+        vehicle_dialog.registration_dmv_return.setPlainText(
+            "Registration return line 1\nRegistration return line 2"
+        )
         self.assertEqual(vehicle_dialog.vin.text(), "1HGCM82633A004352")
         self.assertEqual(vehicle_dialog.plate.text(), "ABC123")
         self.assertEqual(vehicle_dialog.plate_state.text(), "OR")
         self.assertEqual(vehicle_dialog.insurance_policy_number.text(), "AB-123-CD")
+        self.assertEqual(
+            vehicle_dialog.result_record().registration_dmv_return,
+            "Registration return line 1\nRegistration return line 2",
+        )
         vehicle_dialog.close()
 
         person = Person(id="person-1", case_id=self.case.id, last_name="Driver")
@@ -584,8 +591,15 @@ class AddRecordWorkflowTest(unittest.TestCase):
         )
         driver_dialog.license_number.setText("or-a1b2c3")
         driver_dialog.license_state.setText("or")
+        driver_dialog.driver_license_dmv_return.setPlainText(
+            "Driver license return line 1\nDriver license return line 2"
+        )
         self.assertEqual(driver_dialog.license_number.text(), "OR-A1B2C3")
         self.assertEqual(driver_dialog.license_state.text(), "OR")
+        self.assertEqual(
+            driver_dialog.result_record().driver_license_dmv_return,
+            "Driver license return line 1\nDriver license return line 2",
+        )
         driver_dialog.close()
 
         vehicle_lead_dialog = HitRunVehicleLeadDialog(

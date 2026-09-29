@@ -301,6 +301,31 @@ class RepositoryTest(unittest.TestCase):
                 SCHEMA_VERSION,
             )
 
+    def test_schema_35_adds_separate_dmv_return_fields(self):
+        person = self.repository.save_person(Person(
+            id="", case_id=self.case.id, first_name="Legacy", last_name="Driver",
+            roles=["Driver"],
+        ))
+        self.repository.save_driver_profile(DriverProfile(
+            person_id=person.id, license_number="OR-123", notes="Driving history",
+        ))
+        vehicle = self.repository.save_vehicle(Vehicle(
+            id="", case_id=self.case.id, vehicle_number="V-1", vin="1HGCM82633A004352",
+        ))
+        with closing(sqlite3.connect(self.database)) as connection:
+            connection.execute("ALTER TABLE driver_profiles DROP COLUMN driver_license_dmv_return")
+            connection.execute("ALTER TABLE vehicles DROP COLUMN registration_dmv_return")
+            connection.execute("PRAGMA user_version = 35")
+
+        migrated = CaseRepository(self.database)
+        profile = migrated.get_driver_profile(person.id)
+        self.assertEqual(profile.license_number, "OR-123")
+        self.assertEqual(profile.notes, "Driving history")
+        self.assertEqual(profile.driver_license_dmv_return, "")
+        loaded_vehicle = migrated.get_vehicle(vehicle.id)
+        self.assertEqual(loaded_vehicle.vin, "1HGCM82633A004352")
+        self.assertEqual(loaded_vehicle.registration_dmv_return, "")
+
     def test_schema_28_participant_receives_helmet_without_data_loss(self):
         person = self.repository.save_person(Person(
             id="",
@@ -1767,6 +1792,7 @@ class RepositoryTest(unittest.TestCase):
             license_restricted="Yes",
             license_restriction_explanation="Corrective lenses",
             endorsements="Passenger; Tank",
+            driver_license_dmv_return="DMV driver return line 1\nDMV driver return line 2",
         ))
         contact = self.repository.save_contact(ContactRelationship(
             id="", case_id=self.case.id, contact_name="Morgan Example",
@@ -1781,6 +1807,7 @@ class RepositoryTest(unittest.TestCase):
         vehicle = self.repository.save_vehicle(Vehicle(
             id="", case_id=self.case.id, vehicle_number="V-1", make="Example",
             model="Motorcycle",
+            registration_dmv_return="DMV registration return line 1\nDMV registration return line 2",
         ))
         inspection = self.repository.save_vehicle_inspection(VehicleInspection(
             vehicle_id=vehicle.id, headlights_equipped="Yes", headlights_operable="No",
@@ -1822,6 +1849,14 @@ class RepositoryTest(unittest.TestCase):
         self.assertEqual(
             self.repository.get_driver_profile(person.id).endorsements,
             profile.endorsements,
+        )
+        self.assertEqual(
+            self.repository.get_driver_profile(person.id).driver_license_dmv_return,
+            "DMV driver return line 1\nDMV driver return line 2",
+        )
+        self.assertEqual(
+            self.repository.get_vehicle(vehicle.id).registration_dmv_return,
+            "DMV registration return line 1\nDMV registration return line 2",
         )
         self.assertEqual(self.repository.get_contact(contact.id).work_phone, "503-555-0112")
         self.assertEqual(self.repository.get_surface_observation(surface.id).friction_value, "0.48")
