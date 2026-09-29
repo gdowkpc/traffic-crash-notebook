@@ -1,3 +1,8 @@
+## Traffic Crash Notebook 0.6.1
+
+- Fixes Packet Preview and PDF export when a pasted field is longer than a page. Long driver restriction or physical-condition text continues across pages.
+- Adds separate multiline DMV return fields for a person's driver license and a vehicle's registration. Both are saved with the case and printed in the Full Working and Compact packets.
+
 ## Traffic Crash Notebook 0.6.0
 
 - Leaves empty investigation packet values blank for handwriting, removes the Cover Notes area and unused General Investigative Notes field, and adds the Major Crash Team logo beside the Traffic Investigations Unit logo.

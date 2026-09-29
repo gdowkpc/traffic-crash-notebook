@@ -24,10 +24,11 @@ subfolders. The small pointer to that folder is stored under:
   %LOCALAPPDATA%\TrafficCrashNotebook\storage_config.json
 
 Replacing the portable application folder therefore does not replace the case
-database. Version 0.6.0 upgrades older databases automatically when they are
+database. Version 0.6.1 upgrades older databases automatically when they are
 opened; existing cases are retained, and older vehicle weight entries are
-carried into the measured-weight inspection field. Use the Back Up button
-regularly and store backups in an approved location.
+carried into the measured-weight inspection field. The DMV driver-license and
+vehicle-registration return fields are added to existing cases as blank fields.
+Use the Back Up button regularly and store backups in an approved location.
 
 DATA STORAGE / NETWORK DRIVE
 ----------------------------
