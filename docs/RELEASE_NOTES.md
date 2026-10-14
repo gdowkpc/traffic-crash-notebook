@@ -1,3 +1,8 @@
+## Traffic Crash Notebook 0.6.3
+
+- Sets a stable Windows application identity during startup and applies the multi-size TIU icon directly to the main window to make taskbar icon selection more reliable across portable updates.
+- Extends portable verification to check the bundled Windows icon and read back the Windows taskbar process identity. The verification log distinguishes these checks from a visual taskbar check.
+
 ## Traffic Crash Notebook 0.6.2
 
 - Adds an All Case Tasks button below the case list, combining saved Open and Waiting tasks across cases with overdue items first.

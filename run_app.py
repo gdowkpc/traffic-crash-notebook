@@ -14,6 +14,7 @@ if str(SRC) not in sys.path:
 
 from traffic_crash_notebook.repository import CaseRepository
 from traffic_crash_notebook.startup_splash import close_startup_splash
+from traffic_crash_notebook.windows_identity import set_windows_app_id
 
 
 def _run_self_test() -> int:
@@ -41,6 +42,7 @@ def main() -> int:
     if "--self-test" in sys.argv:
         close_startup_splash()
         return _run_self_test()
+    set_windows_app_id()
     if "--data-dir" in sys.argv:
         index = sys.argv.index("--data-dir")
         if index + 1 >= len(sys.argv) or sys.argv[index + 1].startswith("--"):

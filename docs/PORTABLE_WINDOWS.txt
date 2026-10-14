@@ -24,7 +24,7 @@ subfolders. The small pointer to that folder is stored under:
   %LOCALAPPDATA%\TrafficCrashNotebook\storage_config.json
 
 Replacing the portable application folder therefore does not replace the case
-database. Version 0.6.2 upgrades older databases automatically when they are
+database. Version 0.6.3 upgrades older databases automatically when they are
 opened; existing cases are retained, and older vehicle weight entries are
 carried into the measured-weight inspection field. The DMV driver-license and
 vehicle-registration return fields are added to existing cases as blank fields.
@@ -100,6 +100,13 @@ VERSION / BUILD INFORMATION
 Open Help > About Traffic Crash Notebook, or select the visible About version
 button beside the case header. The dialog shows the exact application version,
 build ID, build date, database schema, and the executable path that is running.
+
+TASKBAR ICON
+------------
+The application uses a stable Windows taskbar identity and applies the multi-size
+TIU icon directly to its main window. If a pinned shortcut still points to an old
+portable folder, unpin that shortcut, run the current TrafficCrashNotebook.exe,
+and pin the running application again.
 
 OPTIONAL PORTABLE CHECK
 -----------------------
