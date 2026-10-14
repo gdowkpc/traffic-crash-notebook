@@ -1,3 +1,9 @@
+## Traffic Crash Notebook 0.6.4
+
+- Opens the case list in Open Cases and adds an Archived Cases view for saved closed cases, including cases already marked Closed.
+- Adds Close & Archive Case and Reopen Case actions. Archiving saves current entries and preserves all case records for later review, editing, printing, export, or reopening.
+- Keeps All Case Tasks navigation working when the selected task belongs to an archived case.
+
 ## Traffic Crash Notebook 0.6.3
 
 - Sets a stable Windows application identity during startup and applies the multi-size TIU icon directly to the main window to make taskbar icon selection more reliable across portable updates.
