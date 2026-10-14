@@ -127,7 +127,7 @@ from ..updates import (
     should_check_for_updates,
     successful_check_timestamp,
 )
-from .app_identity import configure_application
+from .app_identity import application_icon, configure_application
 from .all_case_tasks import AllCaseTasksDialog
 from .dialogs import (
     ChronologyDialog,
@@ -449,6 +449,7 @@ class UpdateAvailableDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self, repository: CaseRepository):
         super().__init__()
+        self.setWindowIcon(application_icon())
         self.repository = repository
         self.build_info = load_build_info()
         self.current_case: CrashCase | None = None

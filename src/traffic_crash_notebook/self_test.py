@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+import sys
 from contextlib import closing
 from pathlib import Path
 
@@ -46,7 +47,8 @@ from .repository import (
     DuplicateCaseNumberError,
     new_id,
 )
-from .resources import app_icon_path, startup_splash_path
+from .resources import app_icon_path, startup_splash_path, windows_executable_icon_path
+from .windows_identity import WINDOWS_APP_USER_MODEL_ID, get_windows_app_id, set_windows_app_id
 from .spellcheck import SpellCheckService
 from .updates import is_update_available, parse_update_manifest
 
@@ -68,6 +70,13 @@ def run_self_test(output_directory: str | Path) -> Path:
     icon_reader = QImageReader(str(icon_path))
     if not icon_reader.canRead() or icon_reader.read().isNull():
         raise RuntimeError("The bundled TIU application icon could not be loaded.")
+
+    windows_icon_reader = QImageReader(str(windows_executable_icon_path()))
+    if not windows_icon_reader.canRead() or windows_icon_reader.read().isNull():
+        raise RuntimeError("The bundled multi-size TIU Windows icon could not be loaded.")
+    if sys.platform == "win32":
+        if not set_windows_app_id() or get_windows_app_id() != WINDOWS_APP_USER_MODEL_ID:
+            raise RuntimeError("The Windows taskbar process identity could not be set and read back.")
 
     splash_path = startup_splash_path()
     if not splash_path.is_file():
@@ -698,7 +707,10 @@ def run_self_test(output_directory: str | Path) -> Path:
             "Driver, pedestrian, bicyclist, and motorcyclist exchange-report inclusion: PASS",
             "Dynamic exchange-report data, time formatting, and searchable information page: PASS",
             "Embedded PDF preview components: PASS",
-            "TIU application and taskbar icon: PASS",
+            "Bundled TIU icon assets: PASS",
+            "Windows taskbar process identity: PASS" if sys.platform == "win32" else
+            "Windows taskbar process identity: not applicable",
+            "Taskbar display: manual visual check required",
             "Early packaged startup splash: PASS",
             "Guided data-storage configuration and migration: PASS",
             "Verified release-manifest update checker: PASS",
