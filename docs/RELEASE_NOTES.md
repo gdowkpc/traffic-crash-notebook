@@ -1,3 +1,9 @@
+## Traffic Crash Notebook 0.6.2
+
+- Adds an All Case Tasks button below the case list, combining saved Open and Waiting tasks across cases with overdue items first.
+- Adds workload counts, search, and filters for case, category, status, and due date. Closed cases can be included optionally; legacy text deadlines are preserved and marked Check date.
+- Allows tasks to be edited from the combined list and opens the correct case's Tasks tab when a task is double-clicked. Changes update the original task and the selected case's workload count.
+
 ## Traffic Crash Notebook 0.6.1
 
 - Fixes Packet Preview and PDF export when a pasted field is longer than a page. Long driver restriction or physical-condition text continues across pages.
