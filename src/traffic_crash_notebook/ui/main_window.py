@@ -128,6 +128,7 @@ from ..updates import (
     successful_check_timestamp,
 )
 from .app_identity import configure_application
+from .all_case_tasks import AllCaseTasksDialog
 from .dialogs import (
     ChronologyDialog,
     ChargeDispositionDialog,
@@ -586,6 +587,9 @@ class MainWindow(QMainWindow):
         self.case_list.setPalette(case_list_palette)
         self.case_list.currentItemChanged.connect(self._case_selection_changed)
         layout.addWidget(self.case_list, 1)
+        self.all_case_tasks_button = _button("All Case Tasks", self.show_all_case_tasks)
+        self.all_case_tasks_button.setToolTip("View outstanding tasks across all saved cases")
+        layout.addWidget(self.all_case_tasks_button)
         layout.addWidget(_button("New Case", self.new_case))
         self.delete_case_button = _button(
             "Delete Selected Case...",
@@ -3645,6 +3649,43 @@ class MainWindow(QMainWindow):
         if entry_id and self._confirm_remove("Remove this journal entry?"):
             self.repository.delete_chronology(entry_id)
             self.refresh_case_tables()
+
+    def show_all_case_tasks(self) -> None:
+        if not self.save_overview():
+            return
+        dialog = AllCaseTasksDialog(self.repository, self)
+        dialog.task_changed.connect(self._refresh_task_summary)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_task:
+            self._open_case_task(*dialog.selected_task)
+
+    def _refresh_task_summary(self) -> None:
+        self.refresh_tasks()
+        self._update_header()
+
+    def _open_case_task(self, case_id: str, task_id: str) -> bool:
+        if not self.save_overview():
+            return False
+        case = self.repository.get_case(case_id)
+        task = self.repository.get_task(task_id)
+        if case is None or task is None or task.case_id != case_id:
+            return False
+        # The selected task may belong to a case hidden by the sidebar search.
+        self.case_search.clear()
+        self.refresh_cases()
+        for index in range(self.case_list.count()):
+            item = self.case_list.item(index)
+            if item.data(Qt.ItemDataRole.UserRole) == case_id:
+                self.case_list.setCurrentItem(item)
+                break
+        self.refresh_tasks()
+        self.tabs.setCurrentWidget(self.tasks_table.parentWidget())
+        for row in range(self.tasks_table.rowCount()):
+            item = self.tasks_table.item(row, 0)
+            if item.data(Qt.ItemDataRole.UserRole) == task_id:
+                self.tasks_table.selectRow(row)
+                self.tasks_table.scrollToItem(item)
+                break
+        return True
 
     def refresh_tasks(self) -> None:
         if not self.current_case:

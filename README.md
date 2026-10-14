@@ -13,7 +13,7 @@ grant permission to reuse the source or bundled assets. Agency names, forms, mar
 and other third-party material remain the property of their respective owners; no
 agency endorsement is implied.
 
-## Included in version 0.6.1
+## Included in version 0.6.2
 
 - Create and reopen unlimited cases.
 - Read the selected case clearly with high-contrast text whether the case selector has keyboard focus or not.
@@ -47,6 +47,23 @@ agency endorsement is implied.
 - Organize pedestrian, bicyclist, and motorcyclist visibility workups, motion/throw information, and whether a light meter or light board was used.
 - Verify a finished portable build without opening the GUI or touching the normal case database.
 
+## All Case Tasks
+
+Select **All Case Tasks** below the case list to view saved **Open** and **Waiting**
+tasks across your cases. Overdue tasks appear first, followed by upcoming dates
+and tasks without a usable date. Completed and Not Needed tasks are excluded;
+closed cases are excluded unless **Include closed cases** is checked.
+
+Search case numbers, locations, task descriptions, or notes, and filter by case,
+category, status, or due date. The workload counts reflect the current filters.
+**Due next 7 days** includes today through seven days from today. Legacy text
+deadlines are retained and labeled **Check date**.
+
+Select **Edit Task** to update the original saved task. Double-click a task or
+select **Open Case** to open its case's Tasks tab with that task selected. Choose
+**Refresh** to reload changes saved elsewhere. This list uses recorded tasks;
+it does not generate tasks from journal entries or missing case fields.
+
 ## Running from source
 
 Python 3.11 or newer is required on the development computer.
@@ -70,7 +87,7 @@ builds the executable, runs the finished executable's portable self-test, and
 creates:
 
 ```text
-release\TrafficCrashNotebook-0.6.1-Windows-Portable.zip
+release\TrafficCrashNotebook-0.6.2-Windows-Portable.zip
 ```
 
 The included GitHub Actions workflow performs the same build on a hosted Windows

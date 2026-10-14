@@ -24,11 +24,22 @@ subfolders. The small pointer to that folder is stored under:
   %LOCALAPPDATA%\TrafficCrashNotebook\storage_config.json
 
 Replacing the portable application folder therefore does not replace the case
-database. Version 0.6.1 upgrades older databases automatically when they are
+database. Version 0.6.2 upgrades older databases automatically when they are
 opened; existing cases are retained, and older vehicle weight entries are
 carried into the measured-weight inspection field. The DMV driver-license and
 vehicle-registration return fields are added to existing cases as blank fields.
 Use the Back Up button regularly and store backups in an approved location.
+
+ALL CASE TASKS
+--------------
+Select All Case Tasks below the case list to see Open and Waiting tasks across
+your cases. Overdue tasks appear first, followed by upcoming due dates and tasks
+without a usable date. Search or filter by case, category, status, and due date.
+The counts reflect the current filters. Closed cases are optional.
+
+Select Edit Task to update the original record, or double-click a task to open
+its case's Tasks tab. Select Refresh to reload changes saved elsewhere. This
+list uses tasks already recorded in your cases.
 
 DATA STORAGE / NETWORK DRIVE
 ----------------------------

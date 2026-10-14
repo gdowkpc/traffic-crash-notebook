@@ -11,6 +11,7 @@ from typing import Iterator, Optional, TypeVar
 
 from .models import (
     CaseTask,
+    CaseTaskSummary,
     ChargeDisposition,
     ChronologyEntry,
     ContactRelationship,
@@ -1468,6 +1469,33 @@ class CaseRepository:
 
     def delete_task(self, task_id: str) -> None:
         self._delete_simple("tasks", task_id)
+
+    def get_task(self, task_id: str) -> Optional[CaseTask]:
+        return self._get_simple("tasks", CaseTask, task_id)
+
+    def list_outstanding_tasks(self, *, include_closed: bool = False) -> list[CaseTaskSummary]:
+        """Read saved open/waiting tasks and their case identity in one query."""
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT tasks.*, cases.case_number AS case_number,
+                          cases.status AS case_status, cases.location AS case_location
+                   FROM tasks JOIN cases ON cases.id = tasks.case_id
+                   WHERE tasks.status IN ('Open', 'Waiting')
+                     AND (? OR cases.status != 'Closed')
+                   ORDER BY cases.case_number COLLATE NOCASE, tasks.created_at, tasks.id""",
+                (include_closed,),
+            ).fetchall()
+        summaries = []
+        for row in rows:
+            values = dict(row)
+            case_number = values.pop("case_number")
+            case_status = values.pop("case_status")
+            case_location = values.pop("case_location")
+            summaries.append(CaseTaskSummary(
+                task=CaseTask(**values), case_number=case_number,
+                case_status=case_status, case_location=case_location,
+            ))
+        return summaries
 
     def save_property_receipt(self, receipt: PropertyReceipt) -> PropertyReceipt:
         return self._save_simple("property_receipts", receipt)

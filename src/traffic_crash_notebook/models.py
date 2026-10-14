@@ -598,6 +598,14 @@ class CaseTask:
 
 
 @dataclass(slots=True)
+class CaseTaskSummary:
+    task: CaseTask
+    case_number: str
+    case_status: str
+    case_location: str
+
+
+@dataclass(slots=True)
 class PropertyReceipt:
     id: str
     case_id: str
