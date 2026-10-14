@@ -13,9 +13,10 @@ grant permission to reuse the source or bundled assets. Agency names, forms, mar
 and other third-party material remain the property of their respective owners; no
 agency endorsement is implied.
 
-## Included in version 0.6.3
+## Included in version 0.6.4
 
 - Create and reopen unlimited cases.
+- Keep the case list focused on open work; close and archive completed cases without deleting their records, then review or reopen them later.
 - Read the selected case clearly with high-contrast text whether the case selector has keyboard focus or not.
 - Use a guided first-run Data Storage Setup to select an investigator's assigned K: drive, another approved folder, or local storage; safely copy existing cases and verify the selected folder before use.
 - Open Settings from the case header to review or change the data location and save the investigator's name, numeric DPSST, and assignment as defaults for new cases.
@@ -46,6 +47,22 @@ agency endorsement is implied.
 - Link unlimited family, next-of-kin, medical, attorney, insurance, employer, and other contacts directly to one person.
 - Organize pedestrian, bicyclist, and motorcyclist visibility workups, motion/throw information, and whether a light meter or light board was used.
 - Verify a finished portable build without opening the GUI or touching the normal case database.
+
+## Closing and archiving cases
+
+The case list starts in **Open Cases** and includes every case whose status is not
+Closed. Select **Close & Archive Case** to save your current entries, mark the case
+Closed, and remove it from the open list. All its records stay in your case database
+and remain part of database backups.
+
+Choose **Archived Cases** above the case list to search and open closed cases for
+review, editing, printing, or export. Select **Reopen Case** to return a case to
+Open Cases with Active status. Changing the Overview status to Closed also archives
+the case; changing a closed case to another status returns it to the open list.
+Cases previously marked Closed appear in Archived Cases automatically.
+
+**Delete Selected Case** still permanently deletes records. Use Close & Archive
+when you may need the data later.
 
 ## All Case Tasks
 
@@ -87,7 +104,7 @@ builds the executable, runs the finished executable's portable self-test, and
 creates:
 
 ```text
-release\TrafficCrashNotebook-0.6.3-Windows-Portable.zip
+release\TrafficCrashNotebook-0.6.4-Windows-Portable.zip
 ```
 
 The included GitHub Actions workflow performs the same build on a hosted Windows

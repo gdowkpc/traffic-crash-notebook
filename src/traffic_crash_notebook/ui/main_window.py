@@ -573,6 +573,12 @@ class MainWindow(QMainWindow):
         heading = QLabel("CASES")
         heading.setStyleSheet("font-weight: 700; color: #5d6870; letter-spacing: 1px;")
         layout.addWidget(heading)
+        self.case_view = QComboBox()
+        self.case_view.addItem("Open Cases", "open")
+        self.case_view.addItem("Archived Cases", "archived")
+        self._case_view_index = 0
+        self.case_view.currentIndexChanged.connect(self._case_view_changed)
+        layout.addWidget(self.case_view)
         self.case_search = QLineEdit()
         self.case_search.setPlaceholderText("Filter cases")
         self.case_search.textChanged.connect(self.refresh_cases)
@@ -592,6 +598,14 @@ class MainWindow(QMainWindow):
         self.all_case_tasks_button.setToolTip("View outstanding tasks across all saved cases")
         layout.addWidget(self.all_case_tasks_button)
         layout.addWidget(_button("New Case", self.new_case))
+        self.archive_case_button = _button("Close & Archive Case", self.archive_current_case)
+        self.archive_case_button.setToolTip(
+            "Close this case and keep all its records in Archived Cases"
+        )
+        layout.addWidget(self.archive_case_button)
+        self.reopen_case_button = _button("Reopen Case", self.reopen_current_case)
+        self.reopen_case_button.setToolTip("Return this case to Open Cases with Active status")
+        layout.addWidget(self.reopen_case_button)
         self.delete_case_button = _button(
             "Delete Selected Case...",
             self.delete_current_case,
@@ -1695,7 +1709,7 @@ class MainWindow(QMainWindow):
         if not complete and not self.loading:
             date_widget.clear()
 
-    def save_overview(self) -> bool:
+    def save_overview(self, *, keep_selected: bool = False) -> bool:
         if self.loading or not self.current_case:
             return True
         try:
@@ -1728,6 +1742,16 @@ class MainWindow(QMainWindow):
         self.storage_error_active = False
         self.overview_dirty = False
         self.autosave_timer.stop()
+        if (self.current_case.status == "Closed") != (self.case_view.currentData() == "archived"):
+            if keep_selected:
+                self.case_view.blockSignals(True)
+                self.case_view.setCurrentIndex(
+                    self.case_view.findData("archived" if self.current_case.status == "Closed" else "open")
+                )
+                self._case_view_index = self.case_view.currentIndex()
+                self.case_view.blockSignals(False)
+                self.case_search.clear()
+            self.refresh_cases(select_first=True)
         return True
 
     def _save_overview_records(self) -> None:
@@ -1838,6 +1862,8 @@ class MainWindow(QMainWindow):
         self.case_list.clear()
         selected_item = None
         for case in self.repository.list_cases():
+            if (case.status == "Closed") != (self.case_view.currentData() == "archived"):
+                continue
             display_date = format_date_for_display(case.crash_date)
             haystack = (
                 f"{case.case_number} {case.location} {case.crash_date} {display_date}"
@@ -1849,11 +1875,44 @@ class MainWindow(QMainWindow):
             self.case_list.addItem(item)
             if case.id == selected_id:
                 selected_item = item
-        self.case_list.blockSignals(False)
         if selected_item:
             self.case_list.setCurrentItem(selected_item)
-        elif select_first and self.case_list.count():
-            self.case_list.setCurrentRow(0)
+        self.case_list.blockSignals(False)
+        if not selected_item and select_first:
+            self._clear_current_case()
+            if self.case_list.count():
+                self.case_list.setCurrentRow(0)
+
+    def _case_view_changed(self, index: int) -> None:
+        if self.current_case and self.overview_dirty and not self.save_overview():
+            self.case_view.blockSignals(True)
+            self.case_view.setCurrentIndex(self._case_view_index)
+            self.case_view.blockSignals(False)
+            return
+        self._case_view_index = index
+        self.refresh_cases(select_first=True)
+
+    def _clear_current_case(self) -> None:
+        self.autosave_timer.stop()
+        self.overview_dirty = False
+        self.current_case = None
+        self.conditions = None
+        self.checklist = None
+        self.crash_details = None
+        self.hit_run_overview = None
+        self.packet_preview_dialog.hide()
+        self._invalidate_exchange_preview("Select a case to preview its exchange report.")
+        self.tabs.hide()
+        self.case_title.setText("No case selected")
+        self.case_subtitle.setText(
+            "Select an archived case to review or reopen"
+            if self.case_view.currentData() == "archived"
+            else "Select or create an open case to begin"
+        )
+        self.counts_label.clear()
+        self.archive_case_button.setEnabled(False)
+        self.reopen_case_button.setEnabled(False)
+        self.delete_case_button.setEnabled(False)
 
     def _case_item_text(self, case: CrashCase) -> str:
         title = case.case_number or "Untitled Case"
@@ -1873,6 +1932,7 @@ class MainWindow(QMainWindow):
     def _case_selection_changed(self, current: QListWidgetItem | None, _previous) -> None:
         if not current:
             return
+        case_id = current.data(Qt.ItemDataRole.UserRole)
         if self.current_case and self.overview_dirty and not self.save_overview():
             self.case_list.blockSignals(True)
             for index in range(self.case_list.count()):
@@ -1882,9 +1942,16 @@ class MainWindow(QMainWindow):
                     break
             self.case_list.blockSignals(False)
             return
-        case = self.repository.get_case(current.data(Qt.ItemDataRole.UserRole))
+        case = self.repository.get_case(case_id)
         if case:
             self.load_case(case)
+            self.case_list.blockSignals(True)
+            for index in range(self.case_list.count()):
+                item = self.case_list.item(index)
+                if item.data(Qt.ItemDataRole.UserRole) == case_id:
+                    self.case_list.setCurrentItem(item)
+                    break
+            self.case_list.blockSignals(False)
 
     def load_case(self, case: CrashCase) -> None:
         self.autosave_timer.stop()
@@ -1896,6 +1963,7 @@ class MainWindow(QMainWindow):
             )
         self.loading = True
         self.current_case = case
+        self.tabs.show()
         self.case_number.setText(case.case_number)
         self.crash_date.setText(format_date_for_display(case.crash_date))
         self.crash_time.setText(format_time_for_display(case.crash_time))
@@ -2001,6 +2069,9 @@ class MainWindow(QMainWindow):
         if not self.current_case:
             return
         case = self.current_case
+        self.archive_case_button.setEnabled(case.status != "Closed")
+        self.reopen_case_button.setEnabled(case.status == "Closed")
+        self.delete_case_button.setEnabled(True)
         self.case_title.setText(case.case_number or "Untitled Case")
         details = "  |  ".join(value for value in (
             format_date_for_display(case.crash_date),
@@ -2060,12 +2131,54 @@ class MainWindow(QMainWindow):
                 f"{error}",
             )
             return
+        self.case_view.setCurrentIndex(self.case_view.findData("open"))
+        self.case_search.clear()
         self.refresh_cases()
         for index in range(self.case_list.count()):
             item = self.case_list.item(index)
             if item.data(Qt.ItemDataRole.UserRole) == case.id:
                 self.case_list.setCurrentItem(item)
                 break
+
+    def archive_current_case(self) -> None:
+        self._change_case_status("Closed")
+
+    def reopen_current_case(self) -> None:
+        case_id = self.current_case.id if self.current_case else None
+        if not self._change_case_status("Active"):
+            return
+        self.case_view.setCurrentIndex(self.case_view.findData("open"))
+        self.case_search.clear()
+        self.refresh_cases()
+        for index in range(self.case_list.count()):
+            item = self.case_list.item(index)
+            if item.data(Qt.ItemDataRole.UserRole) == case_id:
+                self.case_list.setCurrentItem(item)
+                break
+
+    def _change_case_status(self, status: str) -> bool:
+        if not self.current_case:
+            return False
+        case = self.current_case
+        previous_status = case.status
+        previous_entry = self.status.currentText()
+        case_label = self.case_number.text().strip() or "Untitled Case"
+        self.status.blockSignals(True)
+        self.status.setCurrentText(status)
+        self.status.blockSignals(False)
+        self.overview_dirty = True
+        if not self.save_overview():
+            case.status = previous_status
+            self.status.blockSignals(True)
+            self.status.setCurrentText(previous_entry)
+            self.status.blockSignals(False)
+            return False
+        message = (
+            f"Closed and archived {case_label}. All records are available in Archived Cases."
+            if status == "Closed" else f"Reopened {case_label}."
+        )
+        self.statusBar().showMessage(message, 6000)
+        return True
 
     def delete_current_case(self) -> None:
         if not self.current_case:
@@ -2100,14 +2213,8 @@ class MainWindow(QMainWindow):
                 f"The selected case was not deleted.\n\n{self.repository.database_path}\n\n{error}",
             )
             return
-        self.autosave_timer.stop()
-        self.current_case = None
-        self.packet_preview_dialog.hide()
+        self._clear_current_case()
         self.refresh_cases(select_first=True)
-        if not self.current_case:
-            self.case_title.setText("No case selected")
-            self.case_subtitle.setText("Create a case to begin")
-            self.counts_label.clear()
         self.statusBar().showMessage(f"Deleted {case_label}.", 5000)
 
     def _selected_id(self, table: QTableWidget) -> str | None:
@@ -2575,7 +2682,7 @@ class MainWindow(QMainWindow):
                 "Select or create a case before opening the packet preview.",
             )
             return
-        if not self.save_overview():
+        if not self.save_overview(keep_selected=True):
             return
         self.packet_preview_dialog.show()
         self.packet_preview_dialog.raise_()
@@ -2583,7 +2690,7 @@ class MainWindow(QMainWindow):
         self.refresh_case_packet_preview(force_preview=True)
 
     def preview_case_packet(self, *_args) -> None:
-        if not self.current_case or not self.save_overview():
+        if not self.current_case or not self.save_overview(keep_selected=True):
             return
         self.refresh_case_packet_preview(force_preview=True)
 
@@ -2675,7 +2782,7 @@ class MainWindow(QMainWindow):
             self.packet_stale_preview_paths.discard(preview_path)
 
     def preview_exchange_report(self, *_args) -> None:
-        if not self.current_case or not self.save_overview():
+        if not self.current_case or not self.save_overview(keep_selected=True):
             return
         self.refresh_exchange_report(force_preview=True)
 
@@ -3671,6 +3778,9 @@ class MainWindow(QMainWindow):
         if case is None or task is None or task.case_id != case_id:
             return False
         # The selected task may belong to a case hidden by the sidebar search.
+        self.case_view.setCurrentIndex(
+            self.case_view.findData("archived" if case.status == "Closed" else "open")
+        )
         self.case_search.clear()
         self.refresh_cases()
         for index in range(self.case_list.count()):
@@ -3736,7 +3846,7 @@ class MainWindow(QMainWindow):
         return answer == QMessageBox.StandardButton.Yes
 
     def export_case_packet_preview(self) -> None:
-        if not self.current_case or not self.save_overview():
+        if not self.current_case or not self.save_overview(keep_selected=True):
             return
         self.refresh_case_packet_preview(force_preview=True)
         if (
@@ -3791,7 +3901,7 @@ class MainWindow(QMainWindow):
         return printer
 
     def print_case_packet(self) -> None:
-        if not self.current_case or not self.save_overview():
+        if not self.current_case or not self.save_overview(keep_selected=True):
             return
         self.refresh_case_packet_preview(force_preview=True)
         page_count = self.packet_pdf_document.pageCount()
@@ -3863,7 +3973,7 @@ class MainWindow(QMainWindow):
     def export_pdf(self) -> None:
         if not self.current_case:
             return
-        if not self.save_overview():
+        if not self.save_overview(keep_selected=True):
             return
         reports_directory = self._reports_directory()
         if reports_directory is None:
@@ -3889,7 +3999,7 @@ class MainWindow(QMainWindow):
     def export_compact_pdf(self) -> None:
         if not self.current_case:
             return
-        if not self.save_overview():
+        if not self.save_overview(keep_selected=True):
             return
         reports_directory = self._reports_directory()
         if reports_directory is None:
@@ -3918,7 +4028,7 @@ class MainWindow(QMainWindow):
     def export_exchange_report(self) -> None:
         if not self.current_case:
             return
-        if not self.save_overview():
+        if not self.save_overview(keep_selected=True):
             return
         self.refresh_exchange_report(force_preview=True)
         reports_directory = self._reports_directory()
@@ -3985,7 +4095,7 @@ class MainWindow(QMainWindow):
         return printer
 
     def print_exchange_report(self) -> None:
-        if not self.current_case or not self.save_overview():
+        if not self.current_case or not self.save_overview(keep_selected=True):
             return
         self.refresh_exchange_report(force_preview=True)
         page_count = self.exchange_pdf_document.pageCount()
@@ -4053,7 +4163,7 @@ class MainWindow(QMainWindow):
     def export_summary_pdf(self) -> None:
         if not self.current_case:
             return
-        if not self.save_overview():
+        if not self.save_overview(keep_selected=True):
             return
         reports_directory = self._reports_directory()
         if reports_directory is None:

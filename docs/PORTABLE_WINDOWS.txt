@@ -24,11 +24,21 @@ subfolders. The small pointer to that folder is stored under:
   %LOCALAPPDATA%\TrafficCrashNotebook\storage_config.json
 
 Replacing the portable application folder therefore does not replace the case
-database. Version 0.6.3 upgrades older databases automatically when they are
+database. Version 0.6.4 upgrades older databases automatically when they are
 opened; existing cases are retained, and older vehicle weight entries are
 carried into the measured-weight inspection field. The DMV driver-license and
 vehicle-registration return fields are added to existing cases as blank fields.
 Use the Back Up button regularly and store backups in an approved location.
+
+CLOSING AND ARCHIVING CASES
+--------------------------
+The case list starts in Open Cases. Select Close & Archive Case to save your
+current entries, mark the case Closed, and keep all its records for later.
+Choose Archived Cases above the list to search, review, edit, print, or export
+closed cases. Reopen Case returns a case to Open Cases with Active status.
+Cases previously marked Closed appear in Archived Cases automatically.
+Archived records remain in the case database and its backups. Delete Selected
+Case permanently removes records; use Close & Archive if you may need them later.
 
 ALL CASE TASKS
 --------------
