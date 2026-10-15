@@ -408,6 +408,7 @@ class VehicleDialog(RecordDialog):
         )
         self.towed_to.setEnabled(self.towed.isChecked())
         self.towed.toggled.connect(self.towed_to.setEnabled)
+        self.tow_number = _line(self.vehicle.tow_number, "Tow or impound reference number")
         self.edr_status = _line(
             self.vehicle.edr_status,
             "Optional explanatory or legacy CDR / EDR notes",
@@ -448,6 +449,7 @@ class VehicleDialog(RecordDialog):
         form.addRow("Adjuster's email", self.insurance_adjuster_email)
         form.addRow("Towed", self.towed)
         form.addRow("Towed to", self.towed_to)
+        form.addRow("Tow number", self.tow_number)
         form.addRow("CDR / EDR notes", self.edr_status)
         form.addRow("EDR not downloaded: reason", self.edr_not_downloaded_reason)
         form.addRow("Release date", self.release_date)
@@ -542,7 +544,7 @@ class VehicleDialog(RecordDialog):
                           "plate_state", "insurance_company", "insurance_policy_number",
                           "insurance_claim_number", "insurance_adjuster_name",
                           "insurance_adjuster_phone", "insurance_adjuster_email",
-                          "edr_status", "edr_not_downloaded_reason", "release_information"):
+                          "tow_number", "edr_status", "edr_not_downloaded_reason", "release_information"):
             setattr(self.vehicle, attribute, getattr(self, attribute).text().strip())
         self.vehicle.towed = self.towed.isChecked()
         self.vehicle.tow_information = (

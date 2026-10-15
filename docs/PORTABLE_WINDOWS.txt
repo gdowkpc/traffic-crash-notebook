@@ -24,10 +24,11 @@ subfolders. The small pointer to that folder is stored under:
   %LOCALAPPDATA%\TrafficCrashNotebook\storage_config.json
 
 Replacing the portable application folder therefore does not replace the case
-database. Version 0.6.4 upgrades older databases automatically when they are
+database. Version 0.6.5 upgrades older databases automatically when they are
 opened; existing cases are retained, and older vehicle weight entries are
 carried into the measured-weight inspection field. The DMV driver-license and
 vehicle-registration return fields are added to existing cases as blank fields.
+The new Tow Number field is also blank for existing vehicles until entered.
 Use the Back Up button regularly and store backups in an approved location.
 
 CLOSING AND ARCHIVING CASES
@@ -39,6 +40,23 @@ closed cases. Reopen Case returns a case to Open Cases with Active status.
 Cases previously marked Closed appear in Archived Cases automatically.
 Archived records remain in the case database and its backups. Delete Selected
 Case permanently removes records; use Close & Archive if you may need them later.
+
+CASE DASHBOARD AND REPORTS
+--------------------------
+Choose Dashboard > Cases by Status or Case Dashboard above the case list to see
+the total, count, and percentage for each non-archived status. Archived cases
+are excluded, and sidebar search filters do not change these totals. Refresh
+reloads saved changes.
+
+Choose Reports > Rivergate - Unreleased Vehicles to list vehicles marked Towed
+whose Towed to destination contains Rivergate and whose Released box is unchecked.
+Archived cases are included in this report by default, since a closed case may
+still have an unreleased vehicle. Search, open a vehicle's case, save a PDF, or
+print the filtered report. Enter Tow Number beside Towed to in vehicle details;
+it appears in the report, vehicle list, and full and compact case packets.
+
+The case list and selected-case heading show case number, location, date, and
+status on separate lines, with long details wrapped to fit the panel.
 
 ALL CASE TASKS
 --------------
@@ -121,8 +139,9 @@ and pin the running application again.
 OPTIONAL PORTABLE CHECK
 -----------------------
 Double-click VERIFY_PORTABLE.bat. It creates a temporary fictional database and
-full working packet PDF, compact packet PDF, quick-review PDF, and exchange-report
-PDF; verifies the packaged database, PDF, spell-check dictionary, and logo; and
+full working packet PDF, compact packet PDF, quick-review PDF, exchange-report
+PDF, and Rivergate report PDF; verifies the packaged database, dashboard counts,
+tow numbers, PDF, spell-check dictionary, and logo; and
 reports PASS or FAIL. It does not open or modify the normal case database.
 
 VERIFIED UPDATES

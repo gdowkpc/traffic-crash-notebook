@@ -51,6 +51,11 @@ class PortableSelfTestTest(unittest.TestCase):
                 "Per-vehicle checklist, towing, release, insurance, and claim persistence: PASS",
                 log_text,
             )
+            self.assertIn("Vehicle tow-number persistence: PASS", log_text)
+            self.assertIn("Case dashboard counts and archived-case exclusion: PASS", log_text)
+            self.assertIn("Rivergate unreleased-vehicle report and tow-number PDF: PASS", log_text)
+            report_text = PdfReader(output / "portable_self_test_rivergate_report.pdf").pages[0].extract_text()
+            self.assertIn("000456-RG/26", report_text)
             self.assertIn(
                 "VRU light-meter and light-board persistence: PASS",
                 log_text,

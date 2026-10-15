@@ -666,6 +666,7 @@ class PdfExportTest(unittest.TestCase):
                 insurance_adjuster_email="avery.adjuster@example.com",
                 towed=True,
                 tow_information="Central Evidence Tow Yard",
+                tow_number="000123-RG/26",
                 warrant_obtained=True,
                 vehicle_inspection_completed=True,
                 nhtsa_recalls_checked=True,
@@ -919,6 +920,8 @@ class PdfExportTest(unittest.TestCase):
             self.assertIn("NHTSA RECALLS CHECKED", normalized_text)
             self.assertIn("TOWED / TO", normalized_text)
             self.assertIn("Yes - Central Evidence Tow Yard", normalized_text)
+            self.assertIn("TOW NUMBER", normalized_text)
+            self.assertIn("000123-RG/26", normalized_text)
             self.assertIn("CDR EQUIPPED", normalized_text)
             self.assertIn("CDR IMAGED", normalized_text)
             self.assertIn("CDR REPORT UPLOADED", normalized_text)
