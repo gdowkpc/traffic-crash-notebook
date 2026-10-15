@@ -13,10 +13,11 @@ grant permission to reuse the source or bundled assets. Agency names, forms, mar
 and other third-party material remain the property of their respective owners; no
 agency endorsement is implied.
 
-## Included in version 0.6.4
+## Included in version 0.6.5
 
 - Create and reopen unlimited cases.
 - Keep the case list focused on open work; close and archive completed cases without deleting their records, then review or reopen them later.
+- Open **Dashboard > Cases by Status** or **Case Dashboard** above the case list to see the total number of non-archived cases and a count and percentage for each status. Archived cases are excluded, and case-list searches do not affect the totals. Choose Refresh to update the counts.
 - Read the selected case clearly with high-contrast text whether the case selector has keyboard focus or not.
 - Use a guided first-run Data Storage Setup to select an investigator's assigned K: drive, another approved folder, or local storage; safely copy existing cases and verify the selected folder before use.
 - Open Settings from the case header to review or change the data location and save the investigator's name, numeric DPSST, and assignment as defaults for new cases.
@@ -37,6 +38,8 @@ agency endorsement is implied.
 - Maintain participant injury, transport, restraint, air-bag, helmet, ejection/extraction, autopsy, next-of-kin, and medical/evidence notes.
 - Maintain driver trip, impairment, sleep, work, familiarity, driving history, and license information including number, state, class, status, issued/expiration dates, endorsements, restrictions, and a separate multiline DMV driver-license return; packet output suppresses driver-only physical-condition and sleep/awake data for non-drivers.
 - Record registered, curb, and measured vehicle weights together in Inspection, plus a separate multiline DMV registration return, brakes, safety equipment, lighting, tire contribution, individual tire measurements, a per-vehicle NHTSA recall-check confirmation, towing status and destination, release status/date/details, and insurance claim number plus adjuster name, phone, and email. Record why an equipped EDR was not downloaded.
+- Record the **Tow number** beside Towed to in vehicle details. It also appears in the vehicle list, case packets, and the Rivergate report. Tow numbers preserve leading zeroes, letters, and punctuation.
+- Use **Reports > Rivergate - Unreleased Vehicles** to list vehicles marked Towed whose destination contains Rivergate and whose Released box is unchecked. Archived cases are included by default. Search by tow number or other vehicle details, open a vehicle's case, save a PDF, or print the current filtered report. Mark a vehicle Released in its vehicle details to remove it from the report.
 - Record structured equipped/operable states, switch positions, body/glass/restraint observations, identity checks, and unlimited tire positions.
 - Complete the original packet's 44-item motorcycle inspection with ratings, measurements, comments, and inspection metadata.
 - Track the investigative checklist, crash-diagram completion, Axon sharing, peer/sergeant/DA routing milestones with Not Started, Pending, or Complete status and completion dates, unlimited charges/dispositions, crash-team response details, and unlimited video sources with location addresses and Axon upload status.
@@ -104,7 +107,7 @@ builds the executable, runs the finished executable's portable self-test, and
 creates:
 
 ```text
-release\TrafficCrashNotebook-0.6.4-Windows-Portable.zip
+release\TrafficCrashNotebook-0.6.5-Windows-Portable.zip
 ```
 
 The included GitHub Actions workflow performs the same build on a hosted Windows

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Iterator, Optional, TypeVar
 
 from .models import (
+    CASE_STATUSES,
     CaseTask,
     CaseTaskSummary,
     ChargeDisposition,
@@ -36,6 +37,7 @@ from .models import (
     MotorcycleInspectionItem,
     SurfaceObservation,
     TireInspection,
+    TowedVehicleSummary,
     UserDefaults,
     VRUAnalysis,
     Vehicle,
@@ -58,7 +60,7 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-SCHEMA_VERSION = 36
+SCHEMA_VERSION = 37
 
 
 SCHEMA = """
@@ -147,6 +149,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
     property_damage TEXT NOT NULL DEFAULT '',
     towed INTEGER NOT NULL DEFAULT 0,
     tow_information TEXT NOT NULL DEFAULT '',
+    tow_number TEXT NOT NULL DEFAULT '',
     edr_status TEXT NOT NULL DEFAULT '',
     edr_not_downloaded_reason TEXT NOT NULL DEFAULT '',
     registration_dmv_return TEXT NOT NULL DEFAULT '',
@@ -707,6 +710,7 @@ class CaseRepository:
                 "tire_size": "TEXT NOT NULL DEFAULT ''",
                 "property_damage": "TEXT NOT NULL DEFAULT ''",
                 "towed": "INTEGER NOT NULL DEFAULT 0",
+                "tow_number": "TEXT NOT NULL DEFAULT ''",
                 "warrant_obtained": "INTEGER NOT NULL DEFAULT 0",
                 "vehicle_inspection_completed": "INTEGER NOT NULL DEFAULT 0",
                 "nhtsa_recalls_checked": "INTEGER NOT NULL DEFAULT 0",
@@ -1173,6 +1177,18 @@ class CaseRepository:
             row = connection.execute("SELECT * FROM cases WHERE id=?", (case_id,)).fetchone()
         return CrashCase(**dict(row)) if row else None
 
+    def case_status_counts(self) -> dict[str, int]:
+        """Count each non-archived case once, independent of the sidebar filters."""
+        counts = {status: 0 for status in CASE_STATUSES if status != "Closed"}
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT status, COUNT(*) AS case_count FROM cases
+                   WHERE status != 'Closed'
+                   GROUP BY status ORDER BY status COLLATE NOCASE""",
+            ).fetchall()
+        counts.update({row["status"]: row["case_count"] for row in rows})
+        return counts
+
     def delete_case(self, case_id: str) -> None:
         with self._connect() as connection:
             connection.execute("DELETE FROM cases WHERE id=?", (case_id,))
@@ -1275,7 +1291,7 @@ class CaseRepository:
                  insurance_policy_number, insurance_claim_number,
                  insurance_adjuster_name, insurance_adjuster_phone,
                  insurance_adjuster_email, property_damage, towed,
-                 tow_information, edr_status, edr_not_downloaded_reason,
+                 tow_information, tow_number, edr_status, edr_not_downloaded_reason,
                  registration_dmv_return,
                  warrant_obtained,
                  vehicle_inspection_completed, nhtsa_recalls_checked, cdr_equipped, cdr_imaged,
@@ -1287,7 +1303,7 @@ class CaseRepository:
                         :insurance_company, :insurance_policy_number,
                         :insurance_claim_number, :insurance_adjuster_name,
                         :insurance_adjuster_phone, :insurance_adjuster_email,
-                        :property_damage, :towed, :tow_information, :edr_status,
+                        :property_damage, :towed, :tow_information, :tow_number, :edr_status,
                         :edr_not_downloaded_reason, :registration_dmv_return,
                         :warrant_obtained,
                         :vehicle_inspection_completed,
@@ -1309,6 +1325,7 @@ class CaseRepository:
                   insurance_adjuster_email=excluded.insurance_adjuster_email,
                   property_damage=excluded.property_damage,
                   towed=excluded.towed, tow_information=excluded.tow_information,
+                  tow_number=excluded.tow_number,
                   edr_status=excluded.edr_status,
                   edr_not_downloaded_reason=excluded.edr_not_downloaded_reason,
                   registration_dmv_return=excluded.registration_dmv_return,
@@ -1362,6 +1379,40 @@ class CaseRepository:
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM vehicles WHERE id=?", (vehicle_id,)).fetchone()
         return self._vehicle_from_row(row) if row else None
+
+    def list_unreleased_towed_vehicles(
+        self, destination: str = "Rivergate", *, include_closed: bool = True,
+    ) -> list[TowedVehicleSummary]:
+        """Include archived cases by default: closing a case does not release a vehicle."""
+        destination = destination.strip()
+        if not destination:
+            raise ValueError("A towing destination is required.")
+        with self._connect() as connection:
+            rows = connection.execute(
+                """SELECT vehicles.*, cases.case_number AS report_case_number,
+                          cases.status AS report_case_status,
+                          cases.crash_date AS report_crash_date,
+                          cases.investigator AS report_investigator
+                   FROM vehicles JOIN cases ON cases.id = vehicles.case_id
+                   WHERE vehicles.towed = 1 AND vehicles.released = 0
+                     AND INSTR(LOWER(vehicles.tow_information), LOWER(?)) > 0
+                     AND (? OR cases.status != 'Closed')
+                   ORDER BY cases.case_number COLLATE NOCASE,
+                            vehicles.vehicle_number COLLATE NOCASE,
+                            vehicles.created_at, vehicles.id""",
+                (destination, include_closed),
+            ).fetchall()
+        summaries = []
+        for row in rows:
+            values = dict(row)
+            case_values = {
+                key: values.pop(f"report_{key}")
+                for key in ("case_number", "case_status", "crash_date", "investigator")
+            }
+            summaries.append(TowedVehicleSummary(
+                vehicle=self._vehicle_from_row(values), **case_values,
+            ))
+        return summaries
 
     def delete_vehicle(self, vehicle_id: str) -> None:
         with self._connect() as connection:

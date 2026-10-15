@@ -48,6 +48,7 @@ from .repository import (
     new_id,
 )
 from .resources import app_icon_path, startup_splash_path, windows_executable_icon_path
+from .reports import export_rivergate_report_pdf
 from .windows_identity import WINDOWS_APP_USER_MODEL_ID, get_windows_app_id, set_windows_app_id
 from .spellcheck import SpellCheckService
 from .updates import is_update_available, parse_update_manifest
@@ -210,6 +211,7 @@ def run_self_test(output_directory: str | Path) -> Path:
         property_damage="None",
         towed=True,
         tow_information="Verification Tow Yard",
+        tow_number="000123-SELFTEST/26",
         warrant_obtained=True,
         vehicle_inspection_completed=True,
         nhtsa_recalls_checked=True,
@@ -243,6 +245,7 @@ def run_self_test(output_directory: str | Path) -> Path:
         or loaded_vehicle.insurance_adjuster_email
         != "jordan.adjuster@example.com"
         or loaded_vehicle.tow_information != "Verification Tow Yard"
+        or loaded_vehicle.tow_number != "000123-SELFTEST/26"
         or loaded_vehicle.release_date != "2026-08-05"
         or loaded_vehicle.release_information
         != "Released to verification owner with receipt"
@@ -568,6 +571,8 @@ def run_self_test(output_directory: str | Path) -> Path:
         "3.5 L V6",
         "255/55R20",
         "TOWED / TO",
+        "TOW NUMBER",
+        "000123-SELFTEST/26",
         "Yes - Verification Tow Yard",
         "68 F",
         "51 F",
@@ -668,6 +673,43 @@ def run_self_test(output_directory: str | Path) -> Path:
             raise RuntimeError(
                 f"The searchable exchange information page omitted: {required_text}"
             )
+    baseline_counts = repository.case_status_counts()
+    report_case = repository.create_case("RG-TEST", "Verification Investigator")
+    report_case.status = "Closed"
+    repository.save_case(report_case)
+    if repository.case_status_counts() != baseline_counts:
+        raise RuntimeError("The dashboard counted an archived case.")
+    report_case.status = "Active"
+    repository.save_case(report_case)
+    if repository.case_status_counts()["Active"] != baseline_counts["Active"] + 1:
+        raise RuntimeError("The dashboard did not count a reopened case.")
+    report_case.status = "Closed"
+    repository.save_case(report_case)
+    report_vehicle = repository.save_vehicle(Vehicle(
+        id=new_id(), case_id=report_case.id, vehicle_number="1",
+        year="2026", make="Example", model="Report Vehicle", towed=True,
+        tow_information="Rivergate Verification Storage", tow_number="000456-RG/26",
+    ))
+    report_entries = repository.list_unreleased_towed_vehicles()
+    if len(report_entries) != 1 or report_entries[0].vehicle.id != report_vehicle.id:
+        raise RuntimeError("The Rivergate report did not include the archived case's unreleased vehicle.")
+    rivergate_pdf = output / "portable_self_test_rivergate_report.pdf"
+    export_rivergate_report_pdf(report_entries, rivergate_pdf)
+    report_document = QPdfDocument()
+    try:
+        if report_document.load(str(rivergate_pdf)) != QPdfDocument.Error.None_:
+            raise RuntimeError("The Rivergate report PDF could not be loaded.")
+        report_text = " ".join(report_document.getAllText(0).text().split())
+        if "000456-RG/26" not in report_text or "RG-TEST" not in report_text:
+            raise RuntimeError("The Rivergate PDF omitted the tow number or case number.")
+    finally:
+        report_document.close()
+    report_vehicle.released = True
+    repository.save_vehicle(report_vehicle)
+    if repository.list_unreleased_towed_vehicles():
+        raise RuntimeError("The Rivergate report included a released vehicle.")
+    repository.delete_case(report_case.id)
+
     with closing(sqlite3.connect(database)) as connection:
         schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
     if schema_version != SCHEMA_VERSION:
@@ -693,6 +735,9 @@ def run_self_test(output_directory: str | Path) -> Path:
             "Driver-license dates, ordering data, and driving history persistence: PASS",
             "Role-aware non-driver packet background suppression: PASS",
             "Per-vehicle checklist, towing, release, insurance, and claim persistence: PASS",
+            "Vehicle tow-number persistence: PASS",
+            "Case dashboard counts and archived-case exclusion: PASS",
+            "Rivergate unreleased-vehicle report and tow-number PDF: PASS",
             "Vehicle trim, engine, and tire-size persistence: PASS",
             "Vehicle measured-weight persistence: PASS",
             "Video-source address and Axon upload status persistence: PASS",

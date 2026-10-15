@@ -411,6 +411,7 @@ class Vehicle:
     property_damage: str = ""
     towed: bool = False
     tow_information: str = ""
+    tow_number: str = ""
     edr_status: str = ""
     edr_not_downloaded_reason: str = ""
     registration_dmv_return: str = ""
@@ -432,6 +433,15 @@ class Vehicle:
     def description(self) -> str:
         vehicle = " ".join(part for part in (self.year, self.make, self.model) if part)
         return vehicle or "Unidentified vehicle"
+
+
+@dataclass(slots=True)
+class TowedVehicleSummary:
+    vehicle: Vehicle
+    case_number: str
+    case_status: str
+    crash_date: str
+    investigator: str
 
 
 @dataclass(slots=True)

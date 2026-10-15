@@ -1,3 +1,10 @@
+## Traffic Crash Notebook 0.6.5
+
+- Adds a Reports menu with a searchable Rivergate - Unreleased Vehicles report. It lists vehicles marked Towed whose destination contains Rivergate and whose Released box is unchecked, includes archived cases by default, and supports opening the vehicle's case, PDF export, and printing.
+- Adds Tow Number to vehicle details, the vehicle list, full and compact case packets, and the Rivergate report. Existing vehicles receive a blank field, and tow numbers preserve leading zeroes, letters, and punctuation.
+- Places case number, location, date, and status on separate lines in the case list and selected-case heading. Long details wrap, and case-list rows expand to keep the information visible.
+- Adds a Case Dashboard with totals, counts, and percentages by status. Archived cases are excluded, sidebar search filters do not affect the counts, and Refresh reloads saved changes.
+
 ## Traffic Crash Notebook 0.6.4
 
 - Opens the case list in Open Cases and adds an Archived Cases view for saved closed cases, including cases already marked Closed.

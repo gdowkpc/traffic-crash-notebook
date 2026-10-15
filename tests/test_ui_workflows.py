@@ -172,7 +172,7 @@ class AddRecordWorkflowTest(unittest.TestCase):
         )
         self.assertEqual(
             item.text(),
-            "UI-TEST\nEast Burnside Street / 122nd Avenue  |  08/05/2026  -  Active",
+            "Case #: UI-TEST\nLocation: East Burnside Street / 122nd Avenue\nDate: 08/05/2026\nStatus: Active",
         )
 
     def tearDown(self):

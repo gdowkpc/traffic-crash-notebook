@@ -129,6 +129,9 @@ from ..updates import (
 )
 from .app_identity import application_icon, configure_application
 from .all_case_tasks import AllCaseTasksDialog
+from .case_list import CaseListDelegate
+from .case_dashboard import CaseDashboardDialog
+from .reports import RivergateReportDialog
 from .dialogs import (
     ChronologyDialog,
     ChargeDispositionDialog,
@@ -514,6 +517,16 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(2500, self._check_updates_if_due)
 
     def _build_menu_bar(self) -> None:
+        dashboard_menu = self.menuBar().addMenu("&Dashboard")
+        self.case_dashboard_action = QAction("Cases by Status...", self)
+        self.case_dashboard_action.triggered.connect(self.show_case_dashboard)
+        dashboard_menu.addAction(self.case_dashboard_action)
+
+        reports_menu = self.menuBar().addMenu("&Reports")
+        self.rivergate_report_action = QAction("Rivergate - Unreleased Vehicles...", self)
+        self.rivergate_report_action.triggered.connect(self.show_rivergate_report)
+        reports_menu.addAction(self.rivergate_report_action)
+
         settings_menu = self.menuBar().addMenu("&Settings")
         self.application_settings_action = QAction("Application Settings...", self)
         self.application_settings_action.triggered.connect(self.show_settings)
@@ -573,6 +586,9 @@ class MainWindow(QMainWindow):
         heading = QLabel("CASES")
         heading.setStyleSheet("font-weight: 700; color: #5d6870; letter-spacing: 1px;")
         layout.addWidget(heading)
+        self.case_dashboard_button = _button("Case Dashboard", self.show_case_dashboard)
+        self.case_dashboard_button.setToolTip("See case totals by status, excluding archived cases")
+        layout.addWidget(self.case_dashboard_button)
         self.case_view = QComboBox()
         self.case_view.addItem("Open Cases", "open")
         self.case_view.addItem("Archived Cases", "archived")
@@ -585,6 +601,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.case_search)
         self.case_list = QListWidget()
         self.case_list.setAlternatingRowColors(True)
+        self.case_list.setWordWrap(True)
+        self.case_list.setTextElideMode(Qt.TextElideMode.ElideNone)
+        self.case_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.case_list.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.case_list.setItemDelegate(CaseListDelegate(self.case_list))
         case_list_palette = self.case_list.palette()
         case_list_palette.setColor(QPalette.ColorRole.Highlight, QColor("#2e6f95"))
         case_list_palette.setColor(
@@ -636,12 +657,16 @@ class MainWindow(QMainWindow):
         header_text = QVBoxLayout()
         self.case_title = QLabel("No case selected")
         self.case_title.setObjectName("caseTitle")
+        self.case_title.setWordWrap(True)
         self.case_subtitle = QLabel("Create a case to begin")
         self.case_subtitle.setObjectName("caseSubtitle")
+        self.case_subtitle.setWordWrap(True)
         header_text.addWidget(self.case_title)
         header_text.addWidget(self.case_subtitle)
         header.addLayout(header_text, 1)
         self.counts_label = QLabel()
+        self.counts_label.setWordWrap(True)
+        self.counts_label.setMaximumWidth(180)
         self.counts_label.setStyleSheet("color: #5d6870; font-weight: 600;")
         header.addWidget(self.counts_label)
         self.settings_button = _button(
@@ -1916,11 +1941,12 @@ class MainWindow(QMainWindow):
 
     def _case_item_text(self, case: CrashCase) -> str:
         title = case.case_number or "Untitled Case"
-        detail = "  |  ".join(value for value in (
-            case.location,
-            format_date_for_display(case.crash_date),
-        ) if value) or "No incident location"
-        return f"{title}\n{detail}  -  {case.status}"
+        return "\n".join((
+            f"Case #: {title}",
+            f"Location: {case.location or 'Not entered'}",
+            f"Date: {format_date_for_display(case.crash_date) or 'Not entered'}",
+            f"Status: {case.status}",
+        ))
 
     def _update_case_item(self, case: CrashCase) -> None:
         for index in range(self.case_list.count()):
@@ -2073,19 +2099,18 @@ class MainWindow(QMainWindow):
         self.reopen_case_button.setEnabled(case.status == "Closed")
         self.delete_case_button.setEnabled(True)
         self.case_title.setText(case.case_number or "Untitled Case")
-        details = "  |  ".join(value for value in (
-            format_date_for_display(case.crash_date),
-            case.location,
-            case.status,
-        ) if value)
-        self.case_subtitle.setText(details or "Personal investigative working notes")
+        self.case_subtitle.setText("\n".join((
+            f"Location: {case.location or 'Not entered'}",
+            f"Date: {format_date_for_display(case.crash_date) or 'Not entered'}",
+            f"Status: {case.status}",
+        )))
         counts = self.repository.case_counts(case.id)
         journal_count_label = (
             "journal entry" if counts["chronology"] == 1 else "journal entries"
         )
         self.counts_label.setText(
-            f"{counts['people']} people   {counts['vehicles']} vehicles   "
-            f"{counts['chronology']} {journal_count_label}   "
+            f"{counts['people']} people\n{counts['vehicles']} vehicles\n"
+            f"{counts['chronology']} {journal_count_label}\n"
             f"{counts['open_tasks']} open tasks"
         )
 
@@ -2570,6 +2595,8 @@ class MainWindow(QMainWindow):
                     "Yes",
                     v.tow_information,
                 ) if value)
+            if v.tow_number:
+                towing += f"\nTow number: {v.tow_number}"
             if v.edr_status:
                 notes = " - ".join(value for value in (
                     notes,
@@ -3757,6 +3784,44 @@ class MainWindow(QMainWindow):
         if entry_id and self._confirm_remove("Remove this journal entry?"):
             self.repository.delete_chronology(entry_id)
             self.refresh_case_tables()
+
+    def show_case_dashboard(self) -> None:
+        if not self.save_overview():
+            return
+        CaseDashboardDialog(self.repository, self).exec()
+
+    def show_rivergate_report(self) -> None:
+        if not self.save_overview():
+            return
+        dialog = RivergateReportDialog(self.repository, self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected_vehicle:
+            self._open_report_vehicle(*dialog.selected_vehicle)
+
+    def _open_report_vehicle(self, case_id: str, vehicle_id: str) -> bool:
+        if not self.save_overview():
+            return False
+        case = self.repository.get_case(case_id)
+        vehicle = self.repository.get_vehicle(vehicle_id)
+        if case is None or vehicle is None or vehicle.case_id != case_id:
+            return False
+        self.case_view.setCurrentIndex(
+            self.case_view.findData("archived" if case.status == "Closed" else "open")
+        )
+        self.case_search.clear()
+        self.refresh_cases()
+        for index in range(self.case_list.count()):
+            item = self.case_list.item(index)
+            if item.data(Qt.ItemDataRole.UserRole) == case_id:
+                self.case_list.setCurrentItem(item)
+                break
+        self.tabs.setCurrentWidget(self.vehicles_table.parentWidget())
+        for row in range(self.vehicles_table.rowCount()):
+            item = self.vehicles_table.item(row, 0)
+            if item.data(Qt.ItemDataRole.UserRole) == vehicle_id:
+                self.vehicles_table.selectRow(row)
+                self.vehicles_table.scrollToItem(item)
+                break
+        return True
 
     def show_all_case_tasks(self) -> None:
         if not self.save_overview():
